@@ -36,6 +36,7 @@ impl<'tcx> ApiDep<'tcx> {
 
         let mut file = rap_create_file("traverse.txt", "fail when create file");
         let mut fn_cnt = 0;
+        // TODO: try self.tcx.mir_keys(())
         for local_def_id in self.tcx.iter_local_def_id() {
             let hir_map = self.tcx.hir();
             if hir_map.maybe_body_owned_by(local_def_id).is_some() {

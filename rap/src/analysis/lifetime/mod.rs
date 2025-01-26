@@ -3,7 +3,10 @@ use std::io::Write;
 use crate::{rap_info, utils::fs};
 
 use super::core::alias::{mop::MopAlias, FnRetAlias, RetAlias};
-use rustc_hir::{def_id::DefId, intravisit::{self, Visitor}};
+use rustc_hir::{
+    def_id::DefId,
+    intravisit::{self, Visitor},
+};
 use rustc_middle::ty::TyCtxt;
 use serde::{Deserialize, Serialize};
 

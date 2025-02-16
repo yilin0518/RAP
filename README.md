@@ -92,4 +92,6 @@ The feature is based on our rCanary work, which was published in TSE
   author={Mohan Cui, Hongliang Tian, Hui Xu, and Yangfan Zhou},
   journal={IEEE Transactions on Software Engineering},
   year={2024},
+}
+```
 

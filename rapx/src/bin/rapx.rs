@@ -52,6 +52,7 @@ fn main() {
             "-callgraph" => compiler.enable_callgraph(),
             "-O" | "-opt" => compiler.enable_opt(),
             "-mir" => compiler.enable_show_mir(),
+            "-api-dep" => compiler.enable_api_dep(),
             "-adt" => {}
             "-z3" => {}
             "-meta" => {}

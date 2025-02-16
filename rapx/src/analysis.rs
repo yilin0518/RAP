@@ -1,4 +1,6 @@
+pub mod api_dep;
 pub mod core;
+pub mod lifetime;
 pub mod opt;
 pub mod rcanary;
 pub mod safedrop;

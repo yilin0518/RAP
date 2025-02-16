@@ -1,5 +1,4 @@
 mod graph;
-mod ty;
 mod visitor;
 use crate::{rap_info, utils::fs::rap_create_file};
 

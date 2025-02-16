@@ -2,8 +2,9 @@ pub mod draw_dot;
 pub mod generate_dot;
 pub mod hir_visitor;
 pub mod isolation_graph;
+pub mod std_unsafety_isolation;
 
-use crate::analysis::unsafety_isolation::draw_dot::render_dot_graphs;
+// use crate::analysis::unsafety_isolation::draw_dot::render_dot_graphs;
 use crate::analysis::unsafety_isolation::generate_dot::UigUnit;
 use crate::analysis::unsafety_isolation::hir_visitor::{ContainsUnsafe, RelatedFnCollector};
 use crate::analysis::unsafety_isolation::isolation_graph::*;
@@ -28,6 +29,7 @@ pub struct UnsafetyIsolationCheck<'tcx> {
     pub nodes: Vec<IsolationGraphNode>,
     pub related_func_def_id: Vec<DefId>,
     pub uigs: Vec<UigUnit>,
+    pub single: Vec<UigUnit>,
 }
 
 impl<'tcx> UnsafetyIsolationCheck<'tcx> {
@@ -37,22 +39,21 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
             nodes: Vec::new(),
             related_func_def_id: Vec::new(),
             uigs: Vec::new(),
+            single: Vec::new(),
         }
     }
 
     pub fn start(&mut self, ins: UigInstruction) {
         if ins == UigInstruction::Upg {
-            self.generate_upg();
+            self.handle_std_unsafe();
             return;
         }
         let related_items = RelatedFnCollector::collect(self.tcx);
         let hir_map = self.tcx.hir();
         let mut ufunc = 0;
-        let mut interior_ufunc = 0;
-        let mut type_vec = vec![0; 10];
         for (_, &ref vec) in &related_items {
             for (body_id, span) in vec {
-                let (function_unsafe, block_unsafe) =
+                let (function_unsafe, _block_unsafe) =
                     ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
                 let def_id = hir_map.body_owner_def_id(*body_id).to_def_id();
                 if function_unsafe {
@@ -69,30 +70,8 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                         }
                     }
                 }
-                if block_unsafe {
-                    interior_ufunc = interior_ufunc + 1;
-                    if ins == UigInstruction::UigCount {
-                        self.count_uig(def_id, &mut type_vec);
-                    }
-                }
             }
         }
-        if ins == UigInstruction::UigCount {
-            println!("{:?}", type_vec);
-            println!("total uig number: {:?}", type_vec.iter().sum::<usize>());
-            println!(
-                "------unsafe api: {:?}, interior func: {:?}------",
-                ufunc, interior_ufunc
-            );
-        }
-    }
-
-    pub fn generate_upg(&mut self) {
-        // extract all unsafe nodes
-        self.filter_and_extend_unsafe();
-        // divide these nodes into several subgraphs and use dot to generate graphs
-        let dot_graphs = self.generate_upg_dot();
-        render_dot_graphs(dot_graphs);
     }
 
     pub fn check_doc(&self, def_id: DefId) {
@@ -104,54 +83,6 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                 visibility
             );
         }
-    }
-
-    pub fn count_uig(&mut self, def_id: DefId, type_vec: &mut Vec<usize>) {
-        let caller_type = self.get_type(def_id);
-        let caller_cons = self.get_constructor_nodes_by_def_id(def_id);
-        let callees = self.visit_node_callees(def_id);
-        if callees.is_empty() {
-            // single node
-            Self::update_type_vec(type_vec, 3, 3, false, false);
-        }
-        for callee in callees {
-            let callee_type = self.get_type(callee);
-            let callee_cons = self.get_constructor_nodes_by_def_id(callee);
-            let (two_safety1, only1) = self.is_cons_have_tow_safety(&caller_cons);
-            let (two_safety2, only2) = self.is_cons_have_tow_safety(&callee_cons);
-            if !two_safety1 && !two_safety2 {
-                Self::update_type_vec(type_vec, caller_type, callee_type, only1, only2);
-            } else if two_safety1 && !two_safety2 {
-                Self::update_type_vec(type_vec, caller_type, callee_type, false, only2);
-                Self::update_type_vec(type_vec, caller_type, callee_type, true, only2);
-            } else if !two_safety1 && two_safety2 {
-                Self::update_type_vec(type_vec, caller_type, callee_type, only1, false);
-                Self::update_type_vec(type_vec, caller_type, callee_type, only1, true);
-            } else {
-                Self::update_type_vec(type_vec, caller_type, callee_type, false, false);
-                Self::update_type_vec(type_vec, caller_type, callee_type, false, true);
-                Self::update_type_vec(type_vec, caller_type, callee_type, true, false);
-                Self::update_type_vec(type_vec, caller_type, callee_type, true, true);
-            }
-        }
-    }
-
-    // (first_flag, second_flag): if this vec contains two types of constructors' safety,
-    // 'first_flag' is set true; otherwise, 'second_flag' is set as the safety of constructor's safety
-    fn is_cons_have_tow_safety(&self, vec: &Vec<DefId>) -> (bool, bool) {
-        let mut flag = false;
-        if vec.is_empty() {
-            return (false, false);
-        }
-        let cur = self.get_node_unsafety_by_def_id(vec[0].clone());
-        for cons in vec {
-            let safety = self.get_node_unsafety_by_def_id(*cons);
-            if safety != cur {
-                flag = true;
-                break;
-            }
-        }
-        return (flag, cur);
     }
 
     pub fn filter_and_extend_unsafe(&mut self) {
@@ -218,8 +149,8 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         return false;
     }
 
-    pub fn check_safety(&self, body_did: DefId) -> bool {
-        let poly_fn_sig = self.tcx.fn_sig(body_did);
+    pub fn check_safety(&self, def_id: DefId) -> bool {
+        let poly_fn_sig = self.tcx.fn_sig(def_id);
         let fn_sig = poly_fn_sig.skip_binder();
         fn_sig.safety() == rustc_hir::Safety::Unsafe
     }
@@ -252,7 +183,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
             if assoc_item.fn_has_self_parameter {
                 node_type = 1;
-            } else if !assoc_item.fn_has_self_parameter {
+            } else {
                 let fn_sig = tcx.fn_sig(def_id).skip_binder();
                 let output = fn_sig.output().skip_binder();
                 // return type is 'Self'
@@ -260,12 +191,10 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                     node_type = 0;
                 }
                 // return type is struct's name
-                if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-                    if let Some(impl_id) = assoc_item.impl_container(tcx) {
-                        let ty = tcx.type_of(impl_id).skip_binder();
-                        if output == ty {
-                            node_type = 0;
-                        }
+                if let Some(impl_id) = assoc_item.impl_container(tcx) {
+                    let ty = tcx.type_of(impl_id).skip_binder();
+                    if output == ty {
+                        node_type = 0;
                     }
                 }
             }

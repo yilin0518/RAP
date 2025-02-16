@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{remove_file, File};
 use std::io::Write;
 use std::process::Command;
 
@@ -24,5 +24,7 @@ pub fn render_dot_graphs(dot_graphs: Vec<String>) {
             ])
             .output()
             .expect("Failed to execute Graphviz dot command");
+
+        remove_file(&file_name).expect("Failed to delete .dot file");
     }
 }

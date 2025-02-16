@@ -282,6 +282,10 @@ impl<'tcx> BodyVisitor<'tcx> {
     ) {
         if !self.tcx.is_mir_available(def_id) {
             return;
+        } else {
+            let body = self.tcx.optimized_mir(def_id);
+            display_mir(*def_id, body);
+            // println!("{:?} has blocks {:?}",def_id, body.basic_blocks.len());
         }
 
         // get pre analysis state

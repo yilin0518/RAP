@@ -15,8 +15,7 @@ use crate::utils::fs::rap_create_file;
 pub enum DepNode<'tcx> {
     Api(DefId),
     Ty(Ty<'tcx>),
-    Region(Ty<'tcx>, usize)
-    // Lifetime
+    Region(Ty<'tcx>, usize), // Lifetime
 }
 pub enum DepEdge {
     Ty2Fn,
@@ -66,8 +65,8 @@ impl<'tcx> ApiDepGraph<'tcx> {
             node_indices: HashMap::new(),
         }
     }
-    
-    pub fn inner_graph(&self) -> &InnerGraph<'tcx>{
+
+    pub fn inner_graph(&self) -> &InnerGraph<'tcx> {
         &self.graph
     }
 
@@ -95,10 +94,9 @@ impl<'tcx> ApiDepGraph<'tcx> {
                     DepNode::Ty(_) => "color = red",
                     DepNode::Region(..) => "color = green",
                 }
-
                 + ", shape=box"
         };
-    
+
         let dot = Dot::with_attr_getters(
             &self.graph,
             &[Config::NodeNoLabel, Config::EdgeNoLabel],
@@ -110,4 +108,3 @@ impl<'tcx> ApiDepGraph<'tcx> {
         // println!("{:?}", dot);
     }
 }
-

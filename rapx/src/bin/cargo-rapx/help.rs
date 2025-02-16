@@ -30,6 +30,9 @@ Dataflow tracing
 Automatic optimization
     -O or -opt       automatically detect code optimization chances
 
+API dependency analysis
+    -api-dep       generate API dependency graphs
+
 NOTE: multiple detections can be processed in single run by 
 appending the options to the arguments. Like `cargo rapx -F -M`
 will perform two kinds of detection in a row.

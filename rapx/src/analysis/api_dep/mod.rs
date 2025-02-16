@@ -1,3 +1,6 @@
+mod graph;
+mod ty;
+mod visitor;
 use crate::{rap_info, utils::fs::rap_create_file};
 
 use graph::ApiDepGraph;
@@ -8,8 +11,7 @@ use rustc_hir::{
 };
 use rustc_middle::{dep_graph, ty::TyCtxt};
 use rustc_span::Span;
-pub mod graph;
-pub mod visitor;
+
 use std::io::Write;
 use visitor::FnVisitor;
 

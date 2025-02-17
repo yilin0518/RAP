@@ -134,7 +134,8 @@ pub fn span_to_line_number(span: Span) -> usize {
 
 #[inline]
 // this function computes the relative pos range of two spans which could be generated from two dirrerent files or not intersect with each other
-pub unsafe fn relative_pos_range(span: Span, sub_span: Span) -> Range<usize> {
+// warning: we just return 0..0 to drop off the unintersected pairs
+pub fn relative_pos_range(span: Span, sub_span: Span) -> Range<usize> {
     if sub_span.lo() < span.lo() || sub_span.hi() > span.hi() {
         return 0..0;
     }

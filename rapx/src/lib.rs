@@ -21,7 +21,6 @@ use analysis::core::alias::mop::MopAlias;
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;
 use analysis::opt::Opt;
-use analysis::lifetime::{AnalysisQuery, Lifetime};
 use analysis::api_dep::{ApiDep};
 use analysis::rcanary::rCanary;
 use analysis::safedrop::SafeDrop;

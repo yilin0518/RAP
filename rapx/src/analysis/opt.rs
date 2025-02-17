@@ -1,10 +1,12 @@
 pub mod checking;
+pub mod data_collection;
 pub mod memory_cloning;
 
 use rustc_middle::ty::TyCtxt;
 
 use super::core::dataflow::{graph::Graph, DataFlow};
 use checking::bounds_checking::BoundsCheck;
+use data_collection::slice_contains::SliceContainsCheck;
 use memory_cloning::used_as_immutable::UsedAsImmutableCheck;
 
 pub struct Opt<'tcx> {
@@ -43,6 +45,15 @@ impl<'tcx> Opt<'tcx> {
                 used_as_immutable_check
             })
             .collect();
+        let slice_contains_checks: Vec<SliceContainsCheck> = dataflow
+            .graphs
+            .iter()
+            .map(|(_, graph)| {
+                let mut slice_contains_check = SliceContainsCheck::new();
+                slice_contains_check.check(graph, &self.tcx);
+                slice_contains_check
+            })
+            .collect();
         for ((_, graph), bounds_check) in dataflow.graphs.iter().zip(bounds_checks.iter()) {
             bounds_check.report(graph);
         }
@@ -50,6 +61,11 @@ impl<'tcx> Opt<'tcx> {
             dataflow.graphs.iter().zip(used_as_immutable_checks.iter())
         {
             used_as_immutable_check.report(graph);
+        }
+        for ((_, graph), slice_contains_check) in
+            dataflow.graphs.iter().zip(slice_contains_checks.iter())
+        {
+            slice_contains_check.report(graph);
         }
     }
 }

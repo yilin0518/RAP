@@ -17,11 +17,11 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
+use analysis::api_dep::ApiDep;
 use analysis::core::alias::mop::MopAlias;
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;
 use analysis::opt::Opt;
-use analysis::api_dep::{ApiDep};
 use analysis::rcanary::rCanary;
 use analysis::safedrop::SafeDrop;
 use analysis::senryx::SenryxCheck;

@@ -17,6 +17,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
+use analysis::api_dep::ApiDep;
 use analysis::core::alias::mop::MopAlias;
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;
@@ -49,6 +50,7 @@ pub struct RapCallback {
     unsafety_isolation: usize,
     mop: bool,
     callgraph: bool,
+    api_dep: bool,
     show_mir: bool,
     dataflow: usize,
     opt: bool,
@@ -63,6 +65,7 @@ impl Default for RapCallback {
             unsafety_isolation: 0,
             mop: false,
             callgraph: false,
+            api_dep: false,
             show_mir: false,
             dataflow: 0,
             opt: false,
@@ -140,6 +143,14 @@ impl RapCallback {
 
     pub fn is_senryx_enabled(&self) -> bool {
         self.senryx
+    }
+
+    pub fn enable_api_dep(&mut self) {
+        self.api_dep = true;
+    }
+
+    pub fn is_api_dep_enabled(self) -> bool {
+        self.api_dep
     }
 
     pub fn enable_callgraph(&mut self) {
@@ -240,6 +251,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
 
     if callback.is_show_mir_enabled() {
         ShowMir::new(tcx).start();
+    }
+
+    if callback.is_api_dep_enabled() {
+        ApiDep::new(tcx).start();
     }
 
     match callback.is_dataflow_enabled() {

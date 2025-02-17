@@ -53,7 +53,7 @@ impl BugRecords {
                 if are_spans_in_same_file(span, *i.1) {
                     snippet = snippet.annotation(
                         Level::Warning
-                            .span(unsafe { relative_pos_range(span, *i.1) })
+                            .span(relative_pos_range(span, *i.1))
                             .label("Double free detected."),
                     );
                 }
@@ -80,7 +80,7 @@ impl BugRecords {
                 if are_spans_in_same_file(span, *i) {
                     snippet = snippet.annotation(
                         Level::Warning
-                            .span(unsafe { relative_pos_range(span, *i) })
+                            .span(relative_pos_range(span, *i))
                             .label("Use after free detected."),
                     );
                 }
@@ -107,7 +107,7 @@ impl BugRecords {
                 if are_spans_in_same_file(span, *i) {
                     snippet = snippet.annotation(
                         Level::Warning
-                            .span(unsafe { relative_pos_range(span, *i) })
+                            .span(relative_pos_range(span, *i))
                             .label("Dangling pointer detected."),
                     );
                 }
@@ -132,7 +132,7 @@ impl BugRecords {
                 if are_spans_in_same_file(span, *i) {
                     snippet = snippet.annotation(
                         Level::Warning
-                            .span(unsafe { relative_pos_range(span, *i) })
+                            .span(relative_pos_range(span, *i))
                             .label("Dangling pointer detected during unwinding."),
                     );
                 }

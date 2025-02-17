@@ -88,7 +88,7 @@ fn report_slice_contains_bug(graph: &Graph, contains_span: Span) {
         .fold(true)
         .annotation(
             Level::Error
-                .span(unsafe { relative_pos_range(graph.span, contains_span) })
+                .span(relative_pos_range(graph.span, contains_span))
                 .label("Vec contains happens here."),
         );
     let message = Level::Warning

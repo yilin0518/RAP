@@ -21,7 +21,7 @@ pub enum UigInstruction {
     Doc,
     Upg,
     Ucons,
-    UigCount,
+    StdSp,
 }
 
 pub struct UnsafetyIsolationCheck<'tcx> {
@@ -44,9 +44,11 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
     }
 
     pub fn start(&mut self, ins: UigInstruction) {
-        if ins == UigInstruction::Upg {
+        if ins == UigInstruction::StdSp {
             self.handle_std_unsafe();
             return;
+        } else if ins == UigInstruction::Upg {
+            return; //TODO:
         }
         let related_items = RelatedFnCollector::collect(self.tcx);
         let hir_map = self.tcx.hir();

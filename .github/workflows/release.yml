@@ -25,5 +25,5 @@ jobs:
     - run: sudo apt install colorized-logs -y # Insall ansi2txt
 
     - name: Check test cases 
-      run: cd tests && ./batch.sh -F -M
+      run: cd tests && ./batch.sh -F -M -O
 

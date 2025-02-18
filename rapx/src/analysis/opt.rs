@@ -56,7 +56,10 @@ impl<'tcx> Opt<'tcx> {
                 slice_contains_check
             })
             .collect();
-        if !(bounds_checks.is_empty() && used_as_immutable_checks.is_empty() && slice_contains_checks.is_empty()) {
+        if !(bounds_checks.is_empty()
+            && used_as_immutable_checks.is_empty()
+            && slice_contains_checks.is_empty())
+        {
             rap_warn!("Performance Issues detected");
             for ((_, graph), bounds_check) in dataflow.graphs.iter().zip(bounds_checks.iter()) {
                 bounds_check.report(graph);

@@ -47,6 +47,7 @@ pub struct RapCallback {
     rcanary: bool,
     safedrop: bool,
     senryx: bool,
+    annotation: bool,
     unsafety_isolation: usize,
     mop: bool,
     callgraph: bool,
@@ -62,6 +63,7 @@ impl Default for RapCallback {
             rcanary: false,
             safedrop: false,
             senryx: false,
+            annotation: false,
             unsafety_isolation: 0,
             mop: false,
             callgraph: false,
@@ -151,6 +153,14 @@ impl RapCallback {
 
     pub fn is_api_dep_enabled(self) -> bool {
         self.api_dep
+    }
+    
+    pub fn enable_annotation(&mut self) {
+        self.annotation =  true;
+    }
+
+    pub fn is_annotation_enabled(&self) -> bool {
+        self.annotation
     }
 
     pub fn enable_callgraph(&mut self) {
@@ -247,6 +257,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
 
     if callback.is_senryx_enabled() {
         SenryxCheck::new(tcx, 2).start();
+    }
+
+    if callback.is_annotation_enabled() {
+        //TODO:
     }
 
     if callback.is_show_mir_enabled() {

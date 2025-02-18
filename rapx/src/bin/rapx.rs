@@ -49,6 +49,7 @@ fn main() {
             "-upg" => compiler.enable_unsafety_isolation(3),
             "-ucons" => compiler.enable_unsafety_isolation(4),
             "-senryx" => compiler.enable_senryx(),
+            "-A" => compiler.enable_annotation(),
             "-callgraph" => compiler.enable_callgraph(),
             "-O" | "-opt" => compiler.enable_opt(),
             "-mir" => compiler.enable_show_mir(),

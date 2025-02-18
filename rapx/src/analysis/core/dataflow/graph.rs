@@ -32,6 +32,7 @@ pub enum NodeOp {
     Aggregate(AggKind),
     ShallowInitBox,
     CopyForDeref,
+    RawPtr,
     //TerminatorKind
     Call(DefId),
     CallOperand, // the first in_edge is the func
@@ -282,7 +283,11 @@ impl Graph {
                     self.add_node_edge(src, dst, EdgeOp::Nop);
                     self.nodes[dst].ops[seq] = NodeOp::CopyForDeref;
                 }
-                Rvalue::RawPtr(_, _) => todo!(),
+                Rvalue::RawPtr(_, place) => {
+                    let src = self.parse_place(place);
+                    self.add_node_edge(src, dst, EdgeOp::Nop); // Mutability?
+                    self.nodes[dst].ops[seq] = NodeOp::RawPtr;
+                }
             };
             self.nodes[dst].seq = seq + 1;
         }

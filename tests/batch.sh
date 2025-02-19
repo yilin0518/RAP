@@ -79,7 +79,7 @@ if [ "$O" -eq 1 ]; then
   test "support/opt" "-O $rest"
 fi
 if [ "$A" -eq 1 ]; then
-  test "support/safety_check" "-A $rest"
+  test "support/sp_annotation" "-A $rest"
 fi
 if [ $(($F + $M + $O + $A)) -eq 0 ]; then
   test "support" $rest

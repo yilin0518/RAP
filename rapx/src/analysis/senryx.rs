@@ -56,19 +56,16 @@ impl<'tcx> SenryxCheck<'tcx> {
 
     pub fn annotate_safety(&self, def_id: DefId) {
         let annotation_results = self.get_anntation(def_id);
-        println!(
-            "--------In unsafe function {:?}---------\n  SP labels:  ",
+        rap_info!(
+            "--------In unsafe function {:?}---------",
             UigUnit::get_cleaned_def_path_name(def_id)
         );
-        for item in annotation_results {
-            print!("{:?} ", item);
-        }
-        print!("\n");
+        rap_warn!("Lack safety annotations: {:?}.", annotation_results);
     }
 
     pub fn body_visit_and_check(&self, def_id: DefId) -> Vec<CheckResult> {
         let mut uig_checker = UnsafetyIsolationCheck::new(self.tcx);
-        let func_type = uig_checker.get_type(def_id);
+        let func_type = UnsafetyIsolationCheck::get_type(self.tcx,def_id);
         let mut body_visitor = BodyVisitor::new(self.tcx, def_id, 0);
         if func_type == 1 {
             let func_cons = uig_checker.search_constructor(def_id);

@@ -46,7 +46,6 @@ pub type Elapsed = (i64, i64);
 pub struct RapCallback {
     rcanary: bool,
     safedrop: bool,
-    senryx: bool,
     annotation: bool,
     unsafety_isolation: usize,
     mop: bool,
@@ -62,7 +61,6 @@ impl Default for RapCallback {
         Self {
             rcanary: false,
             safedrop: false,
-            senryx: false,
             annotation: false,
             unsafety_isolation: 0,
             mop: false,
@@ -137,14 +135,6 @@ impl RapCallback {
 
     pub fn is_unsafety_isolation_enabled(&self) -> usize {
         self.unsafety_isolation
-    }
-
-    pub fn enable_senryx(&mut self) {
-        self.senryx = true;
-    }
-
-    pub fn is_senryx_enabled(&self) -> bool {
-        self.senryx
     }
 
     pub fn enable_api_dep(&mut self) {
@@ -255,12 +245,8 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         _ => {}
     }
 
-    if callback.is_senryx_enabled() {
-        SenryxCheck::new(tcx, 2).start();
-    }
-
     if callback.is_annotation_enabled() {
-        //TODO:
+        SenryxCheck::new(tcx, 2).start();
     }
 
     if callback.is_show_mir_enabled() {

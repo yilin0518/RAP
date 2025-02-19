@@ -9,12 +9,14 @@ function parse() {
   F=0 #uaf
   M=0 #mleak
   O=0 #opt
+  A=0
   rest="" #other args
   for arg in "$@"; do
       case "$arg" in
           -F) F=1 ;;
           -M) M=1 ;;
           -O) O=1 ;;
+          -A) A=1 ;;
           *) rest="$rest $arg" ;;
       esac
   done
@@ -76,6 +78,9 @@ fi
 if [ "$O" -eq 1 ]; then
   test "support/opt" "-O $rest"
 fi
-if [ $(($F + $M + $O)) -eq 0 ]; then
+if [ "$A" -eq 1 ]; then
+  test "support/safety_check" "-A $rest"
+fi
+if [ $(($F + $M + $O + $A)) -eq 0 ]; then
   test "support" $rest
 fi

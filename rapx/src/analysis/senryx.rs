@@ -3,10 +3,10 @@ pub mod inter_record;
 pub mod matcher;
 pub mod visitor;
 
-use crate::analysis::unsafety_isolation::{
+use crate::{analysis::unsafety_isolation::{
     hir_visitor::{ContainsUnsafe, RelatedFnCollector},
     UnsafetyIsolationCheck,
-};
+}, rap_info, rap_warn};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{BasicBlock, Operand, TerminatorKind};
 use rustc_middle::ty;
@@ -124,19 +124,19 @@ impl<'tcx> SenryxCheck<'tcx> {
     }
 
     pub fn show_check_results(def_id: DefId, check_results: Vec<CheckResult>) {
-        println!(
-            "--------In safe function {:?}---------\n  Soundness Check:",
+        rap_info!(
+            "--------In safe function {:?}---------",
             UigUnit::get_cleaned_def_path_name(def_id)
         );
         for check_result in check_results {
-            println!(
+            rap_info!(
                 "  Unsafe api {:?}: {} passed, {} failed!",
                 check_result.func_name,
                 check_result.passed_contracts.len(),
                 check_result.failed_contracts.len()
             );
             for failed_contract in check_result.failed_contracts {
-                println!("      Contract failed: {:?}", failed_contract);
+                rap_warn!("      Contract failed: {:?}", failed_contract);
             }
         }
     }

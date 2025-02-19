@@ -154,9 +154,9 @@ impl RapCallback {
     pub fn is_api_dep_enabled(self) -> bool {
         self.api_dep
     }
-    
+
     pub fn enable_annotation(&mut self) {
-        self.annotation =  true;
+        self.annotation = true;
     }
 
     pub fn is_annotation_enabled(&self) -> bool {

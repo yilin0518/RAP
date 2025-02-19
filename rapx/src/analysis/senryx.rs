@@ -3,15 +3,15 @@ pub mod inter_record;
 pub mod matcher;
 pub mod visitor;
 
-use std::collections::HashSet;
-use rustc_middle::mir::{TerminatorKind, Operand, BasicBlock};
-use rustc_middle::ty;
 use crate::analysis::unsafety_isolation::{
     hir_visitor::{ContainsUnsafe, RelatedFnCollector},
     UnsafetyIsolationCheck,
 };
 use rustc_hir::def_id::DefId;
+use rustc_middle::mir::{BasicBlock, Operand, TerminatorKind};
+use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
+use std::collections::HashSet;
 use visitor::{BodyVisitor, CheckResult};
 
 use super::unsafety_isolation::generate_dot::UigUnit;
@@ -53,7 +53,10 @@ impl<'tcx> SenryxCheck<'tcx> {
 
     pub fn annotate_safety(&self, def_id: DefId) {
         let annotation_results = self.get_anntation(def_id);
-        println!("--------In unsafe function {:?}---------\n  SP labels:  ", UigUnit::get_cleaned_def_path_name(def_id));
+        println!(
+            "--------In unsafe function {:?}---------\n  SP labels:  ",
+            UigUnit::get_cleaned_def_path_name(def_id)
+        );
         for item in annotation_results {
             print!("{:?} ", item);
         }
@@ -86,7 +89,7 @@ impl<'tcx> SenryxCheck<'tcx> {
         let mut results = HashSet::new();
         if !self.tcx.is_mir_available(def_id) {
             return results;
-        } 
+        }
         let body = self.tcx.optimized_mir(def_id);
         let basicblocks = &body.basic_blocks;
         for i in 0..basicblocks.len() {
@@ -101,23 +104,19 @@ impl<'tcx> SenryxCheck<'tcx> {
                     unwind: _,
                     call_source: _,
                     fn_span: _,
-                } => {
-                    match func {
-                        Operand::Constant(c) => {
-                            match c.ty().kind() {
-                                ty::FnDef(id, ..) => {
-                                    if UigUnit::get_sp(*id).len() > 0 {
-                                        results.extend(UigUnit::get_sp(*id));
-                                    } else {
-                                        results.extend(self.get_anntation(*id));
-                                    }
-                                }
-                                _ => {}
+                } => match func {
+                    Operand::Constant(c) => match c.ty().kind() {
+                        ty::FnDef(id, ..) => {
+                            if UigUnit::get_sp(*id).len() > 0 {
+                                results.extend(UigUnit::get_sp(*id));
+                            } else {
+                                results.extend(self.get_anntation(*id));
                             }
                         }
                         _ => {}
-                    }
-                }
+                    },
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -125,7 +124,10 @@ impl<'tcx> SenryxCheck<'tcx> {
     }
 
     pub fn show_check_results(def_id: DefId, check_results: Vec<CheckResult>) {
-        println!("--------In safe function {:?}---------\n  Soundness Check:", UigUnit::get_cleaned_def_path_name(def_id));
+        println!(
+            "--------In safe function {:?}---------\n  Soundness Check:",
+            UigUnit::get_cleaned_def_path_name(def_id)
+        );
         for check_result in check_results {
             println!(
                 "  Unsafe api {:?}: {} passed, {} failed!",

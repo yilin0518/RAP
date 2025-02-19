@@ -15,7 +15,8 @@ use rustc_middle::mir::{BasicBlock, Operand, TerminatorKind};
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashSet;
-use visitor::{BodyVisitor, CheckResult};
+use visitor::CheckResult;
+// use visitor::{BodyVisitor, CheckResult};
 
 use super::unsafety_isolation::generate_dot::UigUnit;
 
@@ -48,44 +49,55 @@ impl<'tcx> SenryxCheck<'tcx> {
     }
 
     pub fn check_soundness(&self, def_id: DefId) {
-        let check_results = self.body_visit_and_check(def_id);
-        if check_results.len() > 0 {
-            Self::show_check_results(def_id, check_results);
-        }
+        let _check_results = self.body_visit_and_check(def_id);
+        // if check_results.len() > 0 {
+        //     Self::show_check_results(def_id, check_results);
+        // }
     }
 
     pub fn annotate_safety(&self, def_id: DefId) {
-        let annotation_results = self.get_anntation(def_id);
-        rap_info!(
-            "--------In unsafe function {:?}---------",
-            UigUnit::get_cleaned_def_path_name(def_id)
-        );
-        rap_warn!("Lack safety annotations: {:?}.", annotation_results);
+        let annotation_results = self.get_annotation(def_id);
+        if annotation_results.len() == 0 {
+            return;
+        }
+        Self::show_annotate_results(def_id, annotation_results);
     }
 
-    pub fn body_visit_and_check(&self, def_id: DefId) -> Vec<CheckResult> {
+    // pub fn body_visit_and_check(&self, def_id: DefId) -> Vec<CheckResult> {
+    //     let mut uig_checker = UnsafetyIsolationCheck::new(self.tcx);
+    //     let func_type = UnsafetyIsolationCheck::get_type(self.tcx,def_id);
+    //     let mut body_visitor = BodyVisitor::new(self.tcx, def_id, 0);
+    //     if func_type == 1 {
+    //         let func_cons = uig_checker.search_constructor(def_id);
+    //         for func_con in func_cons {
+    //             let mut cons_body_visitor = BodyVisitor::new(self.tcx, func_con, 0);
+    //             cons_body_visitor.path_forward_check();
+    //             // TODO: cache fields' states
+    //             // TODO: update method body's states
+    //             // analyze body's states
+    //             body_visitor.path_forward_check();
+    //         }
+    //     } else {
+    //         body_visitor.path_forward_check();
+    //     }
+    //     return body_visitor.check_results;
+    // }
+
+    pub fn body_visit_and_check(&self, def_id: DefId) {
         let mut uig_checker = UnsafetyIsolationCheck::new(self.tcx);
-        let func_type = UnsafetyIsolationCheck::get_type(self.tcx,def_id);
-        let mut body_visitor = BodyVisitor::new(self.tcx, def_id, 0);
-        if func_type == 1 {
+        let func_type = UnsafetyIsolationCheck::get_type(self.tcx, def_id);
+        if func_type == 1 && self.get_annotation(def_id).len() > 0 {
             let func_cons = uig_checker.search_constructor(def_id);
             for func_con in func_cons {
-                let mut cons_body_visitor = BodyVisitor::new(self.tcx, func_con, 0);
-                cons_body_visitor.path_forward_check();
-                // TODO: cache fields' states
-
-                // TODO: update method body's states
-
-                // analyze body's states
-                body_visitor.path_forward_check();
+                if UnsafetyIsolationCheck::check_safety(self.tcx, func_con) {
+                    Self::show_annotate_results(func_con, self.get_annotation(def_id));
+                    // uphold safety to unsafe constructor
+                }
             }
-        } else {
-            body_visitor.path_forward_check();
         }
-        return body_visitor.check_results;
     }
 
-    pub fn get_anntation(&self, def_id: DefId) -> HashSet<String> {
+    pub fn get_annotation(&self, def_id: DefId) -> HashSet<String> {
         let mut results = HashSet::new();
         if !self.tcx.is_mir_available(def_id) {
             return results;
@@ -110,7 +122,7 @@ impl<'tcx> SenryxCheck<'tcx> {
                             if UigUnit::get_sp(*id).len() > 0 {
                                 results.extend(UigUnit::get_sp(*id));
                             } else {
-                                results.extend(self.get_anntation(*id));
+                                results.extend(self.get_annotation(*id));
                             }
                         }
                         _ => {}
@@ -139,5 +151,13 @@ impl<'tcx> SenryxCheck<'tcx> {
                 rap_warn!("      Contract failed: {:?}", failed_contract);
             }
         }
+    }
+
+    pub fn show_annotate_results(def_id: DefId, annotation_results: HashSet<String>) {
+        rap_info!(
+            "--------In unsafe function {:?}---------",
+            UigUnit::get_cleaned_def_path_name(def_id)
+        );
+        rap_warn!("Lack safety annotations: {:?}.", annotation_results);
     }
 }

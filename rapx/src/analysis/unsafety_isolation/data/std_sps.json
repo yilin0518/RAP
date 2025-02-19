@@ -1008,6 +1008,12 @@
             "Aligned"
         ]
     },
+    "core::ptr::offset": {
+        "sp": [
+            "Allocated",
+            "ValidInt"
+        ]
+    },
     "core::clone::clone_to_uninit": {
         "sp": [
             "ValidPtr",

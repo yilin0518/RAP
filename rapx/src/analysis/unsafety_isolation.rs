@@ -64,7 +64,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                         self.check_doc(def_id);
                     }
                     if ins == UigInstruction::Ucons {
-                        if Self::get_type(self.tcx,def_id) == 0 {
+                        if Self::get_type(self.tcx, def_id) == 0 {
                             println!(
                                 "Find unsafe constructor: {:?}, location:{:?}.",
                                 def_id, span
@@ -101,7 +101,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                     ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
                 let body_did = hir_map.body_owner_def_id(*body_id).to_def_id();
                 if function_unsafe || block_unsafe {
-                    let node_type = Self::get_type(self.tcx,body_did);
+                    let node_type = Self::get_type(self.tcx, body_did);
                     let name = self.get_name(body_did);
                     let mut new_node =
                         IsolationGraphNode::new(body_did, node_type, name, function_unsafe, true);
@@ -218,7 +218,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                         for item in associated_items.in_definition_order() {
                             if let ty::AssocKind::Fn = item.kind {
                                 let item_def_id = item.def_id;
-                                if Self::get_type(self.tcx,item_def_id) == 0 {
+                                if Self::get_type(self.tcx, item_def_id) == 0 {
                                     constructors.push(item_def_id);
                                     self.check_and_insert_node(item_def_id);
                                     self.set_method_for_constructor(item_def_id, def_id);
@@ -248,9 +248,9 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                         for item in associated_items.in_definition_order() {
                             if let ty::AssocKind::Fn = item.kind {
                                 let item_def_id = item.def_id;
-                                if Self::get_type(self.tcx,item_def_id) == 0 {
+                                if Self::get_type(self.tcx, item_def_id) == 0 {
                                     constructors.push(item_def_id);
-                                } else if Self::get_type(self.tcx,item_def_id) == 1 {
+                                } else if Self::get_type(self.tcx, item_def_id) == 1 {
                                     methods.push(item_def_id);
                                 }
                             }
@@ -328,7 +328,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         if self.check_if_node_exists(body_did) {
             return;
         }
-        let node_type = Self::get_type(self.tcx,body_did);
+        let node_type = Self::get_type(self.tcx, body_did);
         let name = self.get_name(body_did);
         let is_crate_api = self.is_crate_api_node(body_did);
         let node_safety = Self::check_safety(self.tcx, body_did);

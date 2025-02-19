@@ -72,9 +72,15 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                 continue;
             }
             if tcx.def_kind(def_id) == DefKind::Fn || tcx.def_kind(def_id) == DefKind::AssocFn {
-                if Self::check_safety(tcx, def_id) && self.tcx.visibility(def_id) == Visibility::Public {
+                if Self::check_safety(tcx, def_id)
+                    && self.tcx.visibility(def_id) == Visibility::Public
+                {
                     unsafe_fn.insert(def_id);
-                    self.insert_uig(def_id, self.get_callees(def_id), Self::get_cons(tcx, def_id));
+                    self.insert_uig(
+                        def_id,
+                        self.get_callees(def_id),
+                        Self::get_cons(tcx, def_id),
+                    );
                 }
             }
         }
@@ -93,9 +99,15 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         }
         match tcx.def_kind(def_id) {
             DefKind::Fn | DefKind::AssocFn => {
-                if Self::check_safety(tcx, def_id) && self.tcx.visibility(def_id) == Visibility::Public {
+                if Self::check_safety(tcx, def_id)
+                    && self.tcx.visibility(def_id) == Visibility::Public
+                {
                     unsafe_fn.insert(def_id);
-                    self.insert_uig(def_id, self.get_callees(def_id), Self::get_cons(tcx, def_id));
+                    self.insert_uig(
+                        def_id,
+                        self.get_callees(def_id),
+                        Self::get_cons(tcx, def_id),
+                    );
                 }
             }
             DefKind::Mod => {
@@ -143,7 +155,8 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
             let callee_cons = Self::get_cons(self.tcx, *callee);
             pairs.insert((Self::generate_node_ty(self.tcx, *callee), callee_cons));
         }
-        let uig = UigUnit::new_by_pair(Self::generate_node_ty(self.tcx, caller), caller_cons, pairs);
+        let uig =
+            UigUnit::new_by_pair(Self::generate_node_ty(self.tcx, caller), caller_cons, pairs);
         if callee_set.len() > 0 {
             self.uigs.push(uig);
         } else {
@@ -153,7 +166,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
 
     pub fn get_cons(tcx: TyCtxt<'tcx>, def_id: DefId) -> Vec<NodeType> {
         let mut cons = Vec::new();
-        if tcx.def_kind(def_id) == DefKind::Fn || Self::get_type(tcx,def_id) == 0 {
+        if tcx.def_kind(def_id) == DefKind::Fn || Self::get_type(tcx, def_id) == 0 {
             return cons;
         }
         if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
@@ -167,7 +180,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                         for item in tcx.associated_item_def_ids(impl_def_id) {
                             if (tcx.def_kind(item) == DefKind::Fn
                                 || tcx.def_kind(item) == DefKind::AssocFn)
-                                && Self::get_type(tcx,*item) == 0
+                                && Self::get_type(tcx, *item) == 0
                             {
                                 cons.push(Self::generate_node_ty(tcx, *item));
                             }
@@ -205,7 +218,11 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
     }
 
     pub fn generate_node_ty(tcx: TyCtxt<'tcx>, def_id: DefId) -> NodeType {
-        (def_id, Self::check_safety(tcx, def_id), Self::get_type(tcx,def_id))
+        (
+            def_id,
+            Self::check_safety(tcx, def_id),
+            Self::get_type(tcx, def_id),
+        )
     }
 
     pub fn print_hashset<T: std::fmt::Debug>(set: &HashSet<T>) {

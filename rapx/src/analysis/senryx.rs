@@ -3,10 +3,13 @@ pub mod inter_record;
 pub mod matcher;
 pub mod visitor;
 
-use crate::{analysis::unsafety_isolation::{
-    hir_visitor::{ContainsUnsafe, RelatedFnCollector},
-    UnsafetyIsolationCheck,
-}, rap_info, rap_warn};
+use crate::{
+    analysis::unsafety_isolation::{
+        hir_visitor::{ContainsUnsafe, RelatedFnCollector},
+        UnsafetyIsolationCheck,
+    },
+    rap_info, rap_warn,
+};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{BasicBlock, Operand, TerminatorKind};
 use rustc_middle::ty;

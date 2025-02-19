@@ -150,6 +150,11 @@
             "ValidInt"
         ]
     },
+    "core::convert::num::FloatToInt::to_int_unchecked": {
+        "sp": [
+            "ValidInt"
+        ]
+    },
     "core::ffi::c_str::from_ptr": {
         "sp": [
             "ValidCStr",
@@ -364,6 +369,12 @@
             "Lifetime"
         ]
     },
+    "core::intrinsics::typed_swap": {
+        "sp": [
+            "ValidPtr",
+            "NonOverlap"
+        ]
+    },
     "core::intrinsics::copy": {
         "sp": [
             "ValidPtr",
@@ -459,6 +470,7 @@
         "sp": [
             "ValidPtr",
             "Aligned",
+            "CopyTrait",
             "Init"
         ]
     },
@@ -466,12 +478,14 @@
         "sp": [
             "ValidPtr",
             "Aligned",
+            "CopyTrait",
             "Init"
         ]
     },
     "core::ptr::non_null::read_unaligned": {
         "sp": [
             "ValidPtr",
+            "CopyTrait",
             "Init"
         ]
     },

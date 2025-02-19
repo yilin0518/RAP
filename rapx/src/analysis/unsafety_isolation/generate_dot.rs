@@ -136,20 +136,20 @@ impl UigUnit {
     }
 
     pub fn compare_labels(&self) {
-        let mut caller_sp = self.get_sp(self.caller.0);
+        let mut caller_sp = Self::get_sp(self.caller.0);
         for caller_con in &self.caller_cons {
             if caller_con.1 != true {
                 // if constructor is safe, it won't have labels.
                 continue;
             }
-            let caller_con_sp = self.get_sp(caller_con.0);
+            let caller_con_sp = Self::get_sp(caller_con.0);
             caller_sp.extend(caller_con_sp); // Merge sp of each unsafe constructor
         }
         let caller_label: Vec<_> = caller_sp.clone().into_iter().collect();
 
         let mut combined_callee_sp = HashSet::new();
         for (callee, _sp_vec) in &self.callee_cons_pair {
-            let callee_sp = self.get_sp(callee.0);
+            let callee_sp = Self::get_sp(callee.0);
             combined_callee_sp.extend(callee_sp); // Merge sp of each callee
         }
         let combined_labels: Vec<_> = combined_callee_sp.clone().into_iter().collect();
@@ -202,6 +202,7 @@ impl UigUnit {
             .filter(|part| !part.contains("{")) // 去除包含 "{" 的部分
             .collect();
 
+        let mut remove_first = false;
         if let Some(first_part) = parts.get_mut(0) {
             if first_part.contains("core") {
                 *first_part = "core";
@@ -209,7 +210,12 @@ impl UigUnit {
                 *first_part = "std";
             } else if first_part.contains("alloc") {
                 *first_part = "alloc";
+            } else {
+                remove_first = true;
             }
+        }
+        if remove_first && !parts.is_empty() {
+            parts.remove(0);
         }
         let mut cleaned_path = parts.join("::");
         cleaned_path = cleaned_path.trim_end_matches(')').to_string();
@@ -223,7 +229,7 @@ impl UigUnit {
         json_data
     }
 
-    pub fn get_sp(&self, def_id: DefId) -> HashSet<String> {
+    pub fn get_sp(def_id: DefId) -> HashSet<String> {
         let cleaned_path_name = Self::get_cleaned_def_path_name(def_id);
         let json_data: serde_json::Value = Self::get_sp_json();
 

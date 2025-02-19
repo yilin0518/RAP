@@ -75,13 +75,13 @@ use std::slice;
 /// unaligned.as_ptr(): _4
 /// ptr: _3
 /// data: _7 _12
-fn test5(offset:usize) {
+ unsafe fn test5(_offset:usize) {
     let unaligned = [0u32; 5];
     let ptr = unaligned.as_ptr() as *const u8;
     let data = ptr as *mut i32;
     let len = 1;
     // Fail(Layout): 'data' is not aligned, violating the alignment requirement
-    let slice: &[i32] = unsafe { slice::from_raw_parts_mut(data, len) };
+    let _slice: &[i32] = slice::from_raw_parts_mut(data, len);
     // println!("Slice elements: {:?}", slice);
 }
 
@@ -99,18 +99,18 @@ fn test5(offset:usize) {
 //     }
 // }
 
-// fn test6(a: &mut [u8], b: &[u32; 20]) {
-//     unsafe {
-//         let c = slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u32, 20);
-//         for i in 0..20 {
-//             c[i] ^= b[i];
-//         }
-//     }
-// }
+fn test6(a: &mut [u8], b: &[u32; 20]) {
+    unsafe {
+        let c = slice::from_raw_parts_mut(a.as_mut_ptr() as *mut u32, 20);
+        for i in 0..20 {
+            c[i] ^= b[i];
+        }
+    }
+}
 
 fn main() {
-    test5(3);
-    // let mut x = [0u8;40];
-    // let y = [0u32;20];
-    // test6(&mut x[1..32], &y);
+    unsafe {test5(3)};
+    let mut x = [0u8;40];
+    let y = [0u32;20];
+    test6(&mut x[1..32], &y);
 }

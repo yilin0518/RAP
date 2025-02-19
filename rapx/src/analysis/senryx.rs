@@ -8,8 +8,13 @@ use crate::analysis::unsafety_isolation::{
     UnsafetyIsolationCheck,
 };
 use rustc_hir::def_id::DefId;
+use rustc_middle::mir::{BasicBlock, Operand, TerminatorKind};
+use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
+use std::collections::HashSet;
 use visitor::{BodyVisitor, CheckResult};
+
+use super::unsafety_isolation::generate_dot::UigUnit;
 
 pub struct SenryxCheck<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -47,10 +52,15 @@ impl<'tcx> SenryxCheck<'tcx> {
     }
 
     pub fn annotate_safety(&self, def_id: DefId) {
-        let check_results = self.body_visit_and_check(def_id);
-        if check_results.len() > 0 {
-            Self::show_check_results(def_id, check_results);
+        let annotation_results = self.get_anntation(def_id);
+        println!(
+            "--------In unsafe function {:?}---------\n  SP labels:  ",
+            UigUnit::get_cleaned_def_path_name(def_id)
+        );
+        for item in annotation_results {
+            print!("{:?} ", item);
         }
+        print!("\n");
     }
 
     pub fn body_visit_and_check(&self, def_id: DefId) -> Vec<CheckResult> {
@@ -75,8 +85,49 @@ impl<'tcx> SenryxCheck<'tcx> {
         return body_visitor.check_results;
     }
 
+    pub fn get_anntation(&self, def_id: DefId) -> HashSet<String> {
+        let mut results = HashSet::new();
+        if !self.tcx.is_mir_available(def_id) {
+            return results;
+        }
+        let body = self.tcx.optimized_mir(def_id);
+        let basicblocks = &body.basic_blocks;
+        for i in 0..basicblocks.len() {
+            let iter = BasicBlock::from(i);
+            let terminator = basicblocks[iter].terminator.clone().unwrap();
+            match terminator.kind {
+                TerminatorKind::Call {
+                    ref func,
+                    args: _,
+                    destination: _,
+                    target: _,
+                    unwind: _,
+                    call_source: _,
+                    fn_span: _,
+                } => match func {
+                    Operand::Constant(c) => match c.ty().kind() {
+                        ty::FnDef(id, ..) => {
+                            if UigUnit::get_sp(*id).len() > 0 {
+                                results.extend(UigUnit::get_sp(*id));
+                            } else {
+                                results.extend(self.get_anntation(*id));
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        results
+    }
+
     pub fn show_check_results(def_id: DefId, check_results: Vec<CheckResult>) {
-        println!("--------In {:?}---------", def_id);
+        println!(
+            "--------In safe function {:?}---------\n  Soundness Check:",
+            UigUnit::get_cleaned_def_path_name(def_id)
+        );
         for check_result in check_results {
             println!(
                 "  Unsafe api {:?}: {} passed, {} failed!",

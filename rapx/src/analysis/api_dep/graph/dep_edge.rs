@@ -28,4 +28,3 @@ impl DepEdge {
         DepEdge::Fn2Lifetime
     }
 }
-

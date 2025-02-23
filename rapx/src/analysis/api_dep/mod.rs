@@ -1,7 +1,7 @@
 mod graph;
+mod lifetime;
 mod ty;
 mod visitor;
-mod lifetime;
 use crate::{rap_info, utils::fs::rap_create_file};
 use graph::ApiDepGraph;
 use rustc_hir::{

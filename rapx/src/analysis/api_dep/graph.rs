@@ -25,7 +25,6 @@ pub struct ApiDepGraph<'tcx> {
     // lifetime_binding: HashMap<DepNode<'tcx>, DepNode<'tcx>> // whether the type has an lifetime binding. Type -> Lifetime
 }
 
-
 impl<'tcx> ApiDepGraph<'tcx> {
     pub fn new() -> ApiDepGraph<'tcx> {
         ApiDepGraph {

@@ -4,7 +4,7 @@ use std::fmt::Display;
 pub enum DepEdge {
     Arg(usize),
     Ret,
-    Fn2Lifetime,
+    Fn2Generic,
 }
 
 impl Display for DepEdge {
@@ -12,7 +12,7 @@ impl Display for DepEdge {
         match self {
             DepEdge::Arg(no) => write!(f, "{}", no),
             DepEdge::Ret => write!(f, "r"),
-            DepEdge::Fn2Lifetime => write!(f, ""),
+            DepEdge::Fn2Generic => write!(f, ""),
         }
     }
 }
@@ -24,7 +24,7 @@ impl DepEdge {
     pub fn ret() -> DepEdge {
         DepEdge::Ret
     }
-    pub fn fn2lifetime() -> DepEdge {
-        DepEdge::Fn2Lifetime
+    pub fn fn2generic() -> DepEdge {
+        DepEdge::Fn2Generic
     }
 }

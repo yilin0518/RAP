@@ -1,9 +1,11 @@
 mod dep_edge;
 mod dep_node;
+mod ty_wrapper;
+mod lifetime;
 
 use crate::utils::fs::rap_create_file;
 pub use dep_edge::DepEdge;
-pub use dep_node::{desc_str, desc_ty_str, DepNode};
+pub use dep_node::{desc_str, DepNode};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
@@ -41,7 +43,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         if let Some(node_index) = self.node_indices.get(&node) {
             *node_index
         } else {
-            let node_index = self.graph.add_node(node);
+            let node_index = self.graph.add_node(node.clone());
             self.node_indices.insert(node, node_index);
             node_index
         }
@@ -51,19 +53,25 @@ impl<'tcx> ApiDepGraph<'tcx> {
         self.graph.add_edge(src, dst, edge);
     }
 
+    pub fn add_edge_once(&mut self, src: NodeIndex, dst: NodeIndex, edge: DepEdge) {
+        if !self.graph.contains_edge(src, dst) {
+            self.graph.add_edge(src, dst, edge);
+        }
+    }
+
     pub fn dump_to_dot<P: AsRef<Path>>(&self, path: P, tcx: TyCtxt<'tcx>) {
         let get_edge_attr =
             |graph: &Graph<DepNode<'tcx>, DepEdge>,
              edge_ref: petgraph::graph::EdgeReference<DepEdge>| {
                 let color = match edge_ref.weight() {
                     DepEdge::Arg(_) | DepEdge::Ret => "black",
-                    DepEdge::Fn2Lifetime => "grey",
+                    DepEdge::Fn2Generic => "grey",
                 };
                 format!("label=\"{}\", color = {}", edge_ref.weight(), color)
             };
         let get_node_attr = |graph: &Graph<DepNode<'tcx>, DepEdge>,
                              node_ref: (NodeIndex, &DepNode<'tcx>)| {
-            format!("label={:?}, ", desc_str(*node_ref.1, tcx))
+            format!("label={:?}, ", desc_str(node_ref.1.clone(), tcx))
                 + match node_ref.1 {
                     DepNode::Api(_) => "color = blue",
                     DepNode::Ty(_) => "color = red",

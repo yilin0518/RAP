@@ -283,8 +283,8 @@ impl<'tcx> BodyVisitor<'tcx> {
         if !self.tcx.is_mir_available(def_id) {
             return;
         } else {
-            let body = self.tcx.optimized_mir(def_id);
-            display_mir(*def_id, body);
+            // let body = self.tcx.optimized_mir(def_id);
+            // display_mir(*def_id, body);
             // println!("{:?} has blocks {:?}",def_id, body.basic_blocks.len());
         }
 
@@ -366,6 +366,9 @@ impl<'tcx> BodyVisitor<'tcx> {
         for (_path_idx, abstract_state) in &self.abstract_states {
             for (var_index, state_item) in &abstract_state.state_map {
                 if let Some(existing_state_item) = result_state.state_map.get_mut(&var_index) {
+                    if existing_state_item.is_none() || state_item.is_none() {
+                        continue;
+                    }
                     existing_state_item
                         .clone()
                         .unwrap()

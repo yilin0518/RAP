@@ -46,7 +46,7 @@ pub type Elapsed = (i64, i64);
 pub struct RapCallback {
     rcanary: bool,
     safedrop: bool,
-    senryx: bool,
+    annotation: bool,
     unsafety_isolation: usize,
     mop: bool,
     callgraph: bool,
@@ -61,7 +61,7 @@ impl Default for RapCallback {
         Self {
             rcanary: false,
             safedrop: false,
-            senryx: false,
+            annotation: false,
             unsafety_isolation: 0,
             mop: false,
             callgraph: false,
@@ -137,20 +137,20 @@ impl RapCallback {
         self.unsafety_isolation
     }
 
-    pub fn enable_senryx(&mut self) {
-        self.senryx = true;
-    }
-
-    pub fn is_senryx_enabled(&self) -> bool {
-        self.senryx
-    }
-
     pub fn enable_api_dep(&mut self) {
         self.api_dep = true;
     }
 
     pub fn is_api_dep_enabled(self) -> bool {
         self.api_dep
+    }
+
+    pub fn enable_annotation(&mut self) {
+        self.annotation = true;
+    }
+
+    pub fn is_annotation_enabled(&self) -> bool {
+        self.annotation
     }
 
     pub fn enable_callgraph(&mut self) {
@@ -238,14 +238,14 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
 
     let x = callback.is_unsafety_isolation_enabled();
     match x {
-        1 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::UigCount),
+        1 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::StdSp),
         2 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::Doc),
         3 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::Upg),
         4 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::Ucons),
         _ => {}
     }
 
-    if callback.is_senryx_enabled() {
+    if callback.is_annotation_enabled() {
         SenryxCheck::new(tcx, 2).start();
     }
 

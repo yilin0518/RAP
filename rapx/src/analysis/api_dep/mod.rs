@@ -1,4 +1,6 @@
 mod graph;
+mod lifetime;
+mod ty;
 mod visitor;
 use crate::{rap_info, utils::fs::rap_create_file};
 use graph::ApiDepGraph;

@@ -17,15 +17,15 @@ enum IntrinsicKind {
 pub enum DepNode<'tcx> {
     Api(DefId),
     Ty(TyWrapper<'tcx>),
-    GenericParamDef(DefId, String, bool), // (fn_def_id, symbol, is_lifetime_param)
+    GenericParamDef(DefId, usize, String, bool), // (fn_def_id, index, symbol, is_lifetime_param)
 }
 
 pub fn desc_str<'tcx>(node: DepNode<'tcx>, tcx: TyCtxt<'tcx>) -> String {
     match node {
         DepNode::Api(def_id) => tcx.def_path_str(def_id),
         DepNode::Ty(ty) => ty.desc_str(tcx),
-        DepNode::GenericParamDef(idx, sym, is_lifetime) => {
-            format!("{}", sym)
+        DepNode::GenericParamDef(idx, index, sym, is_lifetime) => {
+            format!("{sym}/#{index}")
         }
     }
 }
@@ -39,9 +39,10 @@ impl<'tcx> DepNode<'tcx> {
     }
     pub fn generic_param_def(
         fn_def_id: DefId,
+        index: usize,
         name: impl ToString,
         is_lifetime: bool,
     ) -> DepNode<'tcx> {
-        DepNode::GenericParamDef(fn_def_id, name.to_string(), is_lifetime)
+        DepNode::GenericParamDef(fn_def_id, index, name.to_string(), is_lifetime)
     }
 }

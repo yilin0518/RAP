@@ -249,7 +249,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             if !self.values[rv].fields.contains_key(&index) {
                 let need_drop = ret_alias.right_need_drop;
                 let may_drop = ret_alias.right_may_drop;
-                let mut node = ValueNode::new(self.alias_set.len(), right_init, need_drop, may_drop);
+                let mut node =
+                    ValueNode::new(self.alias_set.len(), right_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
                 node.birth = self.values[rv].birth;
                 node.field_id = *index;

@@ -47,7 +47,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
         record: &mut FxHashSet<usize>,
         dangling: bool,
     ) -> bool {
-        if node>= self.values.len() { return false; }
+        if node >= self.values.len() {
+            return false;
+        }
         //if is a dangling pointer check, only check the pointer type varible.
         if self.values[node].is_alive() == false
             && (dangling && self.values[node].is_ptr() || !dangling)

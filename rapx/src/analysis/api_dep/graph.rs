@@ -1,7 +1,7 @@
 mod dep_edge;
 mod dep_node;
-mod ty_wrapper;
 mod lifetime;
+mod ty_wrapper;
 
 use crate::utils::fs::rap_create_file;
 pub use dep_edge::DepEdge;
@@ -9,13 +9,8 @@ pub use dep_node::{desc_str, DepNode};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
-use rustc_hir::def_id::DefId;
-use rustc_middle::query::IntoQueryParam;
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_span::Symbol;
-use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
-use std::hash::Hash;
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 

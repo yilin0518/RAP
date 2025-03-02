@@ -1,22 +1,24 @@
 use std::io::Write;
 
+use super::extract::extract_constraints;
 use super::graph::ApiDepGraph;
 use super::graph::{DepEdge, DepNode};
 use crate::rap_debug;
-use petgraph::graph::NodeIndex;
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{FnKind, Visitor},
     BodyId, FnDecl,
 };
+
 use rustc_middle::query::Key;
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_span::{Span, Symbol};
+use rustc_span::Span;
 
 pub struct FnVisitor<'tcx, 'a> {
     fn_cnt: usize,
     tcx: TyCtxt<'tcx>,
     funcs: Vec<DefId>,
+    current_fn_did: Option<DefId>,
     graph: &'a mut ApiDepGraph<'tcx>,
 }
 
@@ -29,6 +31,7 @@ impl<'tcx, 'a> FnVisitor<'tcx, 'a> {
             tcx,
             graph,
             funcs,
+            current_fn_did: None,
         }
     }
     pub fn fn_cnt(&self) -> usize {
@@ -37,15 +40,6 @@ impl<'tcx, 'a> FnVisitor<'tcx, 'a> {
     pub fn write_funcs<T: Write>(&self, F: &mut T) {
         for id in &self.funcs {
             write!(F, "{}\n", self.tcx.def_path_str(id)).expect("fail when write funcs");
-        }
-    }
-
-    pub fn visit_ty_variance(&self, ty: Ty<'tcx>) {
-        match ty.ty_def_id() {
-            Some(did) => rap_debug!("variances for {}: {:?}", ty, self.tcx.variances_of(did)),
-            None => {
-                rap_debug!("no def_id for {}", ty);
-            }
         }
     }
 }
@@ -90,12 +84,12 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         self.funcs.push(fn_def_id);
         let api_node = self.graph.get_node(DepNode::api(id));
 
-        rap_debug!("fn_sig: {:?}", self.tcx.def_path_debug_str(fn_def_id));
         let early_fn_sig = self.tcx.fn_sig(fn_def_id);
         let binder_fn_sig = early_fn_sig.instantiate_identity();
         let fn_sig = self
             .tcx
             .liberate_late_bound_regions(fn_def_id, binder_fn_sig);
+        rap_debug!("visit {}", fn_sig);
 
         // add generic param def to graph
         // NOTE: generics_of query only return early bound generics
@@ -133,18 +127,18 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
                 .add_edge_once(api_node, node_index, DepEdge::fn2generic());
         }
 
-        // add inputs/output to graph
+        extract_constraints(fn_def_id, self.tcx);
+
+        // add inputs/output to graph, and compute constraints based on subtyping
         for (no, input_ty) in fn_sig.inputs().iter().enumerate() {
+            // let free_input_ty = input_ty.fold_with(folder)
             let input_node = self.graph.get_node(DepNode::ty(*input_ty));
             self.graph.add_edge(input_node, api_node, DepEdge::arg(no));
-            // self.visit_ty_variance(*input_ty);
-            // self.bind_generic(*input_ty, fn_def_id, api_node);
         }
 
         let output_ty = fn_sig.output();
         let output_node = self.graph.get_node(DepNode::ty(output_ty));
         self.graph.add_edge(api_node, output_node, DepEdge::ret());
-        // self.bind_generic(output_ty, fn_def_id, api_node);
-        // self.visit_ty_variance(output_ty);
+        rap_debug!("exit visit_fn");
     }
 }

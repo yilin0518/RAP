@@ -18,8 +18,6 @@ type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
     graph: InnerGraph<'tcx>,
     node_indices: HashMap<DepNode<'tcx>, NodeIndex>,
-    // node_indices: HashMap<String, NodeIndex>,
-    // lifetime_binding: HashMap<DepNode<'tcx>, DepNode<'tcx>> // whether the type has an lifetime binding. Type -> Lifetime
 }
 
 impl<'tcx> ApiDepGraph<'tcx> {

@@ -1,0 +1,27 @@
+   Compiling compiler_builtins v0.1.133
+   Compiling core v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling libc v0.2.159
+   Compiling memchr v2.5.0
+   Compiling std v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+10:01:24|RAP|INFO|: Start analysis with RAP.
+   Compiling rustc-std-workspace-core v1.99.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+   Compiling alloc v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling cfg-if v1.0.0
+   Compiling adler v1.0.2
+   Compiling rustc-demangle v0.1.24
+10:01:33|RAP|INFO|: Start analysis with RAP.
+   Compiling unwind v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+   Compiling rustc-std-workspace-alloc v1.99.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+   Compiling panic_unwind v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+   Compiling panic_abort v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+   Compiling gimli v0.29.0
+   Compiling miniz_oxide v0.7.4
+   Compiling object v0.36.4
+   Compiling std_detect v0.1.5 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/stdarch/crates/std_detect)
+   Compiling hashbrown v0.15.0
+   Compiling addr2line v0.22.0
+10:01:37|RAP|INFO|: Start analysis with RAP.
+   Compiling proc_macro v0.0.0 (/home/aisr/.rustup/toolchains/nightly-2024-10-12-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+    Checking audit_case1 v0.1.0 (/home/aisr/RAPx/tests/support/safety_check/audit_case1)
+10:01:40|RAP|INFO|: Start analysis with RAP.
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 16.28s

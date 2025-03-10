@@ -20,6 +20,13 @@ pub struct ApiDepGraph<'tcx> {
     node_indices: HashMap<DepNode<'tcx>, NodeIndex>,
 }
 
+pub struct Statistics {
+    pub api_count: usize,
+    pub type_count: usize,
+    pub generic_param_count: usize,
+    pub edge_cnt: usize,
+}
+
 impl<'tcx> ApiDepGraph<'tcx> {
     pub fn new() -> ApiDepGraph<'tcx> {
         ApiDepGraph {
@@ -30,6 +37,32 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
     pub fn inner_graph(&self) -> &InnerGraph<'tcx> {
         &self.graph
+    }
+
+    pub fn statistics(&self) -> Statistics {
+        let mut api_cnt = 0;
+        let mut ty_cnt = 0;
+        let mut generic_param_cnt = 0;
+        let mut edge_cnt = 0;
+
+        for node in self.graph.node_indices() {
+            match self.graph[node] {
+                DepNode::Api(_) => api_cnt += 1,
+                DepNode::Ty(_) => ty_cnt += 1,
+                DepNode::GenericParamDef(..) => generic_param_cnt += 1,
+            }
+        }
+
+        for edge in self.graph.edge_indices() {
+            edge_cnt += 1;
+        }
+
+        Statistics {
+            api_count: api_cnt,
+            type_count: ty_cnt,
+            generic_param_count: generic_param_cnt,
+            edge_cnt,
+        }
     }
 
     pub fn get_node(&mut self, node: DepNode<'tcx>) -> NodeIndex {

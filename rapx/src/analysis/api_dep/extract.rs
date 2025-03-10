@@ -4,7 +4,7 @@ use rustc_hir::def_id::DefId;
 use rustc_infer::infer::region_constraints::Constraint;
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::ObligationCause;
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
+use rustc_middle::ty::{self, TyCtxt, TypeFoldable};
 use rustc_span::Span;
 struct FreeVarFolder<'tcx, 'a> {
     cx: TyCtxt<'tcx>,
@@ -32,7 +32,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for FreeVarFolder<'tcx, '_> {
     fn cx(&self) -> TyCtxt<'tcx> {
         self.cx
     }
-    fn fold_region(&mut self, r: ty::Region<'tcx>) -> ty::Region<'tcx> {
+    fn fold_region(&mut self, _: ty::Region<'tcx>) -> ty::Region<'tcx> {
         self.free_var_cnt += 1;
         self.infcx
             .next_region_var(infer::RegionVariableOrigin::BorrowRegion(self.span))

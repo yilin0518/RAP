@@ -190,7 +190,7 @@ pub fn desc_ty_str<'tcx>(ty: Ty<'tcx>, no: &mut usize, tcx: TyCtxt<'tcx>) -> Str
     match ty.kind() {
         ty::TyKind::Adt(adt_def, generic_arg) => {
             let mut ty_str = tcx.def_path_str(adt_def.did());
-            if (!generic_arg.is_empty()) {
+            if !generic_arg.is_empty() {
                 ty_str += "<";
                 ty_str += &generic_arg
                     .iter()

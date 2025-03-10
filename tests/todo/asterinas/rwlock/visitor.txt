@@ -1,3 +1,0 @@
-main
-RwLock::<T>::try_read
-<RwLockReadGuard<R> as std::ops::Drop>::drop

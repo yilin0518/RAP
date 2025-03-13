@@ -4,7 +4,12 @@ struct Point {
 }
 
 fn foo(p1: &Point) -> &i32 {
-    &p1.y
+    if p1.x>0 { 
+        &p1.x
+    }
+    else {
+        &p1.y
+    }
 }
 
 fn main() {

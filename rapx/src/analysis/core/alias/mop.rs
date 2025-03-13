@@ -8,7 +8,7 @@ use crate::analysis::utils::intrinsic_id::{
     COPY_FROM, COPY_FROM_NONOVERLAPPING, COPY_TO, COPY_TO_NONOVERLAPPING,
 };
 use crate::utils::source::*;
-use crate::{rap_debug, rap_trace};
+use crate::{rap_info, rap_debug, rap_trace};
 use graph::MopGraph;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::fx::FxHashSet;
@@ -42,7 +42,7 @@ impl<'tcx> MopAlias<'tcx> {
         for (fn_id, fn_alias) in &self.fn_map {
             let fn_name = get_fn_name(self.tcx, *fn_id);
             if fn_alias.len() > 0 {
-                rap_debug!("Alias found in {:?}: {}", fn_name, fn_alias);
+                rap_info!("Alias found in {:?}: {}", fn_name, fn_alias);
             }
         }
         self.handle_conor_cases();

@@ -18,6 +18,5 @@ fn main() {
     let a = Box::new(10);
     let b = Box::new(20);
     let _result = foo(&a, &b, Selector::First);
-    let _result = foo(&a, &b, Selector::Second);
 }
 

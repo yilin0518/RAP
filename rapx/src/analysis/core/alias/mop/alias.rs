@@ -281,8 +281,12 @@ impl<'tcx> MopGraph<'tcx> {
                         && idx != node.index
                         && node.local != results_nodes[idx].local
                     {
-                        let left_node = node;
-                        let right_node = &results_nodes[idx];
+                        let left_node;
+                        let right_node;
+                        match results_nodes[idx].local {
+                            0 => { left_node = &results_nodes[idx]; right_node = node; },
+                            _ => { left_node = node; right_node = &results_nodes[idx]; }
+                        }
                         let mut new_alias = RetAlias::new(
                             left_node.local,
                             left_node.may_drop,

@@ -192,7 +192,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
         // } else {
         //     self.values[lv].alias = self.values[rv].alias.clone();
         // }
-        if lv > self.values.len() || rv > self.values.len() { return; }
+        if lv > self.values.len() || rv > self.values.len() {
+            return;
+        }
         self.union_merge(lv, rv);
         for field in self.values[rv].fields.clone().into_iter() {
             if !self.values[lv].fields.contains_key(&field.0) {

@@ -8,7 +8,7 @@ use crate::analysis::utils::intrinsic_id::{
     COPY_FROM, COPY_FROM_NONOVERLAPPING, COPY_TO, COPY_TO_NONOVERLAPPING,
 };
 use crate::utils::source::*;
-use crate::{rap_info, rap_debug, rap_trace};
+use crate::{rap_debug, rap_info, rap_trace};
 use graph::MopGraph;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::fx::FxHashSet;

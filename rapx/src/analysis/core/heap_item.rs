@@ -1,13 +1,16 @@
 pub mod ownership;
 pub mod type_visitor;
 
+use rustc_middle::ty::EarlyBinder;
 use rustc_middle::ty::TypeVisitable;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_target::abi::VariantIdx;
 
+use colorful::{Color, Colorful};
 use std::collections::{HashMap, HashSet};
 use std::env;
+
 //use stopwatch::Stopwatch;
 use crate::analysis::core::heap_item::ownership::OwnershipLayoutResult;
 use crate::analysis::rcanary::{rCanary, RcxMut};
@@ -88,6 +91,21 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
         //rap_info!("Tymap Sum:{:?}", self.ty_map().len());
         //rap_info!("@@@@@@@@@@@@@Type Analysis:{:?}", sw.elapsed_ms());
         //sw.stop();
+    }
+
+    pub fn output(&mut self) {
+        for elem in self.adt_owner() {
+            let name = format!(
+                "{:?}",
+                EarlyBinder::skip_binder(self.rcx.tcx().type_of(*elem.0))
+            );
+            let owning = format!("{:?}", elem.1);
+            println!(
+                "{} {}",
+                name.color(Color::Orange1),
+                owning.color(Color::Yellow3a)
+            );
+        }
     }
 }
 

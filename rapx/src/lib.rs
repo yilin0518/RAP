@@ -17,6 +17,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 
+use crate::analysis::core::heap_item::TypeAnalysis;
 use analysis::api_dep::ApiDep;
 use analysis::core::alias::mop::MopAlias;
 use analysis::core::call_graph::CallGraph;
@@ -54,6 +55,7 @@ pub struct RapCallback {
     show_mir: bool,
     dataflow: usize,
     opt: bool,
+    heap_item: bool,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -70,6 +72,7 @@ impl Default for RapCallback {
             show_mir: false,
             dataflow: 0,
             opt: false,
+            heap_item: false,
         }
     }
 }
@@ -185,6 +188,14 @@ impl RapCallback {
     pub fn is_opt_enabled(self) -> bool {
         self.opt
     }
+
+    pub fn enable_heap_item(&mut self) {
+        self.heap_item = true;
+    }
+
+    pub fn is_heap_item_enabled(self) -> bool {
+        self.heap_item
+    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -210,6 +221,14 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
 
     if callback.is_safedrop_enabled() {
         SafeDrop::new(tcx).start();
+    }
+
+    if callback.is_heap_item_enabled() {
+        let rcx_boxed = Box::new(rCanary::new(tcx));
+        let rcx = Box::leak(rcx_boxed);
+        let mut type_analysis = TypeAnalysis::new(rcx);
+        type_analysis.start();
+        type_analysis.output();
     }
 
     let x = callback.is_unsafety_isolation_enabled();

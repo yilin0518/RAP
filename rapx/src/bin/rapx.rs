@@ -43,9 +43,7 @@ fn main() {
             "-O" | "-opt" => compiler.enable_opt(),
             "-mir" => compiler.enable_show_mir(),
             "-api-dep" => compiler.enable_api_dep(),
-            "-adt" => {}
-            "-z3" => {}
-            "-meta" => {}
+            "-heap-item" => compiler.enable_heap_item(),
             _ => args.push(arg),
         }
     }

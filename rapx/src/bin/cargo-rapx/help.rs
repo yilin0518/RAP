@@ -10,11 +10,14 @@ Use-After-Free/double free detection.
 Memory leakage detection.
     -M or -mleak     command: "cargo rapx -mleak"
 
-API dependency analysis
-    -api-dep       generate API dependency graphs
-
 Alias Analysis
-    -alias=mop     perform mop-based alias analysis
+    -alias     perform alias analysis (meet-over-paths)
+
+API dependency analysis
+    -adg       generate API dependency graphs
+
+Heap analysis
+    -heap      analyze if the type holds a piece of memory on heap
 
 General command: 
     -H or -help:     show help information

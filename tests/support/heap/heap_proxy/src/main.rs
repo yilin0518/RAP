@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::ptr;
 
 struct Proxy1<T> {
     _p: *mut T,

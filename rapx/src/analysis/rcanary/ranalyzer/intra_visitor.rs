@@ -2368,9 +2368,9 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                 if are_spans_in_same_file(self.body().span, source.source_info.span) {
                     snippet = snippet.annotation(
                         Level::Warning
-                            .span(unsafe {
+                            .span(
                                 relative_pos_range(self.body().span, source.source_info.span)
-                            })
+                            )
                             .label("Memory Leak Candidates."),
                     );
                 }

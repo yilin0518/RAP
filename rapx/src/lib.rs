@@ -18,7 +18,7 @@ extern crate rustc_span;
 extern crate rustc_target;
 
 use crate::analysis::core::heap_item::TypeAnalysis;
-use analysis::api_dep::ApiDep;
+use analysis::core::api_dep::ApiDep;
 use analysis::core::alias::mop::MopAlias;
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;

@@ -36,6 +36,10 @@ Dataflow tracing
 Automatic optimization
     -O or -opt       automatically detect code optimization chances
 
+Random Test Generation
+    -testgen       generate testcases based on the API dependency graph
+
+
 NOTE: multiple detections can be processed in single run by 
 appending the options to the arguments. Like `cargo rapx -F -M`
 will perform two kinds of detection in a row.

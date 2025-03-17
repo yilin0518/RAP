@@ -44,12 +44,13 @@ fn main() {
             "-callgraph" => compiler.enable_callgraph(),
             "-O" | "-opt" => compiler.enable_opt(),
             "-mir" => compiler.enable_show_mir(),
+            "-testgen" => compiler.enable_testgen(),
             _ => args.push(arg),
         }
     }
     _ = init_log().inspect_err(|err| eprintln!("Failed to init log: {err}"));
     rap_info!("Start analysis with RAP.");
-    rap_trace!("rap received arguments{:#?}", env::args());
+    rap_trace!("rap received arguments: {:#?}", env::args());
     rap_trace!("arguments to rustc: {:?}", &args);
 
     let exit_code = run_complier(&mut args, &mut compiler);

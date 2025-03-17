@@ -26,6 +26,7 @@ use analysis::opt::Opt;
 use analysis::rcanary::rCanary;
 use analysis::safedrop::SafeDrop;
 use analysis::senryx::{CheckLevel, SenryxCheck};
+use analysis::testgen::Testgen;
 use analysis::unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck};
 use analysis::utils::show_mir::ShowMir;
 use rustc_data_structures::sync::Lrc;
@@ -43,7 +44,7 @@ pub static RAP_DEFAULT_ARGS: &[&str] = &["-Zalways-encode-mir", "-Zmir-opt-level
 
 pub type Elapsed = (i64, i64);
 
-#[derive(Debug, Copy, Clone, Hash)]
+#[derive(Debug, Copy, Clone, Hash, Default)]
 pub struct RapCallback {
     rcanary: bool,
     safedrop: bool,
@@ -52,29 +53,11 @@ pub struct RapCallback {
     mop: bool,
     callgraph: bool,
     api_dep: bool,
+    testgen: bool,
     show_mir: bool,
     dataflow: usize,
     opt: bool,
     heap_item: bool,
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for RapCallback {
-    fn default() -> Self {
-        Self {
-            rcanary: false,
-            safedrop: false,
-            annotation: false,
-            unsafety_isolation: 0,
-            mop: false,
-            callgraph: false,
-            api_dep: false,
-            show_mir: false,
-            dataflow: 0,
-            opt: false,
-            heap_item: false,
-        }
-    }
 }
 
 impl Callbacks for RapCallback {
@@ -145,8 +128,16 @@ impl RapCallback {
         self.api_dep = true;
     }
 
-    pub fn is_api_dep_enabled(self) -> bool {
+    pub fn enable_testgen(&mut self) {
+        self.testgen = true;
+    }
+
+    pub fn is_api_dep_enabled(&self) -> bool {
         self.api_dep
+    }
+
+    pub fn is_testgen_enabled(&self) -> bool {
+        self.testgen
     }
 
     pub fn enable_annotation(&mut self) {
@@ -251,6 +242,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
 
     if callback.is_api_dep_enabled() {
         ApiDep::new(tcx).start();
+    }
+
+    if callback.is_testgen_enabled() {
+        Testgen::new(tcx).start();
     }
 
     match callback.is_dataflow_enabled() {

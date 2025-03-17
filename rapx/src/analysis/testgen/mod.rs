@@ -8,7 +8,7 @@ use rustc_middle::ty::TyCtxt;
 
 use crate::{rap_debug, rap_info};
 
-use super::{api_dep, core::alias};
+use super::core::{alias, api_dep};
 
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {
@@ -36,8 +36,7 @@ impl<'tcx> Testgen<'tcx> {
             local_crate_name.as_str(),
             local_crate_type
         );
-        let mut rng = rand::rng();
-        let mut lt_gen = LtGen::new(self.tcx, rng);
+        let mut lt_gen = LtGen::new(self.tcx, rand::rng());
         let mut cx = Context::new();
         lt_gen.gen_in_place(&mut cx);
     }

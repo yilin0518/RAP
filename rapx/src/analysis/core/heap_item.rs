@@ -10,7 +10,6 @@ use rustc_target::abi::VariantIdx;
 use colorful::{Color, Colorful};
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt;
 
 //use stopwatch::Stopwatch;
 use crate::analysis::core::heap_item::ownership::OwnershipLayoutResult;
@@ -111,7 +110,6 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
                 "{:?}",
                 EarlyBinder::skip_binder(self.rcx.tcx().type_of(*elem.0))
             );
-            let mut owning = String::new();
             let owning = elem
                 .1
                 .iter()

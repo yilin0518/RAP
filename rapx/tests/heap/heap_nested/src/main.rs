@@ -1,0 +1,27 @@
+struct X<A> {
+    a: A,
+}
+struct Y<B> {
+    a: (i32, (f64, B)),
+    b: X<i32>,
+}
+struct Example<A, B, T, S> {
+    a: X<A>,
+    b: (i32, (f64, B)),
+    c: [[(S); 1]; 2],
+    d: Vec<T>,
+    e: Y<B>,
+}
+
+fn main() {
+    let _example = Example {
+        a: X { a: 1 },
+        b: (1, (1.0, 1)),
+        c: [[(1); 1]; 2],
+        d: Vec::<i32>::new(),
+        e: Y {
+            a: (1, (1.0, 1)),
+            b: X { a: 1 },
+        },
+    };
+}

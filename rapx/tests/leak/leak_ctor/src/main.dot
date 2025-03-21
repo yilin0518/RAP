@@ -1,0 +1,13 @@
+digraph Mir_0_11 {
+    graph [fontname="Courier, monospace"];
+    node [fontname="Courier, monospace"];
+    edge [fontname="Courier, monospace"];
+    label=<fn main() -&gt; ()<br align="left"/>let _1: std::boxed::Box&lt;&amp;'{erased} str, std::alloc::Global&gt;;<br align="left"/>let _2: *mut &amp;'{erased} str;<br align="left"/>let mut _3: std::boxed::Box&lt;&amp;'{erased} str, std::alloc::Global&gt;;<br align="left"/>let _4: Proxy1&lt;&amp;'{erased} str&gt;;<br align="left"/>let mut _5: *mut &amp;'{erased} str;<br align="left"/>let _6: Proxy2&lt;&amp;'{erased} str&gt;;<br align="left"/>let mut _7: *mut &amp;'{erased} str;<br align="left"/>let mut _8: std::marker::PhantomData&lt;&amp;'{erased} str&gt;;<br align="left"/>debug buf =&gt; _1;<br align="left"/>debug ptr =&gt; _2;<br align="left"/>debug proxy1 =&gt; _4;<br align="left"/>debug proxy2 =&gt; _6;<br align="left"/>>;
+    bb0__0_11 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">0</td></tr><tr><td align="left" balign="left">StorageLive(_1)<br/></td></tr><tr><td align="left">_1 = Box::&lt;&amp;str&gt;::new(const &quot;buffer&quot;)</td></tr></table>>];
+    bb1__0_11 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">1</td></tr><tr><td align="left" balign="left">StorageLive(_2)<br/>StorageLive(_3)<br/>_3 = move _1<br/></td></tr><tr><td align="left">_2 = Box::&lt;&amp;str&gt;::into_raw(move _3)</td></tr></table>>];
+    bb2__0_11 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="gray" align="center" colspan="1">2</td></tr><tr><td align="left" balign="left">StorageDead(_3)<br/>StorageLive(_4)<br/>StorageLive(_5)<br/>_5 = copy _2<br/>_4 = Proxy1::&lt;&amp;str&gt; { p: move _5 }<br/>StorageDead(_5)<br/>StorageLive(_6)<br/>StorageLive(_7)<br/>_7 = copy _2<br/>StorageLive(_8)<br/>_8 = PhantomData::&lt;&amp;str&gt;<br/>_6 = Proxy2::&lt;&amp;str&gt; { p: move _7, _marker: move _8 }<br/>StorageDead(_8)<br/>StorageDead(_7)<br/>_0 = const ()<br/>StorageDead(_6)<br/>StorageDead(_4)<br/>StorageDead(_2)<br/>StorageDead(_1)<br/></td></tr><tr><td align="left">return</td></tr></table>>];
+    bb3__0_11 [shape="none", label=<<table border="0" cellborder="1" cellspacing="0"><tr><td bgcolor="lightblue" align="center" colspan="1">3 (cleanup)</td></tr><tr><td align="left">resume</td></tr></table>>];
+    bb0__0_11 -> bb1__0_11 [label="return"];
+    bb1__0_11 -> bb2__0_11 [label="return"];
+    bb1__0_11 -> bb3__0_11 [label="unwind"];
+}

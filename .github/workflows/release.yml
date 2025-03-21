@@ -27,3 +27,5 @@ jobs:
     - name: Check test cases 
       run: cd tests && ./batch.sh -F -M -O -A
 
+    - name: Cargo Tests
+      run: cd rapx && cargo test

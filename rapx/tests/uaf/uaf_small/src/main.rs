@@ -1,5 +1,5 @@
 /*
- * This is a buggy case: use-after-free 
+ * This is a buggy case: use-after-free
  */
 struct Data {
     value: Box<i32>,
@@ -7,7 +7,9 @@ struct Data {
 
 impl Data {
     fn new(value: i32) -> Data {
-        Data { value:Box::new(value) }
+        Data {
+            value: Box::new(value),
+        }
     }
 
     fn print_value(&self) {
@@ -17,7 +19,7 @@ impl Data {
 
 fn main() {
     let data_ptr: *const Data;
-    
+
     {
         let data = Data::new(42);
         data_ptr = &data as *const Data;
@@ -27,4 +29,3 @@ fn main() {
         (*data_ptr).print_value();
     }
 }
-

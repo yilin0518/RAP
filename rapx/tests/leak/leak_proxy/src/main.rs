@@ -5,5 +5,5 @@ struct Proxy<T> {
 fn main() {
     let buf = Box::new("buffer");
     let ptr = Box::into_raw(buf);
-    let _proxy = Proxy { _p:ptr };
+    let _proxy = Proxy { _p: ptr };
 }

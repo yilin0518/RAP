@@ -9,9 +9,7 @@ impl<'a> MyRef<'a> {
 }
 
 unsafe fn f<'a>(myref: MyRef<'a>) -> MyRef<'static> {
-    unsafe {
-        std::mem::transmute(myref)
-    }
+    unsafe { std::mem::transmute(myref) }
 }
 
 fn main() {

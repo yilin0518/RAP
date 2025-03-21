@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "alias_mop"
+name = "alias_switch"
 version = "0.1.0"

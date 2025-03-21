@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "uaf_swithint"
+name = "uaf_swithint_diffbranch"
 version = "0.1.0"

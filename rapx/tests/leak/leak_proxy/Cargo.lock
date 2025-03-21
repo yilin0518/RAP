@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "rcanary02"
+name = "leak_proxy"
 version = "0.1.0"

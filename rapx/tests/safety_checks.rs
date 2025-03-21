@@ -198,7 +198,7 @@ fn test_heap_cell() {
 fn test_heap_collections() {
     let output = running_tests_with_arg("heap/heap_collections", "-heap");
     assert_eq!(
-        output.contains("std::ptr::Unique<T/#0> (1, [0])")
+        output.contains(&heap_result("std::ptr::Unique<T/#0>", "(1, [0])"))
             && output.contains(&heap_result("std::boxed::Box<T/#0, A/#1>", "(1, [0,1])"))
             && output.contains(&heap_result("std::vec::Vec<T/#0, A/#1>", "(1, [0,1])"))
             && output.contains(&heap_result("std::string::String", "(1, [])"))

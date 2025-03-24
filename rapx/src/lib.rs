@@ -16,6 +16,11 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
+extern crate rustc_infer;
+extern crate rustc_trait_selection;
+extern crate rustc_traits;
+
+
 
 use crate::analysis::core::heap_item::TypeAnalysis;
 use analysis::core::alias::mop::MopAlias;

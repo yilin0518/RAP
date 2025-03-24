@@ -1,4 +1,3 @@
-extern crate rustc_infer;
 use crate::rap_debug;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::region_constraints::Constraint;

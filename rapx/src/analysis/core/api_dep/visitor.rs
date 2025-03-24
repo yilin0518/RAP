@@ -1,6 +1,3 @@
-use std::io::Write;
-
-use super::extract::extract_constraints;
 use super::graph::ApiDepGraph;
 use super::graph::{DepEdge, DepNode};
 use crate::rap_debug;
@@ -9,9 +6,9 @@ use rustc_hir::{
     intravisit::{FnKind, Visitor},
     BodyId, FnDecl,
 };
-
 use rustc_middle::ty::{self, TyCtxt};
 use rustc_span::Span;
+use std::io::Write;
 
 pub struct FnVisitor<'tcx, 'a> {
     fn_cnt: usize,
@@ -125,8 +122,6 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
             self.graph
                 .add_edge_once(api_node, node_index, DepEdge::fn2generic());
         }
-
-        extract_constraints(fn_def_id, self.tcx);
 
         // add inputs/output to graph, and compute constraints based on subtyping
         for (no, input_ty) in fn_sig.inputs().iter().enumerate() {

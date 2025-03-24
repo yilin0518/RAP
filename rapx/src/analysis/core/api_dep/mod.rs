@@ -3,11 +3,7 @@
 /// Once the analysis stabilizes, this marker should be removed.
 
 #[allow(unused)]
-mod extract;
-#[allow(unused)]
 mod graph;
-#[allow(unused)]
-mod lifetime;
 #[allow(unused)]
 mod visitor;
 

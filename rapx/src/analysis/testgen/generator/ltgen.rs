@@ -1,15 +1,19 @@
-use crate::rap_debug;
-
-use super::context::{ApiCall, ArgSrc, Context};
+use super::context::stmt::{ApiCall, Stmt};
+use super::context::Context;
 use super::{utils, Generator};
+use crate::analysis::testgen::generator::utils::jump_all_binders;
+use crate::rap_debug;
 use rand::{self, Rng};
 use rustc_hir::def_id::DefId;
+use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use rustc_span::Span;
+use std::cell::RefCell;
 
 pub struct LtGen<'tcx, R: Rng> {
     pub_api: Vec<DefId>,
     tcx: TyCtxt<'tcx>,
-    rng: R,
+    rng: RefCell<R>,
     // current: Context<'tcx>
 }
 
@@ -18,7 +22,7 @@ impl<'tcx, R: Rng> LtGen<'tcx, R> {
         LtGen {
             pub_api: utils::get_all_pub_apis(tcx),
             tcx,
-            rng,
+            rng: RefCell::new(rng),
         }
     }
 
@@ -30,43 +34,39 @@ impl<'tcx, R: Rng> LtGen<'tcx, R> {
         &self.pub_api
     }
 
-    pub fn try_initiate_for_ty_with<'cx>(
-        &self,
-        cx: &Context<'cx>,
-        ty: Ty<'tcx>,
-    ) -> Option<ApiCall<'cx>> {
-        todo!()
-    }
-
-    pub fn is_api_eligable<'cx>(&self, fn_did: DefId) -> Option<ApiCall<'cx>> {
+    pub fn is_api_eligable(&self, fn_did: DefId, cx: &Context<'tcx>) -> Option<ApiCall> {
         let tcx = self.tcx();
-        let early_fn_sig = tcx.fn_sig(fn_did);
+
         let mut api_call = ApiCall {
             fn_did,
             args: Vec::new(),
         };
         rap_debug!("consider: {:?}", fn_did);
+
         // TODO: now only consider fn_sig without type & const parameters
-        if !tcx.generics_of(fn_did).requires_monomorphization(tcx) {
-            let binder_fn_sig = early_fn_sig.instantiate_identity();
-            let fn_sig = binder_fn_sig.skip_binder();
-            for input_ty in fn_sig.inputs().iter() {
-                rap_debug!("check: {input_ty:?}");
-                if utils::is_fuzzable_ty(*input_ty) {
-                    api_call.args.push(ArgSrc::input());
-                } else {
-                    return None;
-                }
-            }
+        if tcx.generics_of(fn_did).requires_monomorphization(tcx) {
+            return None;
         }
+        let fn_sig = jump_all_binders(fn_did, tcx);
+
+        for input_ty in fn_sig.inputs().iter() {
+            rap_debug!("check: {input_ty:?}");
+            let providers = cx.all_possible_providers(*input_ty);
+            if providers.is_empty() {
+                rap_debug!("no possible providers");
+                return None;
+            }
+            let idx = self.rng.borrow_mut().random_range(0..providers.len());
+            api_call.args.push(providers[idx].clone());
+        }
+
         Some(api_call)
     }
 
-    fn choose_eligable_api(&mut self, cx: &Context<'_>) -> Option<ApiCall> {
-        let tcx = self.tcx();
+    fn choose_eligable_api(&self, cx: &Context<'tcx>) -> Option<ApiCall> {
         let mut eligable_calls = Vec::new();
         for fn_did in self.pub_api_def_id() {
-            if let Some(call) = self.is_api_eligable(*fn_did) {
+            if let Some(call) = self.is_api_eligable(*fn_did, cx) {
                 eligable_calls.push(call);
             }
         }
@@ -74,16 +74,18 @@ impl<'tcx, R: Rng> LtGen<'tcx, R> {
             return None;
         }
         rap_debug!("eligable calls: {eligable_calls:?}");
-        let idx = self.rng.random_range(0..eligable_calls.len());
-        let choosed = &eligable_calls[idx];
-        let name = tcx.def_path_str(choosed.fn_did);
-        rap_debug!("finally choose: {name}");
+        let idx = self.rng.borrow_mut().random_range(0..eligable_calls.len());
         Some(eligable_calls.swap_remove(idx))
     }
-}
 
-impl<'tcx, R: Rng> Generator for LtGen<'tcx, R> {
-    fn gen_in_place<'cx>(&mut self, cx: &mut super::context::Context<'cx>) {
-        let api = self.choose_eligable_api(cx);
+    pub fn gen_in_place(&mut self, cx: &mut Context<'tcx>) {
+        let mut count = 0;
+        while let Some(call) = self.choose_eligable_api(cx) {
+            cx.add_call_stmt(call);
+            count += 1;
+            if count >= 5 {
+                break;
+            }
+        }
     }
 }

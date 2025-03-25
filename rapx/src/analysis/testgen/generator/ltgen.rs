@@ -80,11 +80,10 @@ impl<'tcx, R: Rng> LtGen<'tcx, R> {
     }
 
     pub fn gen_in_place(&mut self, cx: &mut Context<'tcx>) {
-        let mut count = 0;
+        let max_complexity = 20;
         while let Some(call) = self.choose_eligable_api(cx) {
             cx.add_call_stmt(call);
-            count += 1;
-            if count >= 5 {
+            if cx.complexity() >= max_complexity {
                 break;
             }
         }

@@ -30,7 +30,7 @@ pub enum StmtKind {
     Call(ApiCall),
     Split(usize, Vec<Var>),        // (a, b) -> a, b
     Concat(Vec<Var>),              // a, b -> (a, b)
-    Ref(Box<Var>, ty::Mutability), // a -> &a
+    Ref(Box<Var>, ty::Mutability), // a -> &(mut) b
     Deref(Box<Var>),               // &a -> a
 }
 
@@ -47,18 +47,24 @@ pub struct Stmt {
 }
 
 impl Stmt {
-    // pub fn input(ty: Ty<'tcx>) -> StmtRef<'tcx> {
-    //     Rc::new(Stmt {
-    //         kind: StmtKind::Input,
-    //         retval: None,
-    //         output_ty: ty,
-    //     })
-    // }
+    pub fn input(place: Var) -> Stmt {
+        Stmt {
+            kind: StmtKind::Input,
+            place,
+        }
+    }
 
     pub fn call(call: ApiCall, retval: Var) -> Stmt {
         Stmt {
             kind: StmtKind::Call(call),
             place: retval,
+        }
+    }
+
+    pub fn ref_(place: Var, ref_place: Var, mutability: ty::Mutability) -> Stmt {
+        Stmt {
+            kind: StmtKind::Ref(Box::new(ref_place), mutability),
+            place,
         }
     }
 
@@ -74,17 +80,6 @@ impl Stmt {
     //     Rc::new(Stmt {
     //         kind: StmtKind::Concat(args),
     //         retval: None,
-    //         output_ty,
-    //     })
-    // }
-
-    // pub fn ref_expr(
-    //     expr: StmtRef<'tcx>,
-    //     mutability: ty::Mutability,
-    //     output_ty: Ty<'tcx>,
-    // ) -> StmtRef<'tcx> {
-    //     Rc::new(Stmt {
-    //         kind: StmtKind::Ref(Box::new(expr), mutability),
     //         output_ty,
     //     })
     // }

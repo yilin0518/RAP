@@ -26,6 +26,10 @@ impl<'tcx> Context<'tcx> {
         self.tcx
     }
 
+    pub fn complexity(&self) -> usize {
+        self.stmts.len()
+    }
+
     pub fn new(tcx: TyCtxt<'tcx>) -> Context<'tcx> {
         Context {
             stmts: Vec::new(),
@@ -76,15 +80,19 @@ impl<'tcx> Context<'tcx> {
     }
 
     fn add_input_stmt(&mut self, ty: Ty<'tcx>) -> Var {
-        let var = self.mk_var(ty, true);
-        self.stmts.push(Stmt {
-            kind: StmtKind::Input,
-            place: var,
-        });
+        let var;
+        if let ty::Ref(_, inner_ty, mutability) = ty.kind() {
+            let inner_var = self.add_input_stmt(*inner_ty);
+            var = self.mk_var(ty, false);
+            self.stmts.push(Stmt::ref_(var, inner_var, *mutability));
+        } else {
+            var = self.mk_var(ty, true);
+            self.stmts.push(Stmt::input(var));
+        }
         var
     }
 
-    pub fn add_call_stmt(&mut self, mut call: ApiCall) {
+    pub fn add_call_stmt(&mut self, mut call: ApiCall) -> Var {
         let fn_sig = utils::jump_all_binders(call.fn_did, self.tcx);
         let output_ty = fn_sig.output();
         for idx in 0..fn_sig.inputs().len() {
@@ -96,11 +104,13 @@ impl<'tcx> Context<'tcx> {
                 call.args[idx] = var;
             }
         }
+        let var = self.mk_var(output_ty, false);
         let stmt = Stmt {
             kind: StmtKind::Call(call),
-            place: self.mk_var(output_ty, false),
+            place: var,
         };
         self.stmts.push(stmt);
+        var
     }
 
     // if the output_ty of expr does not implement Copy, we need to remove the expr from the available set

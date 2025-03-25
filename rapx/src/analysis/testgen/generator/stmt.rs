@@ -10,7 +10,7 @@ pub struct Var(pub usize, pub bool); // bool is true if the var is an input var
 
 impl Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "%{}", self.0)
+        write!(f, "v{}", self.0)
     }
 }
 

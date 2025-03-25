@@ -1,5 +1,6 @@
-use super::context::stmt::{ApiCall, Stmt};
+use super::context;
 use super::context::Context;
+use super::stmt::{ApiCall, Stmt};
 use super::{utils, Generator};
 use crate::analysis::testgen::generator::utils::jump_all_binders;
 use crate::rap_debug;

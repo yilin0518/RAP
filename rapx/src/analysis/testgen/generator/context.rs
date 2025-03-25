@@ -1,6 +1,5 @@
-pub mod stmt;
-
-use super::utils::{self, is_fuzzable_ty, is_ty_impl_copy, jump_all_binders};
+use super::stmt::{ApiCall, Stmt, StmtKind, Var, DUMMY_INPUT_VAR};
+use super::utils;
 use crate::rap_debug;
 use crate::rustc_infer::infer::TyCtxtInferExt;
 use rustc_hir::def_id::DefId;
@@ -12,7 +11,6 @@ use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
 };
-use stmt::{ApiCall, Stmt, StmtKind, Var, DUMMY_INPUT_VAR};
 
 #[derive(Clone)]
 
@@ -51,7 +49,7 @@ impl<'tcx> Context<'tcx> {
 
     pub fn all_possible_providers(&self, ty: Ty<'tcx>) -> Vec<Var> {
         let mut ret = Vec::new();
-        if is_fuzzable_ty(ty) {
+        if utils::is_fuzzable_ty(ty, self.tcx) {
             ret.push(DUMMY_INPUT_VAR);
         }
         for val in self.available_values() {
@@ -87,7 +85,7 @@ impl<'tcx> Context<'tcx> {
     }
 
     pub fn add_call_stmt(&mut self, mut call: ApiCall) {
-        let fn_sig = jump_all_binders(call.fn_did, self.tcx);
+        let fn_sig = utils::jump_all_binders(call.fn_did, self.tcx);
         let output_ty = fn_sig.output();
         for idx in 0..fn_sig.inputs().len() {
             let arg = call.args[idx];
@@ -118,7 +116,7 @@ impl<'tcx> Context<'tcx> {
         let is_mut_ref =
             output_ty.is_ref() && matches!(output_ty.ref_mutability(), Some(ty::Mutability::Mut));
 
-        if !is_mut_ref && is_ty_impl_copy(output_ty, self.tcx) {
+        if !is_mut_ref && utils::is_ty_impl_copy(output_ty, self.tcx) {
             return false;
         }
 

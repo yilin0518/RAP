@@ -49,7 +49,7 @@ pub static RAP_DEFAULT_ARGS: &[&str] = &["-Zalways-encode-mir", "-Zmir-opt-level
 
 pub type Elapsed = (i64, i64);
 
-#[derive(Debug, Copy, Clone, Hash, Default)]
+#[derive(Debug, Copy, Clone, Hash)]
 pub struct RapCallback {
     rcanary: bool,
     safedrop: bool,

@@ -116,11 +116,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
                 .map(Self::format_owner_unit)
                 .collect::<Vec<_>>()
                 .join(", ");
-            rap_info!(
-                "{} {}",
-                name.color(Color::Orange1),
-                owning.color(Color::Yellow3a)
-            );
+            rap_info!("{} {}", name, owning);
         }
     }
 }

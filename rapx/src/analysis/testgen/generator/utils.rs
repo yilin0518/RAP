@@ -34,6 +34,18 @@ pub fn is_ty_impl_copy<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     ty.is_copy_modulo_regions(tcx, param_env)
 }
 
+pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    let infcx = tcx.infer_ctxt().build();
+    let env = ParamEnv::reveal_all();
+    // TODO: How to deal with lifetime?
+    let res = infcx.at(&ObligationCause::dummy(), env).eq(
+        rustc_infer::infer::DefineOpaqueTypes::Yes,
+        ty1,
+        ty2,
+    );
+    res.is_ok()
+}
+
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     match ty.kind() {
         // Basical data type

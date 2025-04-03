@@ -7,76 +7,65 @@ use rustc_infer::traits::{Obligation, ObligationCause};
 use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::{Span, DUMMY_SP};
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt;
+use rustc_type_ir::RegionKind::ReErased;
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
 };
 
-#[derive(Clone)]
-
-pub struct Context<'tcx> {
-    stmts: Vec<Stmt>,
-    available: HashSet<Var>,
-    var_ty: HashMap<Var, Ty<'tcx>>,
-    tcx: TyCtxt<'tcx>,
+pub trait StmtBody {
+    fn stmts(&self) -> &[Stmt];
+    fn add_stmt(&mut self, stmt: Stmt);
 }
 
-impl<'tcx> Context<'tcx> {
-    pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
+pub trait Context<'tcx>: StmtBody {
+    fn tcx(&self) -> TyCtxt<'tcx>;
+
+    fn complexity(&self) -> usize {
+        self.stmts().len()
     }
 
-    pub fn complexity(&self) -> usize {
-        self.stmts.len()
-    }
+    fn mk_var(&mut self, ty: Ty<'tcx>, is_input: bool) -> Var;
 
-    pub fn new(tcx: TyCtxt<'tcx>) -> Context<'tcx> {
-        Context {
-            stmts: Vec::new(),
-            available: HashSet::new(),
-            var_ty: HashMap::new(),
-            tcx,
+    fn remove_var(&mut self, var: Var);
+
+    fn type_of(&self, var: Var) -> Ty<'tcx>;
+
+    fn available_values(&self) -> &HashSet<Var>;
+
+    // if the output_ty of expr does not implement Copy, we need to remove the expr from the available set
+    fn remove_var_from_available(&mut self, var: Var) -> bool {
+        let tcx = self.tcx();
+        if var == DUMMY_INPUT_VAR {
+            return false;
         }
+        if !self.available_values().contains(&var) {
+            panic!("var {:?} not in available set", var);
+        }
+
+        let output_ty = self.type_of(var);
+        let is_mut_ref =
+            output_ty.is_ref() && matches!(output_ty.ref_mutability(), Some(ty::Mutability::Mut));
+
+        if !is_mut_ref && utils::is_ty_impl_copy(output_ty, tcx) {
+            return false;
+        }
+
+        self.remove_var(var);
+        true
     }
 
-    pub fn available_values(&self) -> &HashSet<Var> {
-        &self.available
-    }
-
-    pub fn type_of(&self, var: Var) -> Ty<'tcx> {
-        *self.var_ty.get(&var).expect("no type for var")
-    }
-
-    pub fn stmts(&self) -> &[Stmt] {
-        &self.stmts
-    }
-
-    pub fn all_possible_providers(&self, ty: Ty<'tcx>) -> Vec<Var> {
+    fn all_possible_providers(&self, ty: Ty<'tcx>) -> Vec<Var> {
         let mut ret = Vec::new();
-        if utils::is_fuzzable_ty(ty, self.tcx) {
+        if utils::is_fuzzable_ty(ty, self.tcx()) {
             ret.push(DUMMY_INPUT_VAR);
         }
         for val in self.available_values() {
-            // assume all type are concrete
-            let infcx = self.tcx.infer_ctxt().build();
-            let env = ParamEnv::reveal_all();
-            // TODO: How to deal with lifetime?
-            let res = infcx.at(&ObligationCause::dummy(), env).eq(
-                rustc_infer::infer::DefineOpaqueTypes::Yes,
-                ty,
-                self.type_of(*val),
-            );
-            if res.is_ok() {
+            if utils::is_ty_eq(ty, self.type_of(*val), self.tcx()) {
                 ret.push(val.clone());
             }
         }
         ret
-    }
-
-    fn mk_var(&mut self, ty: Ty<'tcx>, is_input: bool) -> Var {
-        let next_var = Var(self.var_ty.len(), is_input);
-        self.var_ty.insert(next_var, ty);
-        next_var
     }
 
     fn add_input_stmt(&mut self, ty: Ty<'tcx>) -> Var {
@@ -84,16 +73,17 @@ impl<'tcx> Context<'tcx> {
         if let ty::Ref(_, inner_ty, mutability) = ty.kind() {
             let inner_var = self.add_input_stmt(*inner_ty);
             var = self.mk_var(ty, false);
-            self.stmts.push(Stmt::ref_(var, inner_var, *mutability));
+            self.add_stmt(Stmt::ref_(var, inner_var, *mutability));
         } else {
             var = self.mk_var(ty, true);
-            self.stmts.push(Stmt::input(var));
+            self.add_stmt(Stmt::input(var));
         }
         var
     }
 
-    pub fn add_call_stmt(&mut self, mut call: ApiCall) -> Var {
-        let fn_sig = utils::jump_all_binders(call.fn_did, self.tcx);
+    fn add_call_stmt(&mut self, mut call: ApiCall) -> Var {
+        let tcx = self.tcx();
+        let fn_sig = utils::jump_all_binders(call.fn_did, tcx);
         let output_ty = fn_sig.output();
         for idx in 0..fn_sig.inputs().len() {
             let arg = call.args[idx];
@@ -109,28 +99,79 @@ impl<'tcx> Context<'tcx> {
             kind: StmtKind::Call(call),
             place: var,
         };
-        self.stmts.push(stmt);
+        self.add_stmt(stmt);
         var
     }
 
-    // if the output_ty of expr does not implement Copy, we need to remove the expr from the available set
-    pub fn remove_var_from_available(&mut self, var: Var) -> bool {
-        if var == DUMMY_INPUT_VAR {
-            return false;
-        }
-        if !self.available.contains(&var) {
-            panic!("var {:?} not in available set", var);
-        }
+    fn ref_region_ty(&self, var: Var) -> ty::Region<'tcx> {
+        self.tcx().lifetimes.re_erased
+    }
 
-        let output_ty = self.type_of(var);
-        let is_mut_ref =
-            output_ty.is_ref() && matches!(output_ty.ref_mutability(), Some(ty::Mutability::Mut));
+    fn add_ref_stmt(&mut self, var: Var, mutability: ty::Mutability) -> Var {
+        let ref_ty = ty::Ty::new_ref(
+            self.tcx(),
+            self.ref_region_ty(var),
+            self.type_of(var),
+            mutability,
+        );
+        let new_var = self.mk_var(ref_ty, false);
+        self.add_stmt(Stmt::ref_(new_var, var, mutability));
+        new_var
+    }
+}
 
-        if !is_mut_ref && utils::is_ty_impl_copy(output_ty, self.tcx) {
-            return false;
+#[derive(Clone)]
+pub struct ContextBase<'tcx> {
+    stmts: Vec<Stmt>,
+    available: HashSet<Var>,
+    var_ty: HashMap<Var, Ty<'tcx>>,
+    tcx: TyCtxt<'tcx>,
+}
+
+impl<'tcx> ContextBase<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> ContextBase<'tcx> {
+        ContextBase {
+            stmts: Vec::new(),
+            available: HashSet::new(),
+            var_ty: HashMap::new(),
+            tcx,
         }
+    }
 
+    pub fn type_of(&self, var: Var) -> Ty<'tcx> {
+        *self.var_ty.get(&var).expect("no type for var")
+    }
+}
+
+impl<'tcx> StmtBody for ContextBase<'tcx> {
+    fn stmts(&self) -> &[Stmt] {
+        &self.stmts
+    }
+    fn add_stmt(&mut self, stmt: Stmt) {
+        self.stmts.push(stmt);
+    }
+}
+
+impl<'tcx> Context<'tcx> for ContextBase<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    fn available_values(&self) -> &HashSet<Var> {
+        &self.available
+    }
+
+    fn mk_var(&mut self, ty: Ty<'tcx>, is_input: bool) -> Var {
+        let next_var = Var(self.var_ty.len(), is_input);
+        self.var_ty.insert(next_var, ty);
+        next_var
+    }
+
+    fn remove_var(&mut self, var: Var) {
         self.available.remove(&var);
-        true
+    }
+
+    fn type_of(&self, var: Var) -> Ty<'tcx> {
+        self.var_ty[&var]
     }
 }

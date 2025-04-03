@@ -4,9 +4,11 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::{rap_debug, rap_info};
-use generator::context::Context;
+use generator::context::ContextBase;
 use generator::input::SillyInputGen;
+use generator::ltgen::context::LtContext;
 use generator::ltgen::LtGen;
+use generator::ltgen::LtGenBuilder;
 use generator::syn::FuzzDriverSynImpl;
 use generator::syn::SynOption;
 use generator::syn::Synthesizer;
@@ -44,8 +46,9 @@ impl<'tcx> Testgen<'tcx> {
             local_crate_name.as_str(),
             local_crate_type
         );
-        let mut lt_gen = LtGen::new(self.tcx, rand::rng());
-        let mut cx = Context::new(self.tcx);
+
+        let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(100).build();
+        let mut cx = LtContext::new(self.tcx);
         lt_gen.gen_in_place(&mut cx);
         // build option
         let option = SynOption {

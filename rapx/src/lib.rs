@@ -19,6 +19,7 @@ extern crate rustc_target;
 extern crate rustc_infer;
 extern crate rustc_trait_selection;
 extern crate rustc_traits;
+extern crate rustc_type_ir;
 
 
 

@@ -54,6 +54,14 @@ impl Stmt {
         }
     }
 
+    pub fn kind(&self) -> &StmtKind {
+        &self.kind
+    }
+
+    pub fn place(&self) -> Var {
+        self.place
+    }
+
     pub fn call(call: ApiCall, retval: Var) -> Stmt {
         Stmt {
             kind: StmtKind::Call(call),
@@ -90,8 +98,4 @@ impl Stmt {
     //         output_ty,
     //     })
     // }
-
-    pub fn kind(&self) -> StmtKind {
-        self.kind.clone()
-    }
 }

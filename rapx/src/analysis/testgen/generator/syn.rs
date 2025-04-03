@@ -1,4 +1,4 @@
-use super::context::Context;
+use super::context::{Context, ContextBase, StmtBody};
 use super::input::{InputGen, SillyInputGen};
 use super::stmt::{Stmt, StmtKind, Var};
 use std::collections::{HashMap, HashSet};
@@ -11,7 +11,7 @@ pub struct SynOption {
 }
 
 pub trait Synthesizer<'tcx> {
-    fn syn(&mut self, cx: Context<'tcx>, tcx: TyCtxt<'tcx>) -> String;
+    fn syn<C: Context<'tcx>>(&mut self, cx: C, tcx: TyCtxt<'tcx>) -> String;
 }
 
 pub struct FuzzDriverSynImpl<I: InputGen> {
@@ -24,7 +24,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         Self { input_gen, option }
     }
 
-    fn stmt_kind_str<'tcx>(&mut self, stmt: &Stmt, cx: &Context<'tcx>) -> String {
+    fn stmt_kind_str<'tcx>(&mut self, stmt: &Stmt, cx: &impl Context<'tcx>) -> String {
         match stmt.kind() {
             StmtKind::Call(call) => {
                 format!(
@@ -42,10 +42,10 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                 self.input_gen.gen(ty, cx.tcx()).to_string()
             }
             StmtKind::Ref(var, mutability) => {
-                format!("{}{}", mutability.ref_prefix_str(), self.var_str(*var))
+                format!("{}{}", mutability.ref_prefix_str(), self.var_str(**var))
             }
             StmtKind::Deref(var) => {
-                format!("*{}", self.var_str(*var))
+                format!("*{}", self.var_str(**var))
             }
             _ => todo!(),
         }
@@ -59,7 +59,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         format!("{}", ty)
     }
 
-    fn stmt_str<'tcx>(&mut self, stmt: Stmt, cx: &Context<'tcx>) -> String {
+    fn stmt_str<'tcx>(&mut self, stmt: Stmt, cx: &impl Context<'tcx>) -> String {
         let var = stmt.place;
         let var_ty = cx.type_of(var);
         let stmt_str = self.stmt_kind_str(&stmt, cx);
@@ -82,13 +82,13 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         )
     }
 
-    fn main_str<'tcx>(&mut self, cx: &Context<'tcx>) -> String {
+    fn main_str<'tcx>(&mut self, cx: &impl Context<'tcx>) -> String {
         let mut ret = String::new();
         ret.push_str("fn main() {\n");
         let indent = "    ";
         for stmt in cx.stmts() {
             ret.push_str(indent);
-            ret.push_str(&self.stmt_str(stmt.clone(), &cx));
+            ret.push_str(&self.stmt_str(stmt.clone(), cx));
             ret.push_str("\n");
         }
         ret.push_str("}\n");
@@ -97,7 +97,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
 }
 
 impl<'tcx, I: InputGen> Synthesizer<'tcx> for FuzzDriverSynImpl<I> {
-    fn syn(&mut self, cx: Context<'tcx>, tcx: TyCtxt<'tcx>) -> String {
+    fn syn<C: Context<'tcx>>(&mut self, cx: C, tcx: TyCtxt<'tcx>) -> String {
         format!("{}\n{}", self.header_str(), self.main_str(&cx))
     }
 }

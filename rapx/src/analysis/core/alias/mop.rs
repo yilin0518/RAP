@@ -81,6 +81,7 @@ impl<'tcx> MopAlias<'tcx> {
             if mop_graph.visit_times > VISIT_LIMIT {
                 rap_trace!("Over visited: {:?}", def_id);
             }
+            self.fn_map.insert(def_id, mop_graph.ret_alias);
         } else {
             rap_trace!("mir is not available at {}", self.tcx.def_path_str(def_id));
         }

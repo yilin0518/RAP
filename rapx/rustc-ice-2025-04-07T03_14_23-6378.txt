@@ -1,0 +1,32 @@
+thread 'rustc' panicked at src/analysis/testgen/generator/context.rs:43:13:
+var Var(360, true) not in available set
+stack backtrace:
+   0:     0x7a4749c22f65 - std::backtrace::Backtrace::create::hce26bfdc9e07e846
+   1:     0x7a47481b5b75 - std::backtrace::Backtrace::force_capture::hed55aff8408ac1d4
+   2:     0x7a4747225fc4 - std[a52682fb6709fd50]::panicking::update_hook::<alloc[6c1b03e26bdbf4ed]::boxed::Box<rustc_driver_impl[193eb2676e99316f]::install_ice_hook::{closure#0}>>::{closure#0}
+   3:     0x7a47481cd6a8 - std::panicking::rust_panic_with_hook::h41309167c2756168
+   4:     0x7a47481cd47a - std::panicking::begin_panic_handler::{{closure}}::hf306b851c08afab0
+   5:     0x7a47481cb119 - std::sys::backtrace::__rust_end_short_backtrace::he5588192121653f9
+   6:     0x7a47481cd13c - rust_begin_unwind
+   7:     0x7a4745be5b50 - core::panicking::panic_fmt::h78fd6fa67a3d3b3d
+   8:     0x63fd560686b9 - rapx::analysis::testgen::generator::context::Context::add_call_stmt::heb4b5702927a1596
+   9:     0x63fd5606a53f - rapx::analysis::testgen::Testgen::start::h729f6232e75e1cac
+  10:     0x63fd55f80c98 - rapx::start_analyzer::h76e56de55cc59b56
+  11:     0x63fd560596ac - rustc_middle::ty::context::GlobalCtxt::enter::hf609c534fd542254
+  12:     0x63fd55f8012f - <rapx::RapCallback as rustc_driver_impl::Callbacks>::after_analysis::h3a53d32ccf72fef7
+  13:     0x7a474977715f - rustc_interface[edd3a01c1bde3f2a]::interface::run_compiler::<core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>, rustc_driver_impl[193eb2676e99316f]::run_compiler::{closure#0}>::{closure#1}
+  14:     0x7a474988c450 - std[a52682fb6709fd50]::sys::backtrace::__rust_begin_short_backtrace::<rustc_interface[edd3a01c1bde3f2a]::util::run_in_thread_with_globals<rustc_interface[edd3a01c1bde3f2a]::util::run_in_thread_pool_with_globals<rustc_interface[edd3a01c1bde3f2a]::interface::run_compiler<core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>, rustc_driver_impl[193eb2676e99316f]::run_compiler::{closure#0}>::{closure#1}, core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>>::{closure#0}, core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>>::{closure#0}::{closure#0}, core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>>
+  15:     0x7a474988cb17 - <<std[a52682fb6709fd50]::thread::Builder>::spawn_unchecked_<rustc_interface[edd3a01c1bde3f2a]::util::run_in_thread_with_globals<rustc_interface[edd3a01c1bde3f2a]::util::run_in_thread_pool_with_globals<rustc_interface[edd3a01c1bde3f2a]::interface::run_compiler<core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>, rustc_driver_impl[193eb2676e99316f]::run_compiler::{closure#0}>::{closure#1}, core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>>::{closure#0}, core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>>::{closure#0}::{closure#0}, core[aa94f1cb029d72f2]::result::Result<(), rustc_span[66abce9569f09a61]::ErrorGuaranteed>>::{closure#1} as core[aa94f1cb029d72f2]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  16:     0x7a474988da01 - std::sys::pal::unix::thread::Thread::new::thread_start::h51ead510c5edae48
+  17:     0x7a4742894ac3 - start_thread
+                               at ./nptl/pthread_create.c:442:8
+  18:     0x7a4742926850 - __GI___clone3
+                               at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+  19:                0x0 - <unknown>
+
+
+rustc version: 1.83.0-nightly (1bc403daa 2024-10-11)
+platform: x86_64-unknown-linux-gnu
+
+query stack during panic:
+end of query stack

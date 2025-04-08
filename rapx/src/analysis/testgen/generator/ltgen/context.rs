@@ -29,12 +29,14 @@ impl<'tcx> StmtBody for LtContext<'tcx> {
 
         match kind {
             StmtKind::Call(api_call) => {
-                todo!()
+                //todo!()
             }
             StmtKind::Ref(var, mutability) => {
-                todo!()
+                //todo!()
             }
-            StmtKind::Deref(var) => todo!(),
+            StmtKind::Deref(var) => {
+                //todo!()
+            }
             _ => {}
         }
         self.stmts.push(stmt);

@@ -8,10 +8,10 @@ mod graph;
 mod visitor;
 
 use crate::{rap_debug, rap_info};
-pub use graph::ApiDepGraph;
+use graph::ApiDepGraph;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
-pub use graph::{DepNode, DepEdge};
+
 use visitor::FnVisitor;
 
 pub struct ApiDep<'tcx> {
@@ -22,22 +22,16 @@ impl<'tcx> ApiDep<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> ApiDep<'tcx> {
         ApiDep { tcx }
     }
-    pub fn start(&self, all_pub_api: bool) -> ApiDepGraph<'tcx> {
+    pub fn start(&self) -> ApiDepGraph<'tcx> {
         let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let local_crate_type = self.tcx.crate_types()[0];
-        let graph_all_pub_api = if all_pub_api {
-            "all APIs including private APIs"
-        } else {
-            "only public APIs"
-        };
         rap_debug!(
-            "Build API dependency graph on {} ({}), graph based on {}",
+            "Build API dependency graph on {} ({})",
             local_crate_name.as_str(),
-            local_crate_type,
-            graph_all_pub_api,
+            local_crate_type
         );
 
-        let mut api_graph = ApiDepGraph::new(all_pub_api);
+        let mut api_graph = ApiDepGraph::new();
         let mut fn_visitor = FnVisitor::new(self.tcx, &mut api_graph);
         self.tcx
             .hir()

@@ -5,12 +5,10 @@ use std::path::Path;
 
 use crate::{rap_debug, rap_info};
 use generator::context::ContextBase;
-use generator::context::StmtBody;
 use generator::input::SillyInputGen;
 use generator::ltgen::context::LtContext;
 use generator::ltgen::LtGen;
 use generator::ltgen::LtGenBuilder;
-use generator::stmt;
 use generator::syn::FuzzDriverSynImpl;
 use generator::syn::SynOption;
 use generator::syn::Synthesizer;
@@ -22,7 +20,6 @@ use rustc_middle::ty::TyCtxt;
 
 use super::core::{alias, api_dep};
 
-use generator::rulf_algorithm;
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -33,7 +30,7 @@ impl<'tcx> Testgen<'tcx> {
         Testgen { tcx }
     }
     pub fn start(&self) {
-        let mut _api_dep_graph = api_dep::ApiDep::new(self.tcx).start(true);
+        let _api_dep_graph = api_dep::ApiDep::new(self.tcx).start();
         let mut alias_analysis = alias::mop::MopAlias::new(self.tcx);
         let alias_map = alias_analysis.start();
 
@@ -50,17 +47,9 @@ impl<'tcx> Testgen<'tcx> {
             local_crate_type
         );
 
-        //rulf
-        let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);
-        rulf_algorithm::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx);
-        for stmt in cx.stmts(){
-            rap_info!("stmt: {:?}", stmt);
-        }   
-        
         let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(100).build();
         let mut cx = LtContext::new(self.tcx);
         lt_gen.gen_in_place(&mut cx);
-        
         // build option
         let option = SynOption {
             crate_name: local_crate_name.to_string(),

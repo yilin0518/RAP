@@ -11,15 +11,6 @@ pub struct TyWrapper<'tcx> {
     lifetime_map: Vec<Lifetime>,
 }
 
-impl <'tcx>TyWrapper<'tcx>{
-    pub fn ty(&self) -> Ty<'tcx> {
-        self.ty
-    }
-    pub fn lifetime_map(&self) -> &Vec<Lifetime> {
-        &self.lifetime_map
-    }
-}
-
 impl<'tcx> From<Ty<'tcx>> for TyWrapper<'tcx> {
     fn from(ty: ty::Ty<'tcx>) -> TyWrapper<'tcx> {
         // TODO: initialize lifetime_map

@@ -164,6 +164,7 @@ impl<'tcx> Context<'tcx> for ContextBase<'tcx> {
     fn mk_var(&mut self, ty: Ty<'tcx>, is_input: bool) -> Var {
         let next_var = Var(self.var_ty.len(), is_input);
         self.var_ty.insert(next_var, ty);
+        self.available.insert(next_var);
         next_var
     }
 

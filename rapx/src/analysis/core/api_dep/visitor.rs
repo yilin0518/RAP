@@ -75,7 +75,7 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         span: Span,
         id: LocalDefId,
     ) -> Self::Result {
-        if self.graph.is_all_pub_api() && !is_api_public(id, self.tcx) {
+        if self.graph.is_pub_only_api() && !is_api_public(id, self.tcx) {
             return ;
         }
         let fn_def_id = id.to_def_id();

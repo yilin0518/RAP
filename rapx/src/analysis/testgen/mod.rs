@@ -22,7 +22,7 @@ use rustc_middle::ty::TyCtxt;
 
 use super::core::{alias, api_dep};
 
-use generator::rulf_algorithm;
+use generator::rulf;
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -52,14 +52,14 @@ impl<'tcx> Testgen<'tcx> {
 
         //rulf
         let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);
-        rulf_algorithm::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx);
+        rulf::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx);
         for stmt in cx.stmts(){
             rap_info!("stmt: {:?}", stmt);
         }   
         
-        let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(100).build();
-        let mut cx = LtContext::new(self.tcx);
-        lt_gen.gen_in_place(&mut cx);
+        // let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(100).build();
+        // let mut cx = LtContext::new(self.tcx);
+        // lt_gen.gen_in_place(&mut cx);
         
         // build option
         let option = SynOption {

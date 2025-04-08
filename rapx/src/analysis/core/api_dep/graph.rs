@@ -19,7 +19,7 @@ type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
     graph: InnerGraph<'tcx>,
     node_indices: HashMap<DepNode<'tcx>, NodeIndex>,
-    all_pub_api: bool,
+    pub_only: bool,
 }
 
 pub struct Statistics {
@@ -30,16 +30,16 @@ pub struct Statistics {
 }
 
 impl<'tcx> ApiDepGraph<'tcx> {
-    pub fn new(all_pub_api: bool) -> ApiDepGraph<'tcx> {
+    pub fn new(pub_only: bool) -> ApiDepGraph<'tcx> {
         ApiDepGraph {
             graph: Graph::new(),
             node_indices: HashMap::new(),
-            all_pub_api: all_pub_api,
+            pub_only:pub_only,
         }
     }
 
-    pub fn is_all_pub_api(&self) -> bool {
-        self.all_pub_api
+    pub fn is_pub_only_api(&self) -> bool {
+        self.pub_only
     }
 
     pub fn inner_graph(&self) -> &InnerGraph<'tcx> {

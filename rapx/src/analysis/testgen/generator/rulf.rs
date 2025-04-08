@@ -12,6 +12,7 @@ use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, AdtDef, FieldDef};
 use rustc_hir::def_id::DefId;
 use crate::analysis::testgen::ContextBase;
 use crate::rap_info;
+use crate::rap_debug;
 fn find_api_starts<'tcx>(graph: &api_dep::ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>) -> Vec<api_dep::DepNode<'tcx>> {
     let mut api_starts = Vec::new();
     for (node_idx, node) in graph.inner_graph().node_references() {
@@ -53,10 +54,9 @@ pub fn rulf_algorithm<'tcx>(
             for input_ty in fn_sig.inputs() {
                 let providers = cx.all_possible_providers(*input_ty);
                 let var = if providers.is_empty() {
-                    cx.add_input_stmt(*input_ty) // 生成输入
+                    panic!("no providers for start node , need input type {:?}", input_ty);
                 } else {
-                    let var = providers[0]; 
-                    var
+                    providers[0]
                 };
                 args.push(var);
             }
@@ -91,15 +91,20 @@ pub fn rulf_algorithm<'tcx>(
                         // 6. 生成调用语句
                         let fn_sig = utils::jump_all_binders(def_id, tcx);
                         let mut args = Vec::new();
+                        let mut satisfy_all_input = true;
                         for input_ty in fn_sig.inputs() {
                             let providers = cx.all_possible_providers(*input_ty);
                             let var = if providers.is_empty() {
-                                cx.add_input_stmt(*input_ty)
+                                rap_debug!("no providers for consumer node , need input type {:?}", input_ty);
+                                satisfy_all_input = false;
+                                break;
                             } else {
-                                let var = providers[0];
-                                var
+                                providers[0]
                             };
                             args.push(var);
+                        }
+                        if !satisfy_all_input {
+                            continue;
                         }
                         let call = ApiCall { fn_did: def_id, args };
                         cx.add_call_stmt(call);

@@ -34,7 +34,9 @@ impl<'tcx> StmtBody for LtContext<'tcx> {
             StmtKind::Ref(var, mutability) => {
                 todo!()
             }
-            StmtKind::Deref(var) => todo!(),
+            StmtKind::Deref(var) => {
+                todo!()
+            }
             _ => {}
         }
         self.stmts.push(stmt);

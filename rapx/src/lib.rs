@@ -282,7 +282,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_api_dep_enabled() {
-        ApiDep::new(tcx).start();
+        ApiDep::new(tcx).start(true);
     }
 
     if callback.is_testgen_enabled() {

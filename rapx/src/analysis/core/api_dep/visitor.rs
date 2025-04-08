@@ -4,9 +4,9 @@ use crate::rap_debug;
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{FnKind, Visitor},
-    BodyId, FnDecl,
+    BodyId, FnDecl, BodyOwnerKind,
 };
-use rustc_middle::ty::{self, TyCtxt};
+use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use std::io::Write;
 
@@ -75,6 +75,9 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         span: Span,
         id: LocalDefId,
     ) -> Self::Result {
+        if self.graph.is_pub_only_api() && !is_api_public(id, self.tcx) {
+            return ;
+        }
         let fn_def_id = id.to_def_id();
         self.fn_cnt += 1;
         self.funcs.push(fn_def_id);
@@ -135,4 +138,8 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         self.graph.add_edge(api_node, output_node, DepEdge::ret());
         rap_debug!("exit visit_fn");
     }
+}
+
+fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
+    matches!(tcx.visibility(fn_def_id.into()), ty::Visibility::Public)
 }

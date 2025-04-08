@@ -14,10 +14,12 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
+
 type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
     graph: InnerGraph<'tcx>,
     node_indices: HashMap<DepNode<'tcx>, NodeIndex>,
+    pub_only: bool,
 }
 
 pub struct Statistics {
@@ -28,11 +30,16 @@ pub struct Statistics {
 }
 
 impl<'tcx> ApiDepGraph<'tcx> {
-    pub fn new() -> ApiDepGraph<'tcx> {
+    pub fn new(pub_only: bool) -> ApiDepGraph<'tcx> {
         ApiDepGraph {
             graph: Graph::new(),
             node_indices: HashMap::new(),
+            pub_only:pub_only,
         }
+    }
+
+    pub fn is_pub_only_api(&self) -> bool {
+        self.pub_only
     }
 
     pub fn inner_graph(&self) -> &InnerGraph<'tcx> {

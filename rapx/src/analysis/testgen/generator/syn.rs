@@ -4,6 +4,7 @@ use super::stmt::{Stmt, StmtKind, Var};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
 
+use chrono::format;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
 
 pub struct SynOption {
@@ -56,7 +57,17 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
     }
 
     fn ty_str<'tcx>(&self, ty: Ty<'tcx>) -> String {
-        format!("{}", ty)
+        if ty.is_slice(){
+            if let TyKind::Slice(inner_ty) = ty.kind(){
+                format!("[{}; 3]", self.ty_str(*inner_ty))
+            }
+            else{
+                format!("{}", ty)
+            }
+        }
+        else{
+            format!("{}", ty)
+        }
     }
 
     fn stmt_str<'tcx>(&mut self, stmt: Stmt, cx: &impl Context<'tcx>) -> String {

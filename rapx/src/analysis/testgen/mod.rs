@@ -23,6 +23,7 @@ use rustc_middle::ty::TyCtxt;
 use super::core::{alias, api_dep};
 
 use generator::rulf;
+use rand::thread_rng;
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -38,9 +39,9 @@ impl<'tcx> Testgen<'tcx> {
         let alias_map = alias_analysis.start();
 
         rap_debug!("result count = {}", alias_map.len());
-        for (did, ret_alias) in alias_map.iter() {
-            rap_debug!("{}: {:?}", self.tcx.def_path_str(did), ret_alias);
-        }
+        // for (did, ret_alias) in alias_map.iter() {
+        //     rap_debug!("{}: {:?}", self.tcx.def_path_str(did), ret_alias);
+        // }
 
         let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let local_crate_type = self.tcx.crate_types()[0];
@@ -52,10 +53,11 @@ impl<'tcx> Testgen<'tcx> {
 
         //rulf
         let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);
-        rulf::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx);
-        for stmt in cx.stmts(){
-            rap_info!("stmt: {:?}", stmt);
-        }   
+        let mut rng = rand::rng();
+        rulf::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx, &mut rng);
+        // for stmt in cx.stmts(){
+        //     rap_info!("stmt: {:?}", stmt);
+        // }   
         
         // let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(100).build();
         // let mut cx = LtContext::new(self.tcx);

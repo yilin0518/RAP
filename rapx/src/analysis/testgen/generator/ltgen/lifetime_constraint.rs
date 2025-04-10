@@ -46,7 +46,7 @@ fn region_str(region: ty::Region<'_>) -> String {
     region.get_name_or_anon().to_string()
 }
 
-fn constraint_str<'tcx>(constraint: Constraint<'tcx>, tcx: TyCtxt<'tcx>) -> String {
+pub fn constraint_str<'tcx>(constraint: Constraint<'tcx>, tcx: TyCtxt<'tcx>) -> String {
     let (a, b) = match constraint {
         Constraint::VarSubVar(a, b) => (region_vid_str(a), region_vid_str(b)),
         Constraint::RegSubVar(a, b) => (region_str(a), region_vid_str(b)),

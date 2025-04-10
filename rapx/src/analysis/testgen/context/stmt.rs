@@ -22,6 +22,20 @@ pub struct ApiCall {
     pub args: Vec<Var>,
 }
 
+impl ApiCall {
+    pub fn new(fn_did: DefId, args: Vec<Var>) -> Self {
+        Self { fn_did, args }
+    }
+
+    pub fn args(&self) -> &[Var] {
+        &self.args
+    }
+
+    pub fn fn_did(&self) -> DefId {
+        self.fn_did
+    }
+}
+
 // pub type StmtRef<'tcx> = Rc<Stmt<'tcx>>;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

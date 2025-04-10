@@ -2,14 +2,18 @@ use crate::analysis::senryx::matcher::parse_unsafe_api;
 use crate::analysis::unsafety_isolation::generate_dot::NodeType;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
+use rustc_middle::mir::Local;
 use rustc_middle::mir::{BasicBlock, Terminator};
+use rustc_middle::ty::Mutability;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::TyKind;
 use rustc_middle::{
     mir::{Operand, TerminatorKind},
     ty,
 };
 use rustc_span::def_id::LocalDefId;
+use rustc_span::sym;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -175,6 +179,35 @@ pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> usize {
                     node_type = 0;
                 }
             }
+            match output.kind() {
+                TyKind::Ref(_, ref_ty, _) => {
+                    if ref_ty.is_param(0) {
+                        node_type = 0;
+                    }
+                    if let Some(impl_id) = assoc_item.impl_container(tcx) {
+                        let ty = tcx.type_of(impl_id).skip_binder();
+                        if *ref_ty == ty {
+                            println!("find ref:{:?}", output);
+                            node_type = 0;
+                        }
+                    }
+                }
+                TyKind::Adt(adt_def, substs) => {
+                    if adt_def.is_enum() && tcx.is_diagnostic_item(sym::Option, adt_def.did()) {
+                        let inner_ty = substs.type_at(0);
+                        if inner_ty.is_param(0) {
+                            node_type = 0;
+                        }
+                        if let Some(impl_id) = assoc_item.impl_container(tcx) {
+                            let ty_impl = tcx.type_of(impl_id).skip_binder();
+                            if inner_ty == ty_impl {
+                                node_type = 0;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
     }
     return node_type;
@@ -269,7 +302,48 @@ pub fn get_pointee(matched_ty: Ty<'_>) -> Ty<'_> {
 }
 
 pub fn is_ptr(matched_ty: Ty<'_>) -> bool {
-    get_pointee(matched_ty) != matched_ty
+    if let ty::RawPtr(_, _) = matched_ty.kind() {
+        return true;
+    }
+    return false;
+}
+
+pub fn is_ref(matched_ty: Ty<'_>) -> bool {
+    if let ty::Ref(_, _, _) = matched_ty.kind() {
+        return true;
+    }
+    return false;
+}
+
+pub fn has_mut_self_param(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
+        if assoc_item.fn_has_self_parameter {
+            let body = tcx.optimized_mir(def_id);
+            let fst_arg = body.local_decls[Local::from_usize(1)].clone();
+            let ty = fst_arg.ty;
+            let is_mut_ref = matches!(ty.kind(), ty::Ref(_, _, mutbl) if *mutbl == Mutability::Mut);
+            return fst_arg.mutability.is_mut() || is_mut_ref;
+        }
+    }
+    false
+}
+
+// input : adt def id
+pub fn get_all_mutable_methods(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
+    let mut results = HashSet::new();
+    let impl_vec = get_impls_for_struct(tcx, def_id);
+    for impl_id in impl_vec {
+        let associated_items = tcx.associated_items(impl_id);
+        for item in associated_items.in_definition_order() {
+            if let ty::AssocKind::Fn = item.kind {
+                let item_def_id = item.def_id;
+                if has_mut_self_param(tcx, item_def_id) && check_visibility(tcx, item_def_id) {
+                    results.insert(item_def_id);
+                }
+            }
+        }
+    }
+    results
 }
 
 pub fn display_hashmap<K, V>(map: &HashMap<K, V>, level: usize)
@@ -300,6 +374,26 @@ pub fn get_all_std_unsafe_callees(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<String>
                 .terminator(),
         );
         results.extend(callees);
+    }
+    results
+}
+
+pub fn get_all_std_unsafe_callees_block_id(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<usize> {
+    let mut results = Vec::new();
+    let body = tcx.optimized_mir(def_id);
+    let bb_len = body.basic_blocks.len();
+    for i in 0..bb_len {
+        if match_std_unsafe_callee(
+            tcx,
+            body.basic_blocks[BasicBlock::from_usize(i)]
+                .clone()
+                .terminator(),
+        )
+        .len()
+            > 0
+        {
+            results.push(i);
+        }
     }
     results
 }

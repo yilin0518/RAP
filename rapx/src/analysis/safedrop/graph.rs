@@ -174,7 +174,6 @@ pub struct SafeDropGraph<'tcx> {
     pub dead_record: Vec<bool>,
     // analysis of heap item
     pub adt_owner: AdtOwner,
-
     pub child_scc: FxHashMap<
         usize,
         (
@@ -183,6 +182,8 @@ pub struct SafeDropGraph<'tcx> {
             FxHashSet<usize>,
         ),
     >,
+    pub disc_map: FxHashMap<usize, usize>,
+    pub terms: Vec<TerminatorKind<'tcx>>,
 }
 
 impl<'tcx> SafeDropGraph<'tcx> {
@@ -217,6 +218,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let basicblocks = &body.basic_blocks;
         let mut blocks = Vec::<BlockNode<'tcx>>::new();
         let mut scc_indices = Vec::<usize>::new();
+        let mut disc_map = FxHashMap::default();
+        let mut terms = Vec::new();
 
         // handle each basicblock
         for i in 0..basicblocks.len() {
@@ -345,12 +348,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         Rvalue::Discriminant(rv) => {
                             let assign = Assignment::new(lv, rv, AssignType::Variant, span);
                             cur_bb.assignments.push(assign);
+                            disc_map.insert(lv_local, rv.local.as_usize());
                         }
                         _ => {}
                     }
                 }
             }
 
+            terms.push(terminator.kind.clone());
             // handle terminator statements
             match terminator.kind {
                 TerminatorKind::Goto { target } => {
@@ -488,6 +493,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             dead_record: dead,
             adt_owner,
             child_scc: FxHashMap::default(),
+            disc_map,
+            terms,
         }
     }
 

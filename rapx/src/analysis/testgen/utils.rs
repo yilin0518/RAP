@@ -3,7 +3,7 @@ use rustc_infer::{
     infer::TyCtxtInferExt,
     traits::{Obligation, ObligationCause},
 };
-use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable};
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt;
 pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
     matches!(tcx.visibility(fn_def_id.into()), ty::Visibility::Public)
@@ -35,6 +35,9 @@ pub fn is_ty_impl_copy<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 }
 
 pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    return ty1 == ty2;
+
+    // FIXME: code below cause crash
     let infcx = tcx.infer_ctxt().build();
     let env = ParamEnv::reveal_all();
     // TODO: How to deal with lifetime?

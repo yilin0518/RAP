@@ -1,29 +1,24 @@
+mod context;
 mod generator;
+mod syn;
+mod utils;
+
+use rand;
+
+use crate::analysis::core::{alias, api_dep};
+use crate::{rap_debug, rap_info};
+use context::ContextBase;
+use generator::ltgen::context::LtContext;
+use generator::ltgen::LtGenBuilder;
+use generator::rulf;
+use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_middle::ty::TyCtxt;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use syn::input::SillyInputGen;
+use syn::{FuzzDriverSynImpl, SynOption, Synthesizer};
 
-use crate::{rap_debug, rap_info};
-use generator::context::ContextBase;
-use generator::context::StmtBody;
-use generator::input::SillyInputGen;
-use generator::ltgen::context::LtContext;
-use generator::ltgen::LtGen;
-use generator::ltgen::LtGenBuilder;
-use generator::stmt;
-use generator::syn::FuzzDriverSynImpl;
-use generator::syn::SynOption;
-use generator::syn::Synthesizer;
-use generator::utils::{get_all_pub_apis, is_ty_impl_copy};
-use rand;
-use rustc_hir::def_id::LOCAL_CRATE;
-use rustc_middle::query::Key;
-use rustc_middle::ty::TyCtxt;
-
-use super::core::{alias, api_dep};
-
-use generator::rulf;
-use rand::thread_rng;
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -63,6 +58,16 @@ impl<'tcx> Testgen<'tcx> {
         // let mut cx = LtContext::new(self.tcx);
         // lt_gen.gen_in_place(&mut cx);
         
+        // let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);
+        // rulf::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx);
+        // for stmt in cx.stmts(){
+        //     rap_info!("stmt: {:?}", stmt);
+        // }
+
+        let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(10).build();
+        let mut cx = LtContext::new(self.tcx);
+        lt_gen.gen_in_place(&mut cx);
+        cx.debug_constraint();
         // build option
         let option = SynOption {
             crate_name: local_crate_name.to_string(),

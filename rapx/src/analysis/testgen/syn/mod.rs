@@ -1,6 +1,8 @@
+pub mod input;
+
 use super::context::{Context, ContextBase, StmtBody};
-use super::input::{InputGen, SillyInputGen};
-use super::stmt::{Stmt, StmtKind, Var};
+use super::context::{Stmt, StmtKind, Var};
+use input::{InputGen, SillyInputGen};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
 
@@ -76,9 +78,10 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         let stmt_str = self.stmt_kind_str(&stmt, cx);
         if !var_ty.is_unit() {
             format!(
-                "let {}: {} = {};",
+                "let {}{}: {} = {};",
+                cx.var_mutability(var).prefix_str(),
                 self.var_str(var),
-                self.ty_str(var_ty),
+                self.ty_str(cx.tcx().erase_regions(var_ty)),
                 stmt_str
             )
         } else {

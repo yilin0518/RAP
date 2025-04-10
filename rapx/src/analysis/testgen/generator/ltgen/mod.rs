@@ -1,10 +1,8 @@
 pub mod context;
 mod lifetime_constraint;
 
-use super::context::{Context, ContextBase};
-use super::stmt::{ApiCall, Stmt};
-use super::{utils, Generator};
-use crate::analysis::testgen::generator::utils::jump_all_binders;
+use crate::analysis::testgen::context::{ApiCall, Context, ContextBase, Stmt};
+use crate::analysis::testgen::utils;
 use crate::rap_debug;
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
@@ -93,7 +91,7 @@ impl<'tcx, R: Rng> LtGen<'tcx, R> {
         if tcx.generics_of(fn_did).requires_monomorphization(tcx) {
             return None;
         }
-        let fn_sig = jump_all_binders(fn_did, tcx);
+        let fn_sig = utils::jump_all_binders(fn_did, tcx);
 
         for input_ty in fn_sig.inputs().iter() {
             rap_debug!("check: {input_ty:?}");

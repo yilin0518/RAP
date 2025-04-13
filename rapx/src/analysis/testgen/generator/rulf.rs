@@ -17,7 +17,7 @@ use rand::Rng;
 use rand::seq::SliceRandom; 
 use rand::prelude::IndexedRandom;
 
-use super::stmt::Var;
+use crate::analysis::testgen::context::Var;
 fn find_api_starts<'tcx>(graph: &api_dep::ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>) -> Vec<api_dep::DepNode<'tcx>> {
     let mut api_starts = Vec::new();
     for (node_idx, node) in graph.inner_graph().node_references() {
@@ -174,7 +174,7 @@ pub fn rulf_algorithm<'tcx, R: Rng>(
         prev_unvisited_count = unvisited_api_nodes.len();
         let current_unvisited: Vec<_> = unvisited_api_nodes.iter().cloned().collect();
         for target_api in current_unvisited {
-            if  backward_search(graph, &target_api, cx, &mut type_to_api_calls, rng) {
+            if  backward_search(graph, &target_api, cx, &mut type_to_api_calls, rng, tcx) {
                 visited.insert(target_api.clone());
                 unvisited_api_nodes.remove(&target_api);
             }
@@ -189,9 +189,10 @@ fn backward_search<'tcx, R: Rng>(
     cx: &mut ContextBase<'tcx>,
     type_to_api_calls: &mut HashMap<Ty<'tcx>, Vec<Vec<DefId>>>,
     rng: &mut R,
+    tcx: TyCtxt<'tcx>,
 ) -> bool {
     if let api_dep::DepNode::Api(def_id) = target_api {
-        let fn_sig = utils::jump_all_binders(*def_id, cx.tcx());
+        let fn_sig = utils::jump_all_binders(*def_id, tcx);
         let mut vars = Vec::new(); // 存储参数使用的变量
         let mut dependency_seqs = Vec::new(); // 存储每个参数的依赖序列
 
@@ -218,7 +219,7 @@ fn backward_search<'tcx, R: Rng>(
             } else if let Some(api_seqs) = type_to_api_calls.get(input_ty) {
                 // 从 type_to_api_calls 中生成
                 if let Some(api_seq) = api_seqs.choose(rng) {
-                    if let Some(var) = seq2call(api_seq, cx, rng) {
+                    if let Some(var) = seq2call(api_seq, cx, rng, tcx) {
                         vars.push(var);
                         dependency_seqs.push(api_seq.clone()); // 记录依赖序列
                     } else {
@@ -254,8 +255,7 @@ fn backward_search<'tcx, R: Rng>(
     }
 }
 
-fn seq2call<'tcx, R: Rng>(seq: &Vec<DefId>, cx: &mut ContextBase<'tcx>, rng: &mut R) ->Option<Var>{
-    let tcx = cx.tcx();
+fn seq2call<'tcx, R: Rng>(seq: &Vec<DefId>, cx: &mut ContextBase<'tcx>, rng: &mut R, tcx: TyCtxt<'tcx>) ->Option<Var>{
     let mut ret_var:Option<Var> = None;
     // 遍历 seq 中的每个 DefId，依次生成调用
     for &def_id in seq {

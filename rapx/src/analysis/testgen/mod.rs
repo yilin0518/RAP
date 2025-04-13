@@ -54,20 +54,10 @@ impl<'tcx> Testgen<'tcx> {
         //     rap_info!("stmt: {:?}", stmt);
         // }   
         
-        // let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(100).build();
+        // let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(10).build();
         // let mut cx = LtContext::new(self.tcx);
         // lt_gen.gen_in_place(&mut cx);
-        
-        // let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);
-        // rulf::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx);
-        // for stmt in cx.stmts(){
-        //     rap_info!("stmt: {:?}", stmt);
-        // }
-
-        let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(10).build();
-        let mut cx = LtContext::new(self.tcx);
-        lt_gen.gen_in_place(&mut cx);
-        cx.debug_constraint();
+        // cx.debug_constraint();
         // build option
         let option = SynOption {
             crate_name: local_crate_name.to_string(),

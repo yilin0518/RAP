@@ -3,6 +3,7 @@ use super::RegionSubgraphMap;
 use crate::analysis::testgen::context::{Context, HoldTyCtxt};
 use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
 use crate::analysis::testgen::generator::ltgen::folder::RegionExtractFolder;
+use crate::analysis::testgen::generator::ltgen::lifetime::visit_structure_region_with;
 use crate::analysis::testgen::utils;
 use crate::rap_debug;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeFoldable};
@@ -81,11 +82,6 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
                         panic!("unexpected type: {:?}", var_ty);
                     }
                 };
-
-                // if ref_stmt is something like lhs = &rhs, where b is also a reference,
-                // then add lhs-->rhs because rhs must outlive lhs
-                self.region_graph
-                    .add_edge_by_id(self.vid_of(var), self.vid_of(**inner_var));
             }
             StmtKind::Deref(var) => {
                 todo!()
@@ -113,9 +109,14 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
         let next_var = Var(self.var_ty.len(), is_input);
         let ty = self.region_graph.register_var_ty(ty, self.tcx());
         let id = self.region_graph.next_named_node();
+        let tcx = self.tcx();
         rap_debug!("var: {} ty: {:?}", next_var, ty);
 
-        // self.vid_map.insert(id, next_var);
+        let mut f = |from, to| {
+            self.region_graph.add_edge_by_region(from, to);
+        };
+
+        visit_structure_region_with(ty, Some(ty::Region::new_var(tcx, id.into())), tcx, &mut f);
         self.var_vid.insert(next_var, id);
         self.var_ty.insert(next_var, ty);
         self.available.insert(next_var);

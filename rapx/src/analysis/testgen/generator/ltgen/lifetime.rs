@@ -8,7 +8,8 @@ use rustc_hir::def_id::DefId;
 use rustc_infer::infer::region_constraints::Constraint;
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::ObligationCause;
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
+use rustc_middle::mir::tcx;
+use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypeFoldable};
 use rustc_span::{Span, DUMMY_SP};
 
 #[derive(Debug)]
@@ -131,7 +132,7 @@ impl RegionGraph {
     }
 
     pub fn add_edge(&mut self, from: NodeIndex, to: NodeIndex) -> EdgeIndex {
-        self.inner.add_edge(from, to, ())
+        self.inner.update_edge(from, to, ())
     }
 
     pub fn add_edge_by_id(&mut self, from: usize, to: usize) {
@@ -171,6 +172,57 @@ pub fn constraint_str<'tcx>(constraint: Constraint<'tcx>) -> String {
     format!("{} <= {}", a, b)
 }
 
+pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'tcx>)>(
+    ty: ty::Ty<'tcx>,
+    prev: Option<ty::Region<'tcx>>,
+    tcx: TyCtxt<'tcx>,
+    f: &mut F,
+) {
+    match ty.kind() {
+        ty::TyKind::Ref(region, inner_ty, _) => {
+            if let Some(prev_region) = prev {
+                f(prev_region, *region);
+            }
+            visit_structure_region_with(*inner_ty, Some(*region), tcx, f);
+        }
+
+        ty::TyKind::Array(inner_ty, _) | ty::TyKind::Slice(inner_ty) => {
+            visit_structure_region_with(*inner_ty, prev, tcx, f);
+        }
+
+        // Tuple
+        ty::TyKind::Tuple(tys) => {
+            for ty in tys.iter() {
+                visit_structure_region_with(ty, prev, tcx, f);
+            }
+        }
+
+        // ADT
+        ty::TyKind::Adt(_, substs) => {
+            for arg in substs.iter() {
+                match arg.unpack() {
+                    ty::GenericArgKind::Lifetime(region) => {
+                        if let Some(prev_region) = prev {
+                            f(prev_region, region);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn build_structure_contraints<'tcx>(
+    ty: ty::Ty<'tcx>,
+    prev: Option<ty::Region<'tcx>>,
+    tcx: TyCtxt<'tcx>,
+    infcx: &InferCtxt<'tcx>,
+    param_env: ParamEnv<'tcx>,
+) {
+}
+
 pub fn extract_constraints<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> EdgePatterns {
     let early_fn_sig = tcx.fn_sig(fn_did);
     let binder_fn_sig = early_fn_sig.instantiate_identity();
@@ -180,19 +232,30 @@ pub fn extract_constraints<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> EdgePatter
     let infcx = tcx.infer_ctxt().build();
     let mut folder = InfcxVarFolder::new(&infcx, tcx);
     let fn_sig = tcx.liberate_late_bound_regions(fn_did, binder_fn_sig);
-    let binder_with_free_vars = fn_sig.fold_with(&mut folder);
+    let fn_with_free_vars = fn_sig.fold_with(&mut folder);
 
     let res = infcx
         .at(&ObligationCause::dummy(), param_env)
-        .sub(infer::DefineOpaqueTypes::Yes, fn_sig, binder_with_free_vars)
+        .sub(infer::DefineOpaqueTypes::Yes, fn_sig, fn_with_free_vars)
         .unwrap();
     res.obligations.into_iter().for_each(|obligation| {
         rap_debug!("obligation: {obligation:?}");
     });
-    // TODO: add structure contraint to infcx
+
+    let mut f = |prev_region, region| {
+        let _ = infcx
+            .at(&ObligationCause::dummy(), param_env)
+            .sub(infer::DefineOpaqueTypes::Yes, region, prev_region)
+            .unwrap();
+    };
+
+    for input in fn_with_free_vars.inputs().iter() {
+        visit_structure_region_with(*input, None, tcx, &mut f);
+    }
+    visit_structure_region_with(fn_with_free_vars.output(), None, tcx, &mut f);
 
     // rap_debug!("binder: {binder_with_vars:?}");
-    rap_debug!("free binder: {binder_with_free_vars:?}");
+    rap_debug!("free binder: {fn_with_free_vars:?}");
     let region_constraint_data = infcx.take_and_reset_region_constraints();
     let mut map = HashMap::new();
     let mut temp_region_no = |region: ty::Region<'tcx>| -> usize {

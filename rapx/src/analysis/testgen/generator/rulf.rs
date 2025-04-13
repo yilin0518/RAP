@@ -48,7 +48,7 @@ pub fn rulf_algorithm<'tcx>(
     // 2. 起点入队并添加初始语句
     for start_api in api_starts {
         if let api_dep::DepNode::Api(def_id) = start_api {
-            let fn_sig = utils::jump_all_binders(def_id, tcx);
+            let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
             let mut args = Vec::new();
             for input_ty in fn_sig.inputs() {
                 let providers = cx.all_possible_providers(*input_ty);
@@ -88,7 +88,7 @@ pub fn rulf_algorithm<'tcx>(
                             continue;
                         }
                         // 6. 生成调用语句
-                        let fn_sig = utils::jump_all_binders(def_id, tcx);
+                        let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                         let mut args = Vec::new();
                         let mut satisfy_all_input = true;
                         for input_ty in fn_sig.inputs() {

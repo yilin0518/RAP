@@ -9,9 +9,9 @@ mod visitor;
 
 use crate::{rap_debug, rap_info};
 pub use graph::ApiDepGraph;
+pub use graph::{DepEdge, DepNode};
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
-pub use graph::{DepNode, DepEdge};
 use visitor::FnVisitor;
 
 pub struct ApiDep<'tcx> {

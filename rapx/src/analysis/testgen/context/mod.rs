@@ -20,14 +20,19 @@ pub trait HoldTyCtxt<'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx>;
 }
 
-pub trait StmtBody {
+pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
     fn stmts(&self) -> &[Stmt];
-    fn add_stmt(&mut self, stmt: Stmt);
-    fn lift_mutability(&mut self, var: Var, mutability: ty::Mutability);
-    fn var_mutability(&self, var: Var) -> ty::Mutability;
-}
 
-pub trait Context<'tcx>: StmtBody + HoldTyCtxt<'tcx> {
+    fn add_stmt(&mut self, stmt: Stmt);
+
+    fn lift_mutability(&mut self, var: Var, mutability: ty::Mutability);
+
+    fn var_mutability(&self, var: Var) -> ty::Mutability;
+
+    fn ref_region(&self, var: Var) -> ty::Region<'tcx> {
+        self.tcx().lifetimes.re_erased
+    }
+
     fn complexity(&self) -> usize {
         self.stmts().len()
     }
@@ -44,7 +49,13 @@ pub trait Context<'tcx>: StmtBody + HoldTyCtxt<'tcx> {
         if let ty::Ref(_, inner_ty, mutability) = ty.kind() {
             match (inner_ty.kind(), mutability) {
                 (TyKind::Str, ty::Mutability::Not) => {
-                    var = self.mk_var(ty, true);
+                    let new_ty = Ty::new_ref(
+                        self.tcx(),
+                        self.tcx().lifetimes.re_static,
+                        *inner_ty,
+                        *mutability,
+                    );
+                    var = self.mk_var(new_ty, true);
                     self.add_stmt(Stmt::input(var));
                 }
                 (TyKind::Str, ty::Mutability::Mut) => {
@@ -66,7 +77,7 @@ pub trait Context<'tcx>: StmtBody + HoldTyCtxt<'tcx> {
 
     fn add_call_stmt(&mut self, mut call: ApiCall) -> Var {
         let tcx = self.tcx();
-        let fn_sig = utils::jump_all_binders(call.fn_did, tcx);
+        let fn_sig = utils::fn_sig_without_binders(call.fn_did, tcx);
         let output_ty = fn_sig.output();
         for idx in 0..fn_sig.inputs().len() {
             let arg = call.args[idx];
@@ -83,15 +94,11 @@ pub trait Context<'tcx>: StmtBody + HoldTyCtxt<'tcx> {
         var
     }
 
-    fn ref_region_ty(&self, var: Var) -> ty::Region<'tcx> {
-        self.tcx().lifetimes.re_erased
-    }
-
     fn add_ref_stmt(&mut self, var: Var, mutability: ty::Mutability) -> Var {
         self.lift_mutability(var, mutability);
         let ref_ty = ty::Ty::new_ref(
             self.tcx(),
-            self.ref_region_ty(var),
+            self.ref_region(var),
             self.type_of(var),
             mutability,
         );
@@ -170,7 +177,7 @@ impl<'tcx> ContextBase<'tcx> {
     }
 }
 
-impl<'tcx> StmtBody for ContextBase<'tcx> {
+impl<'tcx> Context<'tcx> for ContextBase<'tcx> {
     fn stmts(&self) -> &[Stmt] {
         &self.stmts
     }
@@ -186,9 +193,7 @@ impl<'tcx> StmtBody for ContextBase<'tcx> {
     fn var_mutability(&self, var: Var) -> ty::Mutability {
         *self.var_is_mut.get(&var).unwrap_or(&ty::Mutability::Not)
     }
-}
 
-impl<'tcx> Context<'tcx> for ContextBase<'tcx> {
     fn available_values(&self) -> &HashSet<Var> {
         &self.available
     }

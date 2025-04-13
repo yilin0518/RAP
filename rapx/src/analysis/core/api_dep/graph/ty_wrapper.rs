@@ -11,7 +11,7 @@ pub struct TyWrapper<'tcx> {
     lifetime_map: Vec<Lifetime>,
 }
 
-impl <'tcx>TyWrapper<'tcx>{
+impl<'tcx> TyWrapper<'tcx> {
     pub fn ty(&self) -> Ty<'tcx> {
         self.ty
     }

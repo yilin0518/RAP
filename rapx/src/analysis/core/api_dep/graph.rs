@@ -14,7 +14,6 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
-
 type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
     graph: InnerGraph<'tcx>,
@@ -34,7 +33,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         ApiDepGraph {
             graph: Graph::new(),
             node_indices: HashMap::new(),
-            pub_only:pub_only,
+            pub_only: pub_only,
         }
     }
 

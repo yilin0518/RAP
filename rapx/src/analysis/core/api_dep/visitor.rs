@@ -4,7 +4,7 @@ use crate::rap_debug;
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{FnKind, Visitor},
-    BodyId, FnDecl, BodyOwnerKind,
+    BodyId, BodyOwnerKind, FnDecl,
 };
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
@@ -76,7 +76,7 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         id: LocalDefId,
     ) -> Self::Result {
         if self.graph.is_pub_only_api() && !is_api_public(id, self.tcx) {
-            return ;
+            return;
         }
         let fn_def_id = id.to_def_id();
         self.fn_cnt += 1;

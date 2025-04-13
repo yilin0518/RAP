@@ -1,20 +1,19 @@
 pub mod input;
 
-use super::context::{Context, ContextBase, StmtBody};
+use super::context::Context;
 use super::context::{Stmt, StmtKind, Var};
-use input::{InputGen, SillyInputGen};
-use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Display};
-
-use chrono::format;
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
-
+use input::InputGen;
+use rustc_middle::ty::{self, Ty, TyCtxt};
 pub struct SynOption {
     pub crate_name: String,
 }
 
 pub trait Synthesizer<'tcx> {
     fn syn<C: Context<'tcx>>(&mut self, cx: C, tcx: TyCtxt<'tcx>) -> String;
+}
+
+fn debug_state() -> bool {
+    true
 }
 
 pub struct FuzzDriverSynImpl<I: InputGen> {
@@ -30,9 +29,12 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
     fn stmt_kind_str<'tcx>(&mut self, stmt: &Stmt, cx: &impl Context<'tcx>) -> String {
         match stmt.kind() {
             StmtKind::Call(call) => {
+                let args = cx.tcx().generics_of(call.fn_did()).clone();
                 format!(
                     "{}({})",
-                    cx.tcx().def_path_str(call.fn_did),
+                    cx.tcx()
+                        .def_path(call.fn_did())
+                        .to_filename_friendly_no_crate(),
                     call.args
                         .iter()
                         .map(|arg| arg.to_string())
@@ -59,17 +61,10 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
     }
 
     fn ty_str<'tcx>(&self, ty: Ty<'tcx>) -> String {
-        if ty.is_slice(){
-            if let TyKind::Slice(inner_ty) = ty.kind(){
-                format!("[{}; 3]", self.ty_str(*inner_ty))
-            }
-            else{
-                format!("{}", ty)
-            }
+        if debug_state() {
+            return format!("{:?}", ty);
         }
-        else{
-            format!("{}", ty)
-        }
+        format!("{}", ty)
     }
 
     fn stmt_str<'tcx>(&mut self, stmt: Stmt, cx: &impl Context<'tcx>) -> String {
@@ -81,7 +76,11 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                 "let {}{}: {} = {};",
                 cx.var_mutability(var).prefix_str(),
                 self.var_str(var),
-                self.ty_str(cx.tcx().erase_regions(var_ty)),
+                self.ty_str(if !debug_state() {
+                    cx.tcx().erase_regions(var_ty)
+                } else {
+                    var_ty
+                }),
                 stmt_str
             )
         } else {

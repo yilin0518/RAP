@@ -9,7 +9,7 @@ use crate::analysis::core::{alias, api_dep};
 use crate::{rap_debug, rap_info};
 use context::ContextBase;
 use generator::ltgen::context::LtContext;
-use generator::ltgen::LtGenBuilder;
+use generator::ltgen::{initialize_subgraph_map, LtGenBuilder};
 use generator::rulf;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
@@ -28,9 +28,14 @@ impl<'tcx> Testgen<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Testgen<'tcx> {
         Testgen { tcx }
     }
+
+    pub fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
     pub fn start(&self) {
-        let mut _api_dep_graph = api_dep::ApiDep::new(self.tcx).start(true);
-        let mut alias_analysis = alias::mop::MopAlias::new(self.tcx);
+        let mut _api_dep_graph = api_dep::ApiDep::new(self.tcx()).start(true);
+        let mut alias_analysis = alias::mop::MopAlias::new(self.tcx());
         let alias_map = alias_analysis.start();
 
         rap_debug!("result count = {}", alias_map.len());
@@ -52,12 +57,15 @@ impl<'tcx> Testgen<'tcx> {
         rulf::rulf_algorithm(self.tcx, &mut _api_dep_graph, 3, &mut cx, &mut rng);
         // for stmt in cx.stmts(){
         //     rap_info!("stmt: {:?}", stmt);
-        // }   
-        
-        // let mut lt_gen = LtGenBuilder::new(self.tcx).max_complexity(10).build();
-        // let mut cx = LtContext::new(self.tcx);
-        // lt_gen.gen_in_place(&mut cx);
-        // cx.debug_constraint();
+        // }
+
+        let mut lt_gen = LtGenBuilder::new(self.tcx, alias_map)
+            .max_complexity(10)
+            .build();
+        let subgraph_map = initialize_subgraph_map(self.tcx());
+        let mut cx = LtContext::new(self.tcx, &subgraph_map);
+        // lt_gen.check_all_vulnerable_api();
+        lt_gen.gen_in_place(&mut cx);
         // build option
         let option = SynOption {
             crate_name: local_crate_name.to_string(),

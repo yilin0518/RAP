@@ -56,7 +56,7 @@ pub fn rulf_algorithm<'tcx, R: Rng>(
     // 2. start node push to queue
     for start_api in api_starts {
         if let api_dep::DepNode::Api(def_id) = start_api {
-            let fn_sig = utils::jump_all_binders(def_id, tcx);
+            let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
             let mut args = Vec::new();
             for input_ty in fn_sig.inputs() {
                 let providers = cx.all_possible_providers(*input_ty);
@@ -104,7 +104,7 @@ pub fn rulf_algorithm<'tcx, R: Rng>(
                 // 处理未访问的消费 API
                 for consumer_api in unvisited_consumers {
                     if let api_dep::DepNode::Api(def_id) = consumer_api {
-                        let fn_sig = utils::jump_all_binders(def_id, tcx);
+                        let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                         let mut param_providers: Vec<Vec<_>> = Vec::new();
                         let mut satisfy_all_input = true;
                         for input_ty in fn_sig.inputs() {
@@ -192,7 +192,7 @@ fn backward_search<'tcx, R: Rng>(
     tcx: TyCtxt<'tcx>,
 ) -> bool {
     if let api_dep::DepNode::Api(def_id) = target_api {
-        let fn_sig = utils::jump_all_binders(*def_id, tcx);
+        let fn_sig = utils::fn_sig_without_binders(*def_id, tcx);
         let mut vars = Vec::new(); // 存储参数使用的变量
         let mut dependency_seqs = Vec::new(); // 存储每个参数的依赖序列
 
@@ -259,7 +259,7 @@ fn seq2call<'tcx, R: Rng>(seq: &Vec<DefId>, cx: &mut ContextBase<'tcx>, rng: &mu
     let mut ret_var:Option<Var> = None;
     // 遍历 seq 中的每个 DefId，依次生成调用
     for &def_id in seq {
-        let fn_sig = utils::jump_all_binders(def_id, tcx);
+        let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
         let mut args = Vec::new();
 
         // 为每个输入类型生成参数

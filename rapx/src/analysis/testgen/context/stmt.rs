@@ -14,6 +14,12 @@ impl Display for Var {
     }
 }
 
+impl Var {
+    pub fn unique_id(&self) -> usize {
+        self.0
+    }
+}
+
 pub static DUMMY_INPUT_VAR: Var = Var(0, true);
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
@@ -89,27 +95,4 @@ impl Stmt {
             place,
         }
     }
-
-    // pub fn split(idx: usize, args: Vec<Var>, output_ty: Ty<'tcx>) -> StmtRef<'tcx> {
-    //     Rc::new(Stmt {
-    //         kind: StmtKind::Split(idx, args),
-    //         retval: None,
-    //         output_ty,
-    //     })
-    // }
-
-    // pub fn concat(args: Vec<Var>, output_ty: Ty<'tcx>) -> StmtRef<'tcx> {
-    //     Rc::new(Stmt {
-    //         kind: StmtKind::Concat(args),
-    //         retval: None,
-    //         output_ty,
-    //     })
-    // }
-
-    // pub fn deref_expr(expr: StmtRef<'tcx>, output_ty: Ty<'tcx>) -> StmtRef<'tcx> {
-    //     Rc::new(Stmt {
-    //         kind: StmtKind::Deref(Box::new(expr)),
-    //         output_ty,
-    //     })
-    // }
 }

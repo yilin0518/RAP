@@ -3,7 +3,9 @@ pub mod input;
 use super::context::Context;
 use super::context::{Stmt, StmtKind, Var};
 use input::InputGen;
+use rustc_hir::definitions::{DefPath, DefPathData};
 use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_span::Symbol;
 pub struct SynOption {
     pub crate_name: String,
 }
@@ -13,7 +15,7 @@ pub trait Synthesizer<'tcx> {
 }
 
 fn debug_state() -> bool {
-    true
+    false
 }
 
 pub struct FuzzDriverSynImpl<I: InputGen> {
@@ -29,12 +31,25 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
     fn stmt_kind_str<'tcx>(&mut self, stmt: &Stmt, cx: &impl Context<'tcx>) -> String {
         match stmt.kind() {
             StmtKind::Call(call) => {
-                let args = cx.tcx().generics_of(call.fn_did()).clone();
+                // let generics = cx.tcx().generics_of(call.fn_did());
+                let tcx = cx.tcx();
+                let mut new_args = Vec::new();
+                let args = ty::GenericArgs::identity_for_item(cx.tcx(), call.fn_did());
+
+                for arg in args.iter() {
+                    let new_arg = match arg.unpack() {
+                        ty::GenericArgKind::Lifetime(_) => {
+                            ty::GenericArg::from(tcx.lifetimes.re_erased)
+                        }
+                        _ => arg,
+                    };
+                    new_args.push(new_arg);
+                }
+
                 format!(
                     "{}({})",
                     cx.tcx()
-                        .def_path(call.fn_did())
-                        .to_filename_friendly_no_crate(),
+                        .def_path_str_with_args(call.fn_did(), tcx.mk_args(&new_args)),
                     call.args
                         .iter()
                         .map(|arg| arg.to_string())

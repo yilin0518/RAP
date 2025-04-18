@@ -1,30 +1,65 @@
 use std::hash::Hash;
+use std::ops::Deref;
 
-use super::lifetime::Lifetime;
-use rustc_middle::ty::{self, Ty, TyCtxt};
+use super::dep_edge::TransformKind;
+use rustc_infer::infer::TyCtxtInferExt;
+use rustc_infer::traits::{Obligation, ObligationCause};
+use rustc_middle::traits;
+use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt};
+use rustc_trait_selection::infer::InferCtxtExt;
+use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
 
-/// TyWrapper is a wrapper of rustc_middle::ty::Ty,
-/// for the purpose of attaching custom lifetime information to Ty.
-#[derive(Clone, Eq, Debug)]
+/// TyWrapper is a wrapper of rustc_middle::ty::Ty
+#[derive(Clone, Copy, Eq, Debug)]
 pub struct TyWrapper<'tcx> {
-    ty: ty::Ty<'tcx>,
-    lifetime_map: Vec<Lifetime>,
+    ty: Ty<'tcx>,
 }
 
 impl<'tcx> TyWrapper<'tcx> {
     pub fn ty(&self) -> Ty<'tcx> {
         self.ty
     }
-    pub fn lifetime_map(&self) -> &Vec<Lifetime> {
-        &self.lifetime_map
+
+    // pub fn into_deref(&self, tcx: TyCtxt<'tcx>) -> Option<TyWrapper<'tcx>> {
+    //     let param_env = ParamEnv::reveal_all();
+    //     let deref_trait = tcx.lang_items().deref_trait()?;
+    //     let infcx = tcx.infer_ctxt().build();// Deref have no generic args
+    //     let deref_trait = ty::TraitRef::identity(tcx, deref_trait);
+    //     let ob = Obligation::new(tcx, ObligationCause::dummy(), param_env, deref_trait);
+    //     infcx.evaluate_obligation(ob);
+    //     None
+    // }
+
+    pub fn into_ref(&self, tcx: TyCtxt<'tcx>) -> TyWrapper<'tcx> {
+        Ty::new_ref(tcx, tcx.lifetimes.re_erased, self.ty, ty::Mutability::Not).into()
+    }
+
+    pub fn into_ref_mut(&self, tcx: TyCtxt<'tcx>) -> TyWrapper<'tcx> {
+        Ty::new_ref(tcx, tcx.lifetimes.re_erased, self.ty, ty::Mutability::Mut).into()
+    }
+
+    pub fn transform(&self, kind: TransformKind, tcx: TyCtxt<'tcx>) -> TyWrapper<'tcx> {
+        match kind {
+            TransformKind::Ref(mutability) => {
+                let ty = match mutability {
+                    ty::Mutability::Not => self.into_ref(tcx),
+                    ty::Mutability::Mut => self.into_ref_mut(tcx),
+                };
+                ty
+            }
+            TransformKind::Box => {
+                todo!()
+            }
+            TransformKind::Deref => {
+                todo!()
+            }
+        }
     }
 }
 
 impl<'tcx> From<Ty<'tcx>> for TyWrapper<'tcx> {
     fn from(ty: ty::Ty<'tcx>) -> TyWrapper<'tcx> {
-        // TODO: initialize lifetime_map
-        let lifetime_map = Vec::new();
-        TyWrapper { ty, lifetime_map }
+        TyWrapper { ty }
     }
 }
 

@@ -45,4 +45,13 @@ impl<'tcx> DepNode<'tcx> {
     ) -> DepNode<'tcx> {
         DepNode::GenericParamDef(fn_def_id, index, name.to_string(), is_lifetime)
     }
+    pub fn is_ty(&self) -> bool {
+        matches!(self, DepNode::Ty(_))
+    }
+    pub fn is_api(&self) -> bool {
+        matches!(self, DepNode::Api(_))
+    }
+    pub fn is_generic(&self) -> bool {
+        matches!(self, DepNode::GenericParamDef(..))
+    }
 }

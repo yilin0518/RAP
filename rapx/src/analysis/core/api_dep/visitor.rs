@@ -75,7 +75,7 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         span: Span,
         id: LocalDefId,
     ) -> Self::Result {
-        if self.graph.is_pub_only_api() && !is_api_public(id, self.tcx) {
+        if self.graph.pub_only() && !is_api_public(id, self.tcx) {
             return;
         }
         let fn_def_id = id.to_def_id();
@@ -88,16 +88,16 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         let fn_sig = self
             .tcx
             .liberate_late_bound_regions(fn_def_id, binder_fn_sig);
-        rap_debug!("visit {}", fn_sig);
+        // rap_debug!("visit {}", fn_sig);
 
         // add generic param def to graph
         // NOTE: generics_of query only return early bound generics
         let generics = self.tcx.generics_of(fn_def_id);
         let early_generic_count = generics.count();
-        rap_debug!("early bound generic count = {}", early_generic_count);
+        // rap_debug!("early bound generic count = {}", early_generic_count);
         for i in 0..early_generic_count {
             let generic_param_def = generics.param_at(i, self.tcx);
-            rap_debug!("early bound generic#{i}: {:?}", generic_param_def);
+            // rap_debug!("early bound generic#{i}: {:?}", generic_param_def);
             let node_index = self.graph.get_node(DepNode::generic_param_def(
                 fn_def_id,
                 i,
@@ -109,12 +109,12 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         }
 
         // add late bound generic
-        rap_debug!(
-            "late bound generic count = {}",
-            binder_fn_sig.bound_vars().len()
-        );
+        // rap_debug!(
+        //     "late bound generic count = {}",
+        //     binder_fn_sig.bound_vars().len()
+        // );
         for (i, var) in binder_fn_sig.bound_vars().iter().enumerate() {
-            rap_debug!("bound var#{i}: {var:?}");
+            // rap_debug!("bound var#{i}: {var:?}");
             let (name, is_lifetime) = get_bound_var_attr(var);
             let node_index = self.graph.get_node(DepNode::generic_param_def(
                 fn_def_id,
@@ -136,7 +136,6 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         let output_ty = fn_sig.output();
         let output_node = self.graph.get_node(DepNode::ty(output_ty));
         self.graph.add_edge(api_node, output_node, DepEdge::ret());
-        rap_debug!("exit visit_fn");
     }
 }
 

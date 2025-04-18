@@ -12,10 +12,7 @@ use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
-use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::mir::tcx;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
-use rustc_span::Span;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -54,7 +51,7 @@ impl<'tcx, 'a> LtGenBuilder<'tcx, 'a, ThreadRng> {
 }
 
 impl<'tcx, 'a, R: Rng> LtGenBuilder<'tcx, 'a, R> {
-    pub fn build(mut self) -> LtGen<'tcx, 'a, R> {
+    pub fn build(self) -> LtGen<'tcx, 'a, R> {
         LtGen::new(self.tcx, self.alias_map, self.rng, self.max_complexity)
     }
 

@@ -94,6 +94,25 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
         var
     }
 
+    // no need to check input, because all inputs exist, all inputs are not primitive already remove from available set
+    fn add_call_stmt_all_exist(&mut self, mut call: ApiCall) -> Var {
+        let tcx = self.tcx();
+        let fn_sig = utils::fn_sig_without_binders(call.fn_did, tcx);
+        let output_ty = fn_sig.output();
+        for idx in 0..fn_sig.inputs().len() {
+            let arg = call.args[idx];
+            let input_ty = fn_sig.inputs()[idx];
+            if arg == DUMMY_INPUT_VAR {
+                let var = self.add_input_stmt(input_ty);
+                call.args[idx] = var;
+            }
+        }
+        let var = self.mk_var(output_ty, false);
+        let stmt = Stmt::call(call, var);
+        self.add_stmt(stmt);
+        var
+    }
+
     fn add_ref_stmt(&mut self, var: Var, mutability: ty::Mutability) -> Var {
         self.lift_mutability(var, mutability);
         let ref_ty = ty::Ty::new_ref(

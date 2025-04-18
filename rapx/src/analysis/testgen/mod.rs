@@ -59,13 +59,13 @@ impl<'tcx> Testgen<'tcx> {
         //     rap_info!("stmt: {:?}", stmt);
         // }
 
-        let mut lt_gen = LtGenBuilder::new(self.tcx, alias_map)
-            .max_complexity(10)
-            .build();
-        let subgraph_map = initialize_subgraph_map(self.tcx());
-        let mut cx = LtContext::new(self.tcx, &subgraph_map);
-        // lt_gen.check_all_vulnerable_api();
-        lt_gen.gen_in_place(&mut cx);
+        // let mut lt_gen = LtGenBuilder::new(self.tcx, alias_map)
+        //     .max_complexity(10)
+        //     .build();
+        // let subgraph_map = initialize_subgraph_map(self.tcx());
+        // let mut cx = LtContext::new(self.tcx, &subgraph_map);
+        // // lt_gen.check_all_vulnerable_api();
+        // lt_gen.gen_in_place(&mut cx);
         // build option
         let option = SynOption {
             crate_name: local_crate_name.to_string(),

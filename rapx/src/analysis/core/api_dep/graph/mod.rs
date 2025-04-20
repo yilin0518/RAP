@@ -1,24 +1,26 @@
 mod dep_edge;
 mod dep_node;
-mod lifetime;
 mod ty_wrapper;
 
+use crate::analysis::core::api_dep::visitor::FnVisitor;
 use crate::utils::fs::rap_create_file;
-pub use dep_edge::DepEdge;
+pub use dep_edge::{DepEdge, TransformKind};
 pub use dep_node::{desc_str, DepNode};
-use petgraph::dot::{Config, Dot};
+use petgraph::dot;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{self, TyCtxt};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+use ty_wrapper::TyWrapper;
 
 type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
     graph: InnerGraph<'tcx>,
     node_indices: HashMap<DepNode<'tcx>, NodeIndex>,
-    pub_only: bool,
+    config: Config,
+    tcx: TyCtxt<'tcx>,
 }
 
 pub struct Statistics {
@@ -28,17 +30,80 @@ pub struct Statistics {
     pub edge_cnt: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Config {
+    pub pub_only: bool,
+}
+
 impl<'tcx> ApiDepGraph<'tcx> {
-    pub fn new(pub_only: bool) -> ApiDepGraph<'tcx> {
+    pub fn new(config: Config, tcx: TyCtxt<'tcx>) -> ApiDepGraph<'tcx> {
         ApiDepGraph {
             graph: Graph::new(),
             node_indices: HashMap::new(),
-            pub_only: pub_only,
+            config,
+            tcx,
         }
     }
 
-    pub fn is_pub_only_api(&self) -> bool {
-        self.pub_only
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    pub fn build(&mut self) {
+        // 1. scan
+        let tcx = self.tcx();
+        let mut fn_visitor = FnVisitor::new(tcx, self);
+        tcx.hir().visit_all_item_likes_in_crate(&mut fn_visitor);
+
+        // 2. add transform node
+        self.add_transform_edges();
+
+        // 3. prune redundant nodes
+        self.prune_redundant_nodes();
+    }
+
+    pub fn add_transform_edges(&mut self) {
+        // let mut transforms =
+        for node_index in self.graph.node_indices() {
+            if let DepNode::Ty(ty) = self.graph[node_index] {
+                self.add_possible_transform::<3>(ty, 0);
+            }
+        }
+    }
+
+    fn add_possible_transform<const MAX_DEPTH: usize>(
+        &mut self,
+        current_ty: TyWrapper<'tcx>,
+        depth: usize,
+    ) -> Option<NodeIndex> {
+        if depth > 0 {
+            let index = self.get_node_index_by_node(DepNode::Ty(current_ty));
+            if index.is_some() {
+                return index;
+            }
+        }
+
+        if depth >= MAX_DEPTH {
+            return None;
+        }
+
+        let mut ret = None;
+
+        for kind in TransformKind::all() {
+            let new_ty = current_ty.transform(*kind, self.tcx());
+            if let Some(next_index) = self.add_possible_transform::<MAX_DEPTH>(new_ty, depth + 1) {
+                let current_index = self.get_node(DepNode::Ty(current_ty));
+                self.add_edge_once(current_index, next_index, DepEdge::transform(*kind));
+                ret = Some(current_index);
+            }
+        }
+        ret
+    }
+
+    pub fn prune_redundant_nodes(&mut self) {}
+
+    pub fn pub_only(&self) -> bool {
+        self.config.pub_only
     }
 
     pub fn inner_graph(&self) -> &InnerGraph<'tcx> {
@@ -81,6 +146,10 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
     }
 
+    pub fn get_node_index_by_node(&self, node: DepNode<'tcx>) -> Option<NodeIndex> {
+        self.node_indices.get(&node).map(|index| *index)
+    }
+
     pub fn add_edge(&mut self, src: NodeIndex, dst: NodeIndex, edge: DepEdge) {
         self.graph.add_edge(src, dst, edge);
     }
@@ -98,6 +167,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
                 let color = match edge_ref.weight() {
                     DepEdge::Arg(_) | DepEdge::Ret => "black",
                     DepEdge::Fn2Generic => "grey",
+                    DepEdge::Transform(_) => "darkorange",
                 };
                 format!("label=\"{}\", color = {}", edge_ref.weight(), color)
             };
@@ -112,9 +182,9 @@ impl<'tcx> ApiDepGraph<'tcx> {
                 + ", shape=box"
         };
 
-        let dot = Dot::with_attr_getters(
+        let dot = dot::Dot::with_attr_getters(
             &self.graph,
-            &[Config::NodeNoLabel, Config::EdgeNoLabel],
+            &[dot::Config::NodeNoLabel, dot::Config::EdgeNoLabel],
             &get_edge_attr,
             &get_node_attr,
         );

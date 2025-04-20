@@ -22,10 +22,10 @@ impl<'tcx> ApiDep<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> ApiDep<'tcx> {
         ApiDep { tcx }
     }
-    pub fn start(&self, all_pub_api: bool) -> ApiDepGraph<'tcx> {
+    pub fn start(&self, pub_only: bool) -> ApiDepGraph<'tcx> {
         let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let local_crate_type = self.tcx.crate_types()[0];
-        let graph_all_pub_api = if all_pub_api {
+        let graph_all_pub_api = if pub_only {
             "all APIs including private APIs"
         } else {
             "only public APIs"
@@ -36,13 +36,9 @@ impl<'tcx> ApiDep<'tcx> {
             local_crate_type,
             graph_all_pub_api,
         );
-
-        let mut api_graph = ApiDepGraph::new(all_pub_api);
-        let mut fn_visitor = FnVisitor::new(self.tcx, &mut api_graph);
-        self.tcx
-            .hir()
-            .visit_all_item_likes_in_crate(&mut fn_visitor);
-        rap_debug!("api-dep find {} APIs.", fn_visitor.fn_cnt());
+        let config = graph::Config { pub_only };
+        let mut api_graph = ApiDepGraph::new(config, self.tcx);
+        api_graph.build();
 
         let statistics = api_graph.statistics();
         // print all statistics

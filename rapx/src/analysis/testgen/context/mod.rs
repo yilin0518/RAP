@@ -86,6 +86,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
             if arg == DUMMY_INPUT_VAR {
                 let var = self.add_input_stmt(input_ty);
                 call.args[idx] = var;
+                self.remove_var_from_available(var);
             }
         }
         let var = self.mk_var(output_ty, false);
@@ -105,6 +106,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
             if arg == DUMMY_INPUT_VAR {
                 let var = self.add_input_stmt(input_ty);
                 call.args[idx] = var;
+                self.remove_var_from_available(var);
             }
         }
         let var = self.mk_var(output_ty, false);

@@ -76,12 +76,13 @@ impl FuzzProjectGenerator {
         // create the new project
         rap_info!("Creating new project: {}", crate_name);
         let mut command = Command::new("cargo");
-        command.arg("new")
-               .arg(&crate_name)
-               .current_dir(&output_dir)
-               .stdout(Stdio::piped())
-               .stderr(Stdio::piped());
-        
+        command
+            .arg("new")
+            .arg(&crate_name)
+            .current_dir(&output_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
         let process = command.spawn()?;
         let output = process.wait_with_output()?;
 
@@ -91,7 +92,7 @@ impl FuzzProjectGenerator {
                 io::ErrorKind::Other,
                 format!("Failed to create cargo project: {}", error),
             ));
-        } 
+        }
 
         // write the Rust code to main.rs
         let main_path = crate_path.join("src").join("main.rs");
@@ -137,48 +138,49 @@ impl FuzzProjectGenerator {
         rap_info!("Running fuzz driver project at: {}", path.display());
         let crate_path = path.clone();
         let verbose = self.option.verbose();
-        
+
         thread::spawn(move || {
             let mut command = Command::new("cargo");
-            command.arg("run")
-                   .current_dir(&crate_path)
-                   .stdout(Stdio::piped())
-                   .stderr(Stdio::piped());
-            
+            command
+                .arg("run")
+                .current_dir(&crate_path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
 
             if verbose {
                 command.arg("--verbose");
-                rap_info!("Executing: cargo run --verbose (in {})", crate_path.display());
+                rap_info!(
+                    "Executing: cargo run --verbose (in {})",
+                    crate_path.display()
+                );
             } else {
                 rap_info!("Executing: cargo run (in {})", crate_path.display());
             }
-            
+
             match command.spawn() {
-                Ok(process) => {
-                    match process.wait_with_output() {
-                        Ok(output) => {
-                            let status = output.status;
-                            let stdout = String::from_utf8_lossy(&output.stdout);
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            
-                            if status.success() {
-                                rap_info!("Project executed successfully");
-                                if !stdout.is_empty() {
-                                    rap_info!("Standard output:\n{}", stdout);
-                                }
-                            } else {
-                                rap_info!("Project execution failed with status: {}", status);
-                                if !stderr.is_empty() {
-                                    rap_info!("Error output:\n{}", stderr);
-                                }
-                                if !stdout.is_empty() && verbose {
-                                    rap_info!("Standard output:\n{}", stdout);
-                                }
+                Ok(process) => match process.wait_with_output() {
+                    Ok(output) => {
+                        let status = output.status;
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+
+                        if status.success() {
+                            rap_info!("Project executed successfully");
+                            if !stdout.is_empty() {
+                                rap_info!("Standard output:\n{}", stdout);
                             }
-                        },
-                        Err(e) => {
-                            rap_info!("Failed to get command output: {}", e);
+                        } else {
+                            rap_info!("Project execution failed with status: {}", status);
+                            if !stderr.is_empty() {
+                                rap_info!("Error output:\n{}", stderr);
+                            }
+                            if !stdout.is_empty() && verbose {
+                                rap_info!("Standard output:\n{}", stdout);
+                            }
                         }
+                    }
+                    Err(e) => {
+                        rap_info!("Failed to get command output: {}", e);
                     }
                 },
                 Err(e) => {
@@ -186,7 +188,7 @@ impl FuzzProjectGenerator {
                 }
             }
         });
-        
+
         Ok(())
     }
 }

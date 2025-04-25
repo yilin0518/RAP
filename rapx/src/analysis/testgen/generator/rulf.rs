@@ -27,9 +27,6 @@ impl Rulf {
     pub fn new() -> Self {
         Self { max_coverage: None }
     }
-    pub fn max_coverage(&self) -> Option<(i32, i32)> {
-        self.max_coverage
-    }
     fn find_api_starts<'tcx>(
         &self,
         graph: &api_dep::ApiDepGraph<'tcx>,
@@ -236,6 +233,7 @@ impl Rulf {
             }
         }
         self.max_coverage = Some((visited.len() as i32, all_api_nodes.len() as i32));
+        rap_info!("Use Rulf, Max coverage: {:?}", self.max_coverage);
     }
 
     fn backward_search<'tcx, R: Rng>(
@@ -388,6 +386,83 @@ impl Rulf {
             ret_var = Some(cx.add_call_stmt_all_exist(call));
         }
         ret_var
+    }
+    pub fn max_coverage<'tcx>(
+        &self,
+        graph: &mut api_dep::ApiDepGraph<'tcx>,
+        tcx: TyCtxt<'tcx>,
+    ) -> Option<(i32, i32)> {
+        // Get all API nodes
+        let all_api_nodes: HashSet<_> = graph
+            .inner_graph()
+            .node_references()
+            .filter_map(|(_, node)| {
+                if let api_dep::DepNode::Api(_) = node {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Initialize BFS
+        let mut queue = VecDeque::from(self.find_api_starts(graph, tcx));
+        let mut visited: HashSet<api_dep::DepNode<'tcx>> = HashSet::new();
+        let mut available_types: HashSet<Ty<'tcx>> = HashSet::new();
+
+        // BFS traversal
+        while let Some(current_api) = queue.pop_front() {
+            visited.insert(current_api.clone());
+            let current_idx = graph.get_node(current_api.clone());
+            if let api_dep::DepNode::Api(def_id) = current_api {
+                // Get the function signature
+                let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
+                // Add the return type to available types
+                available_types.insert(fn_sig.output());
+            }
+            // Find production edges (Ret)
+            let ret_edges = graph
+                .inner_graph()
+                .edges_directed(current_idx, Direction::Outgoing)
+                .filter(|e| matches!(e.weight(), DepEdge::Ret));
+
+            for ret_edge in ret_edges {
+                let ret_type_node = &graph.inner_graph()[ret_edge.target()];
+                if let api_dep::DepNode::Ty(ret_ty) = ret_type_node {
+                    // Find consumption edges (Arg)
+                    let consumer_edges = graph
+                        .inner_graph()
+                        .edges_directed(ret_edge.target(), Direction::Outgoing)
+                        .filter(|e| matches!(e.weight(), DepEdge::Arg(_)));
+
+                    for consumer_edge in consumer_edges {
+                        let consumer_api_idx = consumer_edge.target();
+                        let consumer_api = graph.inner_graph()[consumer_api_idx].clone();
+                        if let api_dep::DepNode::Api(def_id) = consumer_api {
+                            if !visited.contains(&consumer_api) {
+                                // Check if all input types are available
+                                let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
+                                let all_inputs_satisfied = fn_sig.inputs().iter().all(|input_ty| {
+                                    if is_fuzzable_ty(*input_ty, tcx) {
+                                        true
+                                    } else {
+                                        available_types.iter().any(|avail_ty| {
+                                            utils::is_ty_eq(*input_ty, *avail_ty, tcx)
+                                        })
+                                    }
+                                });
+
+                                if all_inputs_satisfied {
+                                    queue.push_back(consumer_api);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Some((visited.len() as i32, all_api_nodes.len() as i32))
     }
 }
 

@@ -257,7 +257,7 @@ impl Rulf {
                     // have providers in cx
                     let idx = rng.random_range(0..providers.len());
                     let var = providers[idx];
-                    cx.remove_var(var);
+                    cx.set_var_unavailable_unchecked(var);
                     //rap_info!("input_ty: {:?}, var: {:?} from providers", input_ty, var);
                     vars.push(var);
                     if let Some(api_seqs) = type_to_api_calls.get(input_ty) {
@@ -283,7 +283,7 @@ impl Rulf {
                         {
                             //rap_info!("input_ty: {:?}, var: {:?} from seq2call", input_ty, var);
                             vars.push(var);
-                            cx.remove_var(var);
+                            cx.set_var_unavailable_unchecked(var);
                             dependency_seqs.push(api_seq.clone());
                         } else {
                             return false;
@@ -372,7 +372,7 @@ impl Rulf {
                     // choose provider randomly
                     let idx = rng.random_range(0..providers.len());
                     let var = providers[idx];
-                    cx.remove_var(var);
+                    cx.set_var_unavailable_unchecked(var);
                     var
                 };
                 args.push(var);

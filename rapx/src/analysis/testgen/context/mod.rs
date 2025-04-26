@@ -39,7 +39,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
 
     fn mk_var(&mut self, ty: Ty<'tcx>, is_input: bool) -> Var;
 
-    fn remove_var(&mut self, var: Var);
+    fn set_var_unavailable_unchecked(&mut self, var: Var);
 
     fn type_of(&self, var: Var) -> Ty<'tcx>;
 
@@ -82,11 +82,11 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
         for idx in 0..fn_sig.inputs().len() {
             let arg = call.args[idx];
             let input_ty = fn_sig.inputs()[idx];
-            self.remove_var_from_available(arg);
+            self.set_var_unavailable(arg);
             if arg == DUMMY_INPUT_VAR {
                 let var = self.add_input_stmt(input_ty);
                 call.args[idx] = var;
-                self.remove_var_from_available(var);
+                self.set_var_unavailable(var);
             }
         }
         let var = self.mk_var(output_ty, false);
@@ -106,7 +106,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
             if arg == DUMMY_INPUT_VAR {
                 let var = self.add_input_stmt(input_ty);
                 call.args[idx] = var;
-                self.remove_var_from_available(var);
+                self.set_var_unavailable(var);
             }
         }
         let var = self.mk_var(output_ty, false);
@@ -117,26 +117,24 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
 
     fn add_ref_stmt(&mut self, var: Var, mutability: ty::Mutability) -> Var {
         self.lift_mutability(var, mutability);
+        self.set_var_unavailable(var);
+
         let ref_ty = ty::Ty::new_ref(
             self.tcx(),
             self.ref_region(var),
             self.type_of(var),
             mutability,
         );
-
         let new_var = self.mk_var(ref_ty, false);
         self.add_stmt(Stmt::ref_(new_var, var, mutability));
         new_var
     }
 
     // if the output_ty of expr does not implement Copy, we need to remove the expr from the available set
-    fn remove_var_from_available(&mut self, var: Var) -> bool {
+    fn set_var_unavailable(&mut self, var: Var) -> bool {
         let tcx = self.tcx();
-        if var == DUMMY_INPUT_VAR {
+        if var == DUMMY_INPUT_VAR || !self.available_values().contains(&var) {
             return false;
-        }
-        if !self.available_values().contains(&var) {
-            panic!("var {:?} not in available set", var);
         }
 
         let output_ty = self.type_of(var);
@@ -147,7 +145,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
             return false;
         }
 
-        self.remove_var(var);
+        self.set_var_unavailable_unchecked(var);
         true
     }
 
@@ -164,6 +162,31 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
             }
         }
         ret
+    }
+
+    fn mk_fn_sig(&self, stmt: &Stmt) -> ty::FnSig<'tcx> {
+        match stmt.kind() {
+            StmtKind::Call(call) => {
+                let tcx = self.tcx();
+                let fn_sig = utils::fn_sig_without_binders(call.fn_did(), tcx);
+                let var_ty = self.type_of(stmt.place());
+
+                // get actual vid of input in the pattern
+                let mut inputs = Vec::new();
+                for var in call.args() {
+                    let ty = self.type_of(*var);
+                    inputs.push(ty);
+                }
+                tcx.mk_fn_sig(
+                    inputs.into_iter(),
+                    var_ty,
+                    fn_sig.c_variadic,
+                    fn_sig.safety,
+                    fn_sig.abi,
+                )
+            }
+            _ => panic!("not a call"),
+        }
     }
 }
 
@@ -226,7 +249,7 @@ impl<'tcx> Context<'tcx> for ContextBase<'tcx> {
         next_var
     }
 
-    fn remove_var(&mut self, var: Var) {
+    fn set_var_unavailable_unchecked(&mut self, var: Var) {
         self.available.remove(&var);
     }
 

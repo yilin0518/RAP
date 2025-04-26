@@ -1,17 +1,9 @@
+use crate::rap_debug;
 use rustc_hir::{def_id::DefId, BodyOwnerKind};
-use rustc_infer::{
-    infer::TyCtxtInferExt,
-    traits::{Obligation, ObligationCause},
-};
 use rustc_middle::ty::{
     self, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable, TypeVisitor,
 };
-use rustc_trait_selection::{
-    infer::InferCtxtExt, traits::query::evaluate_obligation::InferCtxtExt as _,
-};
-use rustc_type_ir::Interner;
 
-use crate::{analysis::senryx::visitor, rap_debug};
 pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
     matches!(tcx.visibility(fn_def_id.into()), ty::Visibility::Public)
 }
@@ -41,8 +33,8 @@ pub fn is_ty_impl_copy<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     // let copy_pred = ty::TraitRef::new(tcx, copy_trait, vec![ty]);
     // let obligation = Obligation::new(tcx, ObligationCause::dummy(), param_env, copy_pred);
     // infcx.predicate_must_hold_modulo_regions(&obligation)
-
-    ty.is_copy_modulo_regions(tcx, param_env)
+    tcx.erase_regions(ty)
+        .is_copy_modulo_regions(tcx, param_env)
 }
 
 pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
@@ -134,14 +126,13 @@ impl PtrCheckResult {
             has_unsafe_ptr: self.has_unsafe_ptr || other.has_unsafe_ptr,
         }
     }
-}
 
-impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for PtrCheckResult {
-    fn visit_ty(&mut self, ty: ty::Ty) -> Self::Result {
-        rap_debug!("visit_ty: {:?}", ty);
-        self.has_any_ptr = self.has_any_ptr || ty.is_any_ptr();
-        self.has_unsafe_ptr = self.has_unsafe_ptr || ty.is_unsafe_ptr();
-        ty.visit_with(self)
+    pub fn has_ref(&self) -> bool {
+        self.has_any_ptr && !self.has_unsafe_ptr
+    }
+
+    pub fn has_unsafe_ptr(&self) -> bool {
+        self.has_unsafe_ptr
     }
 }
 

@@ -79,6 +79,8 @@ impl FuzzProjectGenerator {
         command
             .arg("new")
             .arg(&crate_name)
+            .arg("--vcs")
+            .arg("none")
             .current_dir(&output_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

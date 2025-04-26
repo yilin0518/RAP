@@ -33,8 +33,7 @@ pub fn is_ty_impl_copy<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     // let copy_pred = ty::TraitRef::new(tcx, copy_trait, vec![ty]);
     // let obligation = Obligation::new(tcx, ObligationCause::dummy(), param_env, copy_pred);
     // infcx.predicate_must_hold_modulo_regions(&obligation)
-    tcx.erase_regions(ty)
-        .is_copy_modulo_regions(tcx, param_env)
+    tcx.erase_regions(ty).is_copy_modulo_regions(tcx, param_env)
 }
 
 pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {

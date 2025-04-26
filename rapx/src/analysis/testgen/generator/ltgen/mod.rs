@@ -283,7 +283,10 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         let mut call_cnt = 0;
         while cx.complexity() < self.max_complexity {
             let hit = self.rng.borrow_mut().random_ratio(2, 3);
-            rap_info!("complexity = {}, coverage = x/y/z (current, estimated max, total)", cx.complexity());
+            rap_info!(
+                "complexity = {}, coverage = x/y/z (current, estimated max, total)",
+                cx.complexity()
+            );
 
             if hit {
                 if let Some(call) = self.choose_eligable_api(&mut cx) {

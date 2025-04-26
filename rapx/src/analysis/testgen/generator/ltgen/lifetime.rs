@@ -8,7 +8,7 @@ use rustc_hir::def_id::DefId;
 use rustc_infer::infer::region_constraints::Constraint;
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::ObligationCause;
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
+use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypeFoldable};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::io::Write;
@@ -330,9 +330,10 @@ pub fn extract_constraints<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> EdgePatter
         rap_debug!("obligation: {obligation:?}");
     });
 
+    let dummy = ObligationCause::dummy();
+    let at = infcx.at(&dummy, param_env);
     let mut f = |prev_region, region| {
-        let _ = infcx
-            .at(&ObligationCause::dummy(), param_env)
+        let _ = at
             .sub(infer::DefineOpaqueTypes::Yes, region, prev_region)
             .unwrap();
     };
@@ -374,6 +375,23 @@ pub fn extract_constraints<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> EdgePatter
         };
         subgraph.patterns.push(edge);
     }
+
+    // extract constraints from where clauses of Fn
+    let predicates = tcx.predicates_of(fn_did);
+    predicates.predicates.iter().for_each(|(pred, _)| {
+        if let Some(outlive_pred) = pred.as_region_outlives_clause() {
+            let outlive_pred = outlive_pred.skip_binder();
+            // lhs : rhs
+            let (lhs, rhs) = (outlive_pred.0, outlive_pred.1);
+
+            // build edge from rhs to lhs
+            subgraph.patterns.push(EdgePattern(
+                PatternNode::Temp(temp_region_no(rhs)),
+                PatternNode::Temp(temp_region_no(lhs)),
+            ));
+        }
+    });
+
     subgraph.named_region_num = folder.cnt();
     subgraph.temp_num = map.len();
     subgraph

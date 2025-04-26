@@ -3,6 +3,8 @@ mod generator;
 mod syn;
 mod utils;
 
+use std::path::{Path, PathBuf};
+
 use crate::analysis::core::{alias, api_dep};
 use crate::{rap_debug, rap_info};
 use context::ContextBase;
@@ -11,8 +13,9 @@ use generator::ltgen::{initialize_subgraph_map, LtGenBuilder};
 use generator::rulf;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
+use stable_mir::local_crate;
 use syn::input::SillyInputGen;
-use syn::project::{FuzzProjectGenerator, FuzzProjectOption};
+use syn::project::{CargoProjectBuilder, RsProjectOption};
 use syn::Synthesizer;
 use syn::{impls::FuzzDriverSynImpl, SynOption};
 /// Automatic Test Generator for detecting lifetime-related bugs
@@ -77,21 +80,19 @@ impl<'tcx> Testgen<'tcx> {
         // let output_path = Path::new("fuzz_driver.rs");
         // let mut file = File::create(output_path).unwrap();
         // file.write_all(rs_str.as_bytes()).unwrap();
-        let fuzz_config = FuzzProjectOption {
-            crate_name: local_crate_name.to_string(),
-            output_dir: None,
+        let fuzz_config = RsProjectOption {
+            tested_crate_name: local_crate_name.to_string(),
+            project_path: PathBuf::from(format!("../{}_fuzz_driver", local_crate_name)),
             verbose: true,
         };
-        let mut fuzz_gen = FuzzProjectGenerator::new(fuzz_config);
-        match fuzz_gen.generate(&rs_str) {
-            Ok(path) => {
-                rap_info!("Fuzz driver project generated at: {:?}", path);
-            }
+        let project_builder = CargoProjectBuilder::new(fuzz_config);
+        let project = match project_builder.build(&rs_str) {
+            Ok(t) => t,
             Err(e) => {
-                rap_info!("Failed to generate fuzz driver project: {}", e);
+                panic!("Failed to generate fuzz driver project: {}", e);
             }
-        }
-        match fuzz_gen.run() {
+        };
+        match project.run() {
             Ok(_) => {
                 rap_info!("Fuzz driver project run successfully");
             }

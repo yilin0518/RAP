@@ -1,8 +1,15 @@
-use crate::rap_debug;
-use rustc_hir::{def_id::DefId, BodyOwnerKind};
+use crate::{
+    analysis::core::api_dep::{ApiDepGraph, DepNode},
+    rap_debug,
+};
+use rustc_hir::{
+    def_id::{DefId, LOCAL_CRATE},
+    BodyOwnerKind,
+};
 use rustc_middle::ty::{
     self, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable, TypeVisitor,
 };
+use std::collections::VecDeque;
 
 pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
     matches!(tcx.visibility(fn_def_id.into()), ty::Visibility::Public)
@@ -174,4 +181,80 @@ pub fn ty_check_ptr<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> PtrCheckResult {
         }
         _ => res,
     }
+}
+
+/// only count local api
+pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>) -> (usize, usize) {
+    let inner_graph = graph.inner_graph();
+    let num_total = get_all_pub_apis(tcx).len();
+    let mut num_reachable = 0;
+    let mut reachable = vec![false; inner_graph.node_count()];
+    let mut worklist = VecDeque::from_iter(inner_graph.node_indices().filter(|index| {
+        match inner_graph[*index] {
+            DepNode::Ty(ty) => {
+                if is_fuzzable_ty(ty.ty(), tcx) {
+                    reachable[index.index()] = true;
+                    return true;
+                }
+            }
+            DepNode::Api(fn_did) => {
+                if fn_requires_monomorphization(fn_did, tcx) {
+                    return false;
+                }
+                if fn_sig_without_binders(fn_did, tcx).inputs().len() == 0 {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+
+        false
+    }));
+
+    // initialize queue with fuzzable type
+    while let Some(index) = worklist.pop_front() {
+        if let DepNode::Api(did) = inner_graph[index] {
+            if did.is_local() {
+                num_reachable += 1;
+            }
+        }
+
+        for next in inner_graph.neighbors(index) {
+            rap_debug!("[estimate_max_coverage] next: {:?}", inner_graph[next]);
+            match inner_graph[next] {
+                DepNode::Ty(_) => {
+                    if !reachable[next.index()] {
+                        reachable[next.index()] = true;
+                        worklist.push_back(next);
+                    }
+                }
+                DepNode::Api(fn_did) => {
+                    // regard the function as unreachalbe if it need monomorphization
+                    if fn_requires_monomorphization(fn_did, tcx) {
+                        continue;
+                    }
+
+                    if reachable[next.index()] {
+                        continue;
+                    }
+
+                    let mut flag = true;
+                    for nnbor in inner_graph.neighbors_directed(next, petgraph::Direction::Incoming)
+                    {
+                        if inner_graph[nnbor].is_ty() && !reachable[nnbor.index()] {
+                            flag = false;
+                            break;
+                        }
+                    }
+
+                    if flag {
+                        reachable[next.index()] = true;
+                        worklist.push_back(next);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    (num_reachable, num_total)
 }

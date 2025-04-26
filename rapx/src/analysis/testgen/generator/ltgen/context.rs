@@ -9,6 +9,7 @@ use crate::analysis::testgen::generator::ltgen::lifetime::{
 };
 use crate::analysis::testgen::utils;
 use crate::{rap_debug, rap_info, rap_warn};
+use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{self, GenericArg, Ty, TyCtxt, TyKind, TypeFoldable};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
@@ -25,6 +26,7 @@ pub struct LtContext<'tcx, 'a, 'b> {
     region_graph: RegionGraph,
     subgraph_map: &'b RegionSubgraphMap,
     alias_map: &'a FnAliasMap,
+    covered_api: HashSet<DefId>,
 }
 
 impl<'tcx, 'a, 'b> HoldTyCtxt<'tcx> for LtContext<'tcx, 'a, 'b> {
@@ -44,6 +46,8 @@ impl<'tcx, 'a, 'b> Context<'tcx> for LtContext<'tcx, 'a, 'b> {
         match stmt.kind() {
             StmtKind::Call(apicall) => {
                 let fn_did = apicall.fn_did();
+
+                self.covered_api.insert(fn_did);
 
                 let real_fn_sig = self.mk_fn_sig(&stmt);
                 let mut folder = RidExtractFolder::new(self.tcx());
@@ -140,6 +144,7 @@ impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
             region_graph: RegionGraph::new(),
             subgraph_map,
             alias_map,
+            covered_api: HashSet::new(),
         }
     }
 
@@ -267,5 +272,9 @@ impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
             }
             _ => false,
         }
+    }
+
+    pub fn num_covered_api(&self) -> usize {
+        self.covered_api.len()
     }
 }

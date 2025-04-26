@@ -278,40 +278,45 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         Some(vec.swap_remove(idx))
     }
 
-    pub fn gen(&mut self) -> LtContext<'tcx, 'a, '_> {
-        let mut cx = LtContext::new(self.tcx(), &self.subgraph_map, &self.alias_map);
-        let mut call_cnt = 0;
-        while cx.complexity() < self.max_complexity {
-            let hit = self.rng.borrow_mut().random_ratio(2, 3);
-            rap_info!(
-                "complexity = {}, coverage = x/y/z (current, estimated max, total)",
-                cx.complexity()
-            );
+    pub fn next_operation(&self, cx: &mut LtContext<'tcx, 'a, '_>) {
+        let hit = self.rng.borrow_mut().random_ratio(2, 3);
 
-            if hit {
-                if let Some(call) = self.choose_eligable_api(&mut cx) {
-                    if self.is_api_vulnerable(call.fn_did()) {
-                        rap_info!("{:?} is vulnerable", call.fn_did());
-                    }
-                    cx.add_call_stmt(call);
-                    if cx.try_inject_drop() {
-                        rap_info!("successfully inject drop");
-                    }
-                    call_cnt += 1;
-
-                    continue;
+        if hit {
+            if let Some(call) = self.choose_eligable_api(cx) {
+                if self.is_api_vulnerable(call.fn_did()) {
+                    rap_info!("{:?} is vulnerable", call.fn_did());
+                }
+                cx.add_call_stmt(call);
+                if cx.try_inject_drop() {
+                    rap_info!("successfully inject drop");
                 }
             }
-
-            if let Some((var, kind)) = self.choose_transform(&mut cx) {
+        } else {
+            if let Some((var, kind)) = self.choose_transform(cx) {
                 match kind {
                     TransformKind::Ref(mutability) => {
                         cx.add_ref_stmt(var, mutability);
                     }
                     _ => {}
                 }
-                continue;
             }
+        }
+    }
+
+    pub fn gen(&mut self) -> LtContext<'tcx, 'a, '_> {
+        let mut cx = LtContext::new(self.tcx(), &self.subgraph_map, &self.alias_map);
+        let (estimated, total) = utils::estimate_max_coverage(self.api_graph, self.tcx());
+        while cx.complexity() < self.max_complexity {
+            self.next_operation(&mut cx);
+            rap_info!(
+                "complexity = {}, covered/estimated/total api = {}/{}/{} {{estimated/total}} coverage = {:.3}/{:.3} ",
+                cx.complexity(),
+                cx.num_covered_api(),
+                estimated,
+                total,
+                cx.num_covered_api() as f32 / estimated as f32,
+                cx.num_covered_api() as f32 / total as f32
+            );
         }
 
         let mut file = std::fs::File::create("region_graph.dot").unwrap();

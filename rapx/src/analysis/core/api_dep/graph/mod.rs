@@ -46,6 +46,20 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
     }
 
+    pub fn num_api(&self) -> usize {
+        self.graph
+            .node_indices()
+            .filter(|index| matches!(self.graph[*index], DepNode::Api(_)))
+            .count()
+    }
+
+    pub fn num_ty(&self) -> usize {
+        self.graph
+            .node_indices()
+            .filter(|index| matches!(self.graph[*index], DepNode::Ty(_)))
+            .count()
+    }
+
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }

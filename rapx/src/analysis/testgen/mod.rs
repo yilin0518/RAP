@@ -33,7 +33,7 @@ impl<'tcx> Testgen<'tcx> {
     }
 
     pub fn start(&self) {
-        let api_dep_graph = api_dep::ApiDep::new(self.tcx()).start(true);
+        let mut api_dep_graph = api_dep::ApiDep::new(self.tcx()).start(true);
         let mut alias_analysis = alias::mop::MopAlias::new(self.tcx());
         let alias_map = alias_analysis.start();
 
@@ -50,7 +50,7 @@ impl<'tcx> Testgen<'tcx> {
         // let mut rng = rand::rng();
         // let mut rulf = rulf::Rulf::new();
         // rulf.rulf_algorithm(self.tcx, &mut api_dep_graph, 3, &mut cx, &mut rng);
-        // let max_coverage = rulf.max_coverage();
+        // let max_coverage = rulf.max_coverage(&mut api_dep_graph, self.tcx);
         // match max_coverage {
         //     Some(max) => {
         //         rap_info!("Max coverage: {:?}", max);

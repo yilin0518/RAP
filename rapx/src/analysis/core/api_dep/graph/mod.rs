@@ -12,9 +12,10 @@ use petgraph::Direction;
 use petgraph::Graph;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io::Write;
 use std::path::Path;
-use ty_wrapper::TyWrapper;
+pub use ty_wrapper::TyWrapper;
 
 type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
@@ -103,9 +104,8 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
 
         let mut ret = None;
-
         for kind in TransformKind::all() {
-            let new_ty = current_ty.transform(*kind, self.tcx());
+            let new_ty = current_ty.transform(*kind, self.tcx()); // &T or &mut T
             if let Some(next_index) = self.add_possible_transform::<MAX_DEPTH>(new_ty, depth + 1) {
                 let current_index = self.get_node(DepNode::Ty(current_ty));
                 self.add_edge_once(current_index, next_index, DepEdge::transform(*kind));
@@ -165,7 +165,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
     }
 
-    fn get_index_by_node(&self, node: DepNode<'tcx>) -> Option<NodeIndex> {
+    pub fn get_index_by_node(&self, node: DepNode<'tcx>) -> Option<NodeIndex> {
         self.node_indices.get(&node).map(|index| *index)
     }
 

@@ -271,12 +271,31 @@ impl<'tcx> MopGraph<'tcx> {
                 if self.values.len() == 1 {
                     return;
                 }
+                let f_node: Vec<usize> = results_nodes.iter().map(|v| v.father).collect();
+
                 for idx in 1..self.values.len() {
                     if !self.union_is_same(idx, node.index) {
                         continue;
                     }
 
-                    if results_nodes[idx].local <= self.arg_size
+                    let mut replace = None;
+                    if results_nodes[idx].local > self.arg_size {
+                        for (i, &fidx) in f_node.iter().enumerate() {
+                            if i != idx && i != node.index && fidx == f_node[idx] {
+                                for (j, v) in results_nodes.iter().enumerate() {
+                                    if j != idx
+                                        && j != node.index
+                                        && self.union_is_same(j, fidx)
+                                        && v.local <= self.arg_size
+                                    {
+                                        replace = Some(&results_nodes[j]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (results_nodes[idx].local <= self.arg_size || replace.is_some())
                         && idx != node.index
                         && node.local != results_nodes[idx].local
                     {
@@ -284,12 +303,18 @@ impl<'tcx> MopGraph<'tcx> {
                         let right_node;
                         match results_nodes[idx].local {
                             0 => {
-                                left_node = &results_nodes[idx];
+                                left_node = match replace {
+                                    Some(replace_node) => replace_node,
+                                    None => &results_nodes[idx],
+                                };
                                 right_node = node;
                             }
                             _ => {
                                 left_node = node;
-                                right_node = &results_nodes[idx];
+                                right_node = match replace {
+                                    Some(replace_node) => replace_node,
+                                    None => &results_nodes[idx],
+                                };
                             }
                         }
                         let mut new_alias = RetAlias::new(
@@ -302,6 +327,9 @@ impl<'tcx> MopGraph<'tcx> {
                         );
                         new_alias.left_field_seq = self.get_field_seq(left_node);
                         new_alias.right_field_seq = self.get_field_seq(right_node);
+                        if new_alias.left_index == 0 && new_alias.right_index == 0 {
+                            return;
+                        }
                         self.ret_alias.add_alias(new_alias);
                     }
                 }

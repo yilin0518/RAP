@@ -1,6 +1,7 @@
 pub mod context;
 mod folder;
 mod lifetime;
+mod mono;
 
 use crate::analysis::core::alias::{FnRetAlias, RetAlias};
 use crate::analysis::core::api_dep::ApiDepGraph;
@@ -17,7 +18,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
 type RegionSubgraphMap = HashMap<DefId, EdgePatterns>;
@@ -217,7 +218,11 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         vulnerable_apis
     }
 
-    pub fn is_api_eligable<C: Context<'tcx>>(&self, fn_did: DefId, cx: &C) -> Option<ApiCall> {
+    pub fn enable_monomorphization(&self) -> bool {
+        true
+    }
+
+    pub fn is_api_eligable(&self, fn_did: DefId, cx: &LtContext<'tcx, '_, '_>) -> Option<ApiCall> {
         let tcx = self.tcx();
 
         let mut api_call = ApiCall {
@@ -227,8 +232,20 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
 
         // TODO: now only consider fn_sig without type & const parameters
         if tcx.generics_of(fn_did).requires_monomorphization(tcx) {
-            return None;
+            if !self.enable_monomorphization() {
+                return None;
+            }
+            let available_ty = cx
+                .available_values()
+                .iter()
+                .fold(HashSet::new(), |mut set, var| {
+                    set.insert(tcx.erase_regions(cx.type_of(*var)));
+                    set
+                });
+            let monos = mono::get_mono_set(fn_did, available_ty, tcx);
+            rap_debug!("monos: {:?}", monos);
         }
+
         let fn_sig = utils::fn_sig_without_binders(fn_did, tcx);
 
         rap_debug!("check eligible api: {fn_did:?}");
@@ -270,15 +287,15 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 vec.push((*var, transform));
             }
         }
+        rap_debug!("transform candidates: {vec:?}");
         if vec.is_empty() {
             return None;
         }
-
         let idx = self.rng.borrow_mut().random_range(0..vec.len());
         Some(vec.swap_remove(idx))
     }
 
-    pub fn next_operation(&self, cx: &mut LtContext<'tcx, 'a, '_>) {
+    pub fn next_operation(&self, cx: &mut LtContext<'tcx, 'a, '_>) -> bool {
         let hit = self.rng.borrow_mut().random_ratio(2, 3);
 
         if hit {
@@ -288,34 +305,56 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 }
                 cx.add_call_stmt(call);
                 if cx.try_inject_drop() {
-                    rap_info!("successfully inject drop");
+                    rap_debug!("successfully inject drop");
                 }
-            }
-        } else {
-            if let Some((var, kind)) = self.choose_transform(cx) {
-                match kind {
-                    TransformKind::Ref(mutability) => {
-                        cx.add_ref_stmt(var, mutability);
-                    }
-                    _ => {}
-                }
+                return true;
             }
         }
+        if let Some((var, kind)) = self.choose_transform(cx) {
+            match kind {
+                TransformKind::Ref(mutability) => {
+                    cx.add_ref_stmt(var, mutability);
+                }
+                _ => {
+                    panic!("not implemented yet");
+                }
+            }
+            return true;
+        }
+
+        false
     }
 
     pub fn gen(&mut self) -> LtContext<'tcx, 'a, '_> {
         let mut cx = LtContext::new(self.tcx(), &self.subgraph_map, &self.alias_map);
         let (estimated, total) = utils::estimate_max_coverage(self.api_graph, self.tcx());
-        while cx.complexity() < self.max_complexity {
+        let mut count = 0;
+        loop {
+            count += 1;
+            rap_info!("<<<<< Iter {} >>>>>", count);
+            if cx.complexity() > self.max_complexity {
+                rap_info!("complexity limit reached, generation terminate");
+                break;
+            }
             self.next_operation(&mut cx);
+
+            // if !self.next_operation(&mut cx) {
+            //     rap_info!("no more operation can be performed, generation terminate");
+            //     break;
+            // }
             rap_info!(
-                "complexity = {}, covered/estimated/total api = {}/{}/{} {{estimated/total}} coverage = {:.3}/{:.3} ",
+                "complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{} ",
                 cx.complexity(),
+                cx.dropped_count(),
                 cx.num_covered_api(),
                 estimated,
                 total,
-                cx.num_covered_api() as f32 / estimated as f32,
-                cx.num_covered_api() as f32 / total as f32
+            );
+
+            rap_info!(
+                "coverage={:.3}/{:.3} (current/estimated_max)",
+                cx.num_covered_api() as f32 / total as f32,
+                estimated as f32 / total as f32
             );
         }
 

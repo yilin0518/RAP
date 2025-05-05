@@ -10,7 +10,13 @@ use crate::analysis::testgen::generator::ltgen::lifetime::{
 use crate::analysis::testgen::utils;
 use crate::{rap_debug, rap_info, rap_warn};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, GenericArg, Ty, TyCtxt, TyKind, TypeFoldable};
+use rustc_infer::infer::canonical::ir::InferCtxtLike;
+use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt};
+use rustc_infer::traits::ObligationCause;
+use rustc_middle::ty::{self, GenericArg, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitableExt};
+use rustc_span::DUMMY_SP;
+use rustc_trait_selection::infer::InferCtxtExt;
+use rustc_trait_selection::traits::ObligationCtxt;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
 
@@ -27,6 +33,7 @@ pub struct LtContext<'tcx, 'a, 'b> {
     subgraph_map: &'b RegionSubgraphMap,
     alias_map: &'a FnAliasMap,
     covered_api: HashSet<DefId>,
+    droped_cnt: usize,
 }
 
 impl<'tcx, 'a, 'b> HoldTyCtxt<'tcx> for LtContext<'tcx, 'a, 'b> {
@@ -145,6 +152,7 @@ impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
             subgraph_map,
             alias_map,
             covered_api: HashSet::new(),
+            droped_cnt: 0,
         }
     }
 
@@ -180,21 +188,35 @@ impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
 
         let call = stmt.api_call();
         let fn_sig = self.mk_fn_sig(stmt);
-        rap_debug!("make fn_sig: {:?}", fn_sig);
 
-        if let Some(ret_alias) = self.alias_map.get(&call.fn_did()) {
-            for alias in ret_alias.aliases() {
-                let (lhs_ty, rhs_ty) = dbg!(destruct_ret_alias(fn_sig, alias, self.tcx()));
-                let lhs_var = stmt.var_for_call_arg(alias.left_index);
-                let rhs_var = stmt.var_for_call_arg(alias.right_index);
+        for alias in self
+            .alias_map
+            .get(&call.fn_did())
+            .expect(&format!("{:?} do not have alias infomation", call.fn_did()))
+            .aliases()
+        {
+            let (lhs_ty, rhs_ty) = destruct_ret_alias(fn_sig, alias, self.tcx());
+            let lhs_var = stmt.var_for_call_arg(alias.left_index);
+            let rhs_var = stmt.var_for_call_arg(alias.right_index);
 
-                check_potential_region_leak(lhs_ty, lhs_var, rhs_ty);
-                check_potential_region_leak(rhs_ty, rhs_var, lhs_ty);
-            }
-            Some(ret)
-        } else {
-            None
+            check_potential_region_leak(lhs_ty, lhs_var, rhs_ty);
+            check_potential_region_leak(rhs_ty, rhs_var, lhs_ty);
         }
+        Some(ret)
+
+        // if let Some(ret_alias) = self.alias_map.get(&call.fn_did()) {
+        //     for alias in ret_alias.aliases() {
+        //         let (lhs_ty, rhs_ty) = dbg!(destruct_ret_alias(fn_sig, alias, self.tcx()));
+        //         let lhs_var = stmt.var_for_call_arg(alias.left_index);
+        //         let rhs_var = stmt.var_for_call_arg(alias.right_index);
+
+        //         check_potential_region_leak(lhs_ty, lhs_var, rhs_ty);
+        //         check_potential_region_leak(rhs_ty, rhs_var, lhs_ty);
+        //     }
+        //     Some(ret)
+        // } else {
+        //     None
+        // }
     }
 
     pub fn rid_of(&self, var: Var) -> Rid {
@@ -208,16 +230,17 @@ impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
         )
     }
 
-    pub fn dbg_var_rid(&self, o: &mut impl Write) {
-        for (var, vid) in self.var_rid.iter() {
-            writeln!(o, "var: {var:?} rid: {vid:?}");
-        }
+    pub fn dropped_count(&self) -> usize {
+        self.droped_cnt
     }
+
+
 
     fn add_drop_stmt(&mut self, dropped: Var) -> Var {
         let var = self.mk_var(self.tcx().types.unit, false);
         self.add_stmt(Stmt::drop_(var, dropped));
         self.set_var_unavailable_recursive(dropped);
+        self.droped_cnt += 1;
         var
     }
 
@@ -243,35 +266,35 @@ impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
         }
     }
 
+    /// return number of droped var
     pub fn try_inject_drop(&mut self) -> bool {
         let stmt = self.stmts().last().unwrap();
-        match stmt.kind() {
-            StmtKind::Call(_) => {
-                if let Some(vec) = self.detect_potential_vulnerability(&stmt) {
-                    for (var, rids) in vec {
-                        rap_warn!("[unsafe] variable {} lack of binding with {:?}", var, rids);
-                        for rid in rids {
-                            let dropped_var = self.region_graph.find_sources(rid).iter().fold(
-                                Vec::new(),
-                                |mut v, rid| match self.region_graph.get_node(*rid) {
-                                    RegionNode::Named(var) => {
-                                        self.add_drop_stmt(var);
-                                        v.push(var);
-                                        v
-                                    }
-                                    _ => {
-                                        panic!("not a node")
-                                    }
-                                },
-                            );
-                            rap_warn!("[unsafe] drop var: {:?}", dropped_var);
-                        }
+        let mut success = false;
+        if stmt.kind().is_call() {
+            if let Some(vec) = self.detect_potential_vulnerability(&stmt) {
+                for (var, rids) in vec {
+                    rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
+                    for rid in rids {
+                        let dropped_var = self.region_graph.find_sources(rid).iter().fold(
+                            Vec::new(),
+                            |mut v, rid| match self.region_graph.get_node(*rid) {
+                                RegionNode::Named(var) => {
+                                    success = true;
+                                    self.add_drop_stmt(var);
+                                    v.push(var);
+                                    v
+                                }
+                                _ => {
+                                    panic!("not a node")
+                                }
+                            },
+                        );
+                        rap_debug!("[unsafe] drop var: {:?}", dropped_var);
                     }
                 }
-                true
             }
-            _ => false,
         }
+        success
     }
 
     pub fn num_covered_api(&self) -> usize {

@@ -420,3 +420,7 @@ impl<'tcx, 'a> ty::TypeFolder<TyCtxt<'tcx>> for FreeVarFolder<'tcx, 'a> {
         }
     }
 }
+
+// pub fn extract_region_vid(region: ty::Region<'_>) {
+//     region.as_var()
+// }

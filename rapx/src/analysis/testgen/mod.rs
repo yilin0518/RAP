@@ -13,6 +13,7 @@ use generator::ltgen::{initialize_subgraph_map, LtGenBuilder};
 use generator::rulf;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
+use rustc_session::config::CrateType;
 use stable_mir::local_crate;
 use syn::input::SillyInputGen;
 use syn::project::{CargoProjectBuilder, RsProjectOption};
@@ -37,13 +38,27 @@ impl<'tcx> Testgen<'tcx> {
         let mut alias_analysis = alias::mop::MopAlias::new(self.tcx());
         let alias_map = alias_analysis.start();
 
+        alias_map.iter().for_each(|(k, v)| {
+            if k.is_local() {
+                rap_info!("alias: {:?} -> {}", k, v);
+            }
+        });
+
         let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let local_crate_type = self.tcx.crate_types()[0];
+
+        if matches!(local_crate_type, CrateType::Executable) {
+            rap_info!("Skip executable target: {}", local_crate_name.as_str());
+            return;
+        }
+
         rap_info!(
             "Generate testcase on {} ({})",
             local_crate_name.as_str(),
             local_crate_type
         );
+
+        rap_info!("alias count = {}", alias_map.len());
 
         // rulf
         // let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);

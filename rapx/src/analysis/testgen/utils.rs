@@ -220,7 +220,6 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
         }
 
         for next in inner_graph.neighbors(index) {
-            rap_debug!("[estimate_max_coverage] next: {:?}", inner_graph[next]);
             match inner_graph[next] {
                 DepNode::Ty(_) => {
                     if !reachable[next.index()] {

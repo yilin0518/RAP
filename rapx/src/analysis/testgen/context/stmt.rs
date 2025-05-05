@@ -59,6 +59,9 @@ impl StmtKind {
     pub fn is_input(&self) -> bool {
         matches!(self, StmtKind::Input)
     }
+    pub fn is_call(&self) -> bool {
+        matches!(self, StmtKind::Call(_))
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

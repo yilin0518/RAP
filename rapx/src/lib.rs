@@ -5,6 +5,7 @@
 pub mod utils;
 pub mod analysis;
 
+extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -63,7 +64,7 @@ pub struct RapCallback {
     testgen: bool,
     show_mir: bool,
     dataflow: usize,
-    opt: bool,
+    opt: usize,
     heap_item: bool,
     ssa: bool,
 }
@@ -83,7 +84,7 @@ impl Default for RapCallback {
             testgen: false,
             show_mir: false,
             dataflow: 0,
-            opt: false,
+            opt: 0,
             heap_item: false,
             ssa: false,
         }
@@ -210,11 +211,11 @@ impl RapCallback {
         self.dataflow
     }
 
-    pub fn enable_opt(&mut self) {
-        self.opt = true;
+    pub fn enable_opt(&mut self, x: usize) {
+        self.opt = x;
     }
 
-    pub fn is_opt_enabled(self) -> bool {
+    pub fn is_opt_enabled(self) -> usize {
         self.opt
     }
 
@@ -310,8 +311,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         CallGraph::new(tcx).start();
     }
 
-    if callback.is_opt_enabled() {
-        Opt::new(tcx).start();
+    match callback.is_opt_enabled() {
+        1 => Opt::new(tcx, 1).start(),
+        2 => Opt::new(tcx, 2).start(),
+        _ => {}
     }
     if callback.is_ssa_transform_enabled() {
         SSATrans::new(tcx, false).start();

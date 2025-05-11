@@ -567,15 +567,25 @@ impl Graph {
             None
         }
     }
+
+    pub fn query_node_by_span(&self, span: Span) -> Option<(Local, &GraphNode)> {
+        for (node_idx, node) in self.nodes.iter_enumerated() {
+            if node.span == span {
+                return Some((node_idx, node));
+            }
+        }
+        None
+    }
 }
 
 impl Graph {
     pub fn equivalent_edge_validator(graph: &Graph, idx: EdgeIdx) -> DFSStatus {
         match graph.edges[idx].op {
-            EdgeOp::Copy | EdgeOp::Move | EdgeOp::Mut | EdgeOp::Immut => DFSStatus::Continue,
+            EdgeOp::Copy | EdgeOp::Move | EdgeOp::Mut | EdgeOp::Immut | EdgeOp::Deref => {
+                DFSStatus::Continue
+            }
             EdgeOp::Nop
             | EdgeOp::Const
-            | EdgeOp::Deref
             | EdgeOp::Downcast(_)
             | EdgeOp::Field(_)
             | EdgeOp::Index

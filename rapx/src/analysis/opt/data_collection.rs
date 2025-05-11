@@ -1,2 +1,3 @@
-pub mod slice_contains;
-pub mod unreserved_hash;
+pub mod initialization;
+pub mod reallocation;
+pub mod suboptimal;

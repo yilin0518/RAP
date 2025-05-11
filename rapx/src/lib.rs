@@ -99,11 +99,7 @@ impl Callbacks for RapCallback {
         });
     }
 
-    fn after_analysis<'tcx>(
-        &mut self,
-        _compiler: &Compiler,
-        tcx: TyCtxt<'tcx>,
-    ) -> Compilation {
+    fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         rap_trace!("Execute after_analysis() of compiler callbacks");
         start_analyzer(tcx, *self);
         rap_trace!("analysis done");

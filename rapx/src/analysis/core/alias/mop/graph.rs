@@ -14,7 +14,6 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::vec::Vec;
 
-
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AssignType {
     Copy,
@@ -237,7 +236,8 @@ impl<'tcx> MopGraph<'tcx> {
                                      */
                                     match constant.const_ {
                                         Const::Ty(_ty, const_value) => {
-                                            if let Some(val) = const_value.try_to_target_usize(tcx) {
+                                            if let Some(val) = const_value.try_to_target_usize(tcx)
+                                            {
                                                 cur_bb.const_value.push((lv_local, val as usize));
                                             }
                                         }

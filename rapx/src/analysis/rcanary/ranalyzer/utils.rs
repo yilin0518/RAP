@@ -14,7 +14,7 @@ pub fn has_cycle<'tcx>(blocks: &BasicBlocks<'tcx>) -> bool {
         let idx = bb.index();
         match state[idx] {
             VisitState::Visiting => return true,
-            VisitState::Visited => return false, 
+            VisitState::Visited => return false,
             VisitState::NotVisited => {
                 state[idx] = VisitState::Visiting;
                 let successors = blocks[bb].terminator().successors();

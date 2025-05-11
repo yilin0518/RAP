@@ -39,7 +39,6 @@ pub enum AsgnKind {
     Aggregate,
 }
 
-
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
     pub fn intra_run(&mut self) {
         let tcx = self.tcx();

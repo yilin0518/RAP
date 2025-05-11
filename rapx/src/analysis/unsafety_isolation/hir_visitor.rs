@@ -66,7 +66,12 @@ impl<'tcx> Visitor<'tcx> for RelatedFnCollector<'tcx> {
                     }
                 }));
             }
-            ItemKind::Fn { sig: _, generics: _, body: body_id, has_body: _ } => {
+            ItemKind::Fn {
+                sig: _,
+                generics: _,
+                body: body_id,
+                has_body: _,
+            } => {
                 let key = Some(body_id.hir_id);
                 let entry = self.hash_map.entry(key).or_insert(Vec::new());
                 entry.push((*body_id, item.span));

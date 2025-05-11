@@ -1,6 +1,6 @@
 use super::super::RcxMut;
-use super::FlowAnalysis;
 use super::utils::has_cycle;
+use super::FlowAnalysis;
 use crate::analysis::core::heap_item::mir_body;
 
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {

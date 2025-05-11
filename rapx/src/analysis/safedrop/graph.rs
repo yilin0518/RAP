@@ -260,7 +260,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     /* We should check the correctness due to the update of rustc */
                                     match constant.const_ {
                                         Const::Ty(_ty, const_value) => {
-                                            if let Some(val) = const_value.try_to_target_usize(tcx) {
+                                            if let Some(val) = const_value.try_to_target_usize(tcx)
+                                            {
                                                 cur_bb.const_value.push((lv_local, val as usize));
                                             }
                                         }

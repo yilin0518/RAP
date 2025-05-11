@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 use rustc_data_structures::graph::dominators::Dominators;
 use rustc_data_structures::graph::{dominators, Predecessors};
-use rustc_driver::{Callbacks, RunCompiler};
+use rustc_driver::Callbacks;
 use rustc_hir::def_id::LocalDefId;
 use rustc_middle::mir::*;
 use rustc_middle::{

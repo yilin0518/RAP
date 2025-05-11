@@ -1,7 +1,6 @@
 use rustc_middle::mir::{Operand, Place, ProjectionElem, TerminatorKind};
 use rustc_middle::ty;
-use rustc_middle::ty::TyCtxt;
-
+use rustc_middle::ty::{TyCtxt, TypingEnv};
 use super::graph::*;
 use super::types::*;
 use crate::analysis::core::alias::{FnMap, RetAlias};
@@ -163,8 +162,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     }
                     let field_idx = field.as_usize();
                     if !self.values[proj_id].fields.contains_key(&field_idx) {
-                        let param_env = tcx.param_env(self.def_id);
-                        let need_drop = ty.needs_drop(tcx, param_env);
+                        let ty_env = TypingEnv::post_analysis(tcx, self.def_id);
+                        let need_drop = ty.needs_drop(tcx, ty_env);
                         let may_drop = !is_not_drop(tcx, ty);
                         let mut node =
                             ValueNode::new(new_id, local, need_drop, need_drop || may_drop);

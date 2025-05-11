@@ -57,7 +57,7 @@ fn get_bound_var_attr(var: ty::BoundVariableKind) -> (String, bool) {
         ty::BoundVariableKind::Region(bound_region_kind) => {
             is_lifetime = true;
             name = match bound_region_kind {
-                ty::BoundRegionKind::BrNamed(_, name) => name.to_string(),
+                ty::BoundRegionKind::Named(_, name) => name.to_string(),
                 _ => "anon".to_string(),
             }
         }

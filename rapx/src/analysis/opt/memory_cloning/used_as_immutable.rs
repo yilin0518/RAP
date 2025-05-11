@@ -109,7 +109,8 @@ impl OptCheck for UsedAsImmutableCheck {
                             let index = filtered_in_edges.binary_search(&&edge_idx).unwrap();
                             if let NodeOp::Call(callee_def_id) = use_node.ops[seq] {
                                 let fn_sig = tcx.try_normalize_erasing_regions(
-                                    rustc_middle::ty::ParamEnv::reveal_all(),
+                                    //rustc_middle::ty::ParamEnv::reveal_all(),
+                                    rustc_middle::ty::TypingEnv::post_analysis(*tcx, def_id),
                                     tcx.fn_sig(callee_def_id).skip_binder(),
                                 );
                                 if fn_sig.is_ok() {

@@ -85,6 +85,7 @@ impl<'tcx> Display for StatementKind<'tcx> {
             StatementKind::PlaceMention(..) => s += "PlaceMention",
             StatementKind::Intrinsic(..) => s += "Intrinsic",
             StatementKind::ConstEvalCounter => s += "ConstEvalCounter",
+            _ => todo!(),
         }
         s
     }

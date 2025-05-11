@@ -10,6 +10,7 @@ use crate::analysis::utils::show_mir::display_mir;
 use crate::rap_warn;
 use rustc_middle::mir::Local;
 use rustc_middle::mir::ProjectionElem;
+use rustc_middle::ty::PseudoCanonicalInput;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
@@ -658,7 +659,12 @@ impl<'tcx> BodyVisitor<'tcx> {
             }
             _ => {
                 let param_env = self.tcx.param_env(self.def_id);
-                if let Ok(layout) = self.tcx.layout_of(param_env.and(ty)) {
+                let ty_env = ty::TypingEnv::post_analysis(self.tcx, self.def_id);
+                let input = PseudoCanonicalInput {
+                    typing_env: ty_env,
+                    value: ty,
+                };
+                if let Ok(layout) = self.tcx.layout_of(input) {
                     // let layout = self.tcx.layout_of(param_env.and(ty)).unwrap();
                     let align = layout.align.abi.bytes_usize();
                     let size = layout.size.bytes() as usize;

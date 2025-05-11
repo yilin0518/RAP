@@ -4,7 +4,8 @@ use rustc_hir::def_id::DefId;
 use rustc_infer::infer::region_constraints::Constraint;
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::ObligationCause;
-use rustc_middle::ty::{self, TyCtxt, TypeFoldable};
+use rustc_middle::ty::{self, TyCtxt, TypeFoldable, TypingMode};
+
 use rustc_span::Span;
 struct FreeVarFolder<'tcx, 'a> {
     cx: TyCtxt<'tcx>,
@@ -66,7 +67,7 @@ pub fn extract_constraints(fn_did: DefId, tcx: TyCtxt<'_>) {
     rap_debug!("param_env: {param_env:?}");
 
     // obtain subtyping contraints
-    let infcx = tcx.infer_ctxt().build();
+    let infcx = tcx.infer_ctxt().build(TypingMode::PostAnalysis);
     let mut folder = FreeVarFolder::new(tcx, &infcx, span);
     let fn_sig = tcx.liberate_late_bound_regions(fn_did, binder_fn_sig);
     let binder_with_free_vars = fn_sig.fold_with(&mut folder);

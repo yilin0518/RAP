@@ -15,6 +15,7 @@ use z3::ast::{self, Ast};
 use super::super::{IcxMut, IcxSliceMut, Rcx, RcxMut};
 use super::is_z3_goal_verbose;
 use super::ownership::IntraVar;
+use super::utils::has_cycle;
 use super::{FlowAnalysis, IcxSliceFroBlock, IntraFlowAnalysis};
 use crate::analysis::core::heap_item::ownership::*;
 use crate::analysis::core::heap_item::type_visitor::*;
@@ -38,6 +39,7 @@ pub enum AsgnKind {
     Aggregate,
 }
 
+
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
     pub fn intra_run(&mut self) {
         let tcx = self.tcx();
@@ -46,7 +48,7 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
         for each_mir in mir_keys {
             let def_id = each_mir.to_def_id();
             let body = mir_body(tcx, def_id);
-            if body.basic_blocks.is_cfg_cyclic() {
+            if has_cycle(&body.basic_blocks) {
                 continue;
             }
 

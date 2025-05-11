@@ -2,7 +2,7 @@ use super::call_graph_helper::CallGraphInfo;
 use regex::Regex;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir;
-use rustc_middle::ty::{FnDef, Instance, InstanceKind, TyCtxt};
+use rustc_middle::ty::{FnDef, Instance, InstanceKind, TyCtxt, TypingEnv};
 
 pub struct CallGraphVisitor<'b, 'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -81,9 +81,9 @@ impl<'b, 'tcx> CallGraphVisitor<'b, 'tcx> {
         if let mir::TerminatorKind::Call { func, .. } = &terminator.kind {
             if let mir::Operand::Constant(constant) = func {
                 if let FnDef(callee_def_id, callee_substs) = constant.const_.ty().kind() {
-                    let param_env = self.tcx.param_env(self.def_id);
+                    let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
                     if let Ok(Some(instance)) =
-                        Instance::try_resolve(self.tcx, param_env, *callee_def_id, callee_substs)
+                        Instance::try_resolve(self.tcx, ty_env, *callee_def_id, callee_substs)
                     {
                         let mut is_virtual = false;
                         // Try to analysis the specific type of callee.

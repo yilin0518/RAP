@@ -8,7 +8,7 @@ use rustc_session::config::ErrorOutputType;
 use rustc_session::EarlyDiagCtxt;
 use std::env;
 
-fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) -> i32 {
+fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) {
     // Finally, add the default flags all the way in the beginning, but after the binary name.
     args.splice(1..1, RAP_DEFAULT_ARGS.iter().map(ToString::to_string));
 
@@ -16,11 +16,10 @@ fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) -> i32 {
     rustc_driver::init_rustc_env_logger(&handler);
     rustc_driver::install_ice_hook("bug_report_url", |_| ());
 
-    let run_compiler = rustc_driver::RunCompiler::new(args, callback);
-    let exit_code = rustc_driver::catch_with_exit_code(move || run_compiler.run());
+    //let run_compiler = rustc_driver::RunCompiler::new(args, callback);
+    //let exit_code = rustc_driver::catch_with_exit_code(move || run_compiler.run());
+    rustc_driver::run_compiler(args, callback);
     rap_trace!("The arg for compilation is {:?}", args);
-
-    exit_code
 }
 
 fn main() {
@@ -55,6 +54,6 @@ fn main() {
     rap_trace!("rap received arguments{:#?}", env::args());
     rap_trace!("arguments to rustc: {:?}", &args);
 
-    let exit_code = run_complier(&mut args, &mut compiler);
-    std::process::exit(exit_code)
+    run_complier(&mut args, &mut compiler);
+    //std::process::exit(exit_code)
 }

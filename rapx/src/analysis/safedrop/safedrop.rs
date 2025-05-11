@@ -1,7 +1,7 @@
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::Operand::{Constant, Copy, Move};
 use rustc_middle::mir::{Operand, Place, TerminatorKind};
-use rustc_middle::ty::{TyCtxt, TyKind};
+use rustc_middle::ty::{TyCtxt, TyKind, TypingEnv};
 use std::collections::{HashMap, HashSet};
 
 use crate::analysis::core::alias::FnMap;
@@ -349,8 +349,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         }
                         Constant(c) => {
                             single_target = true;
-                            let param_env = self.tcx.param_env(self.def_id);
-                            if let Some(val) = c.const_.try_eval_target_usize(self.tcx, param_env) {
+                            let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
+                            if let Some(val) = c.const_.try_eval_target_usize(self.tcx, ty_env) {
                                 sw_val = val as usize;
                             }
                         }

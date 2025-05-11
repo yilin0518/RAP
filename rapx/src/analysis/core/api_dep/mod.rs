@@ -6,39 +6,37 @@
 pub mod graph;
 #[allow(unused)]
 mod visitor;
-
 use crate::{rap_debug, rap_info};
 pub use graph::ApiDepGraph;
 pub use graph::{DepEdge, DepNode};
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
-use visitor::FnVisitor;
 
 pub struct ApiDep<'tcx> {
     pub tcx: TyCtxt<'tcx>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Default)]
+pub struct Config {
+    pub pub_only: bool,
+    pub include_generic_api: bool,
 }
 
 impl<'tcx> ApiDep<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> ApiDep<'tcx> {
         ApiDep { tcx }
     }
-    pub fn start(&self, pub_only: bool) -> ApiDepGraph<'tcx> {
+    pub fn start(&self, config: Config) -> ApiDepGraph<'tcx> {
         let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let local_crate_type = self.tcx.crate_types()[0];
-        let graph_all_pub_api = if pub_only {
-            "all APIs including private APIs"
-        } else {
-            "only public APIs"
-        };
         rap_debug!(
-            "Build API dependency graph on {} ({}), graph based on {}",
+            "Build API dependency graph on {} ({}), config = {:?}",
             local_crate_name.as_str(),
             local_crate_type,
-            graph_all_pub_api,
+            config,
         );
-        let config = graph::Config { pub_only };
-        let mut api_graph = ApiDepGraph::new(config, self.tcx);
-        api_graph.build();
+        let mut api_graph = ApiDepGraph::new(self.tcx);
+        api_graph.build(config);
 
         let statistics = api_graph.statistics();
         // print all statistics

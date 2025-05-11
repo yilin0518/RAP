@@ -22,9 +22,9 @@ pub trait HoldTyCtxt<'tcx> {
 }
 
 pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
-    fn stmts(&self) -> &[Stmt];
+    fn stmts(&self) -> &[Stmt<'tcx>];
 
-    fn add_stmt(&mut self, stmt: Stmt);
+    fn add_stmt(&mut self, stmt: Stmt<'tcx>);
 
     fn lift_mutability(&mut self, var: Var, mutability: ty::Mutability);
 
@@ -76,9 +76,9 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
         var
     }
 
-    fn add_call_stmt(&mut self, mut call: ApiCall) -> Var {
+    fn add_call_stmt(&mut self, mut call: ApiCall<'tcx>) -> Var {
         let tcx = self.tcx();
-        let fn_sig = utils::fn_sig_without_binders(call.fn_did, tcx);
+        let fn_sig = utils::fn_sig_with_generic_args(call.fn_did, call.generic_args(), tcx);
         let output_ty = fn_sig.output();
         for idx in 0..fn_sig.inputs().len() {
             let arg = call.args[idx];
@@ -97,7 +97,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
     }
 
     /// no need to check input, because all inputs exist, all inputs that is not primitive already be removed from available set
-    fn add_call_stmt_all_exist(&mut self, mut call: ApiCall) -> Var {
+    fn add_call_stmt_all_exist(&mut self, mut call: ApiCall<'tcx>) -> Var {
         let tcx = self.tcx();
         let fn_sig = utils::fn_sig_without_binders(call.fn_did, tcx);
         let output_ty = fn_sig.output();
@@ -165,7 +165,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
         ret
     }
 
-    fn mk_fn_sig(&self, stmt: &Stmt) -> ty::FnSig<'tcx> {
+    fn mk_fn_sig(&self, stmt: &Stmt<'tcx>) -> ty::FnSig<'tcx> {
         match stmt.kind() {
             StmtKind::Call(call) => {
                 let tcx = self.tcx();
@@ -193,7 +193,7 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
 
 #[derive(Clone)]
 pub struct ContextBase<'tcx> {
-    stmts: Vec<Stmt>,
+    stmts: Vec<Stmt<'tcx>>,
     available: HashSet<Var>,
     var_ty: HashMap<Var, Ty<'tcx>>,
     var_is_mut: HashMap<Var, ty::Mutability>,
@@ -278,10 +278,10 @@ impl<'tcx> ContextBase<'tcx> {
 }
 
 impl<'tcx> Context<'tcx> for ContextBase<'tcx> {
-    fn stmts(&self) -> &[Stmt] {
+    fn stmts(&self) -> &[Stmt<'tcx>] {
         &self.stmts
     }
-    fn add_stmt(&mut self, stmt: Stmt) {
+    fn add_stmt(&mut self, stmt: Stmt<'tcx>) {
         self.stmts.push(stmt);
     }
     fn lift_mutability(&mut self, var: Var, mutability: ty::Mutability) {

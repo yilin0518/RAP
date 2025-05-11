@@ -5,11 +5,12 @@ mod utils;
 
 use std::path::{Path, PathBuf};
 
+use crate::analysis::core::api_dep::ApiDep;
 use crate::analysis::core::{alias, api_dep};
 use crate::{rap_debug, rap_info};
-use context::ContextBase;
+use context::{Context, ContextBase};
 use generator::ltgen::context::LtContext;
-use generator::ltgen::{initialize_subgraph_map, LtGenBuilder};
+use generator::ltgen::LtGenBuilder;
 use generator::rulf;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
@@ -34,7 +35,10 @@ impl<'tcx> Testgen<'tcx> {
     }
 
     pub fn start(&self) {
-        let mut api_dep_graph = api_dep::ApiDep::new(self.tcx()).start(true);
+        let api_dep_graph = api_dep::ApiDep::new(self.tcx()).start(api_dep::Config {
+            pub_only: true,
+            include_generic_api: false,
+        });
         let mut alias_analysis = alias::mop::MopAlias::new(self.tcx());
         let alias_map = alias_analysis.start();
 
@@ -84,6 +88,7 @@ impl<'tcx> Testgen<'tcx> {
             .build();
 
         let cx = lt_gen.gen();
+        rap_debug!("cx.stmt = {:?}", cx.stmts());
 
         // synthesize rust program
         let option = SynOption {

@@ -1,8 +1,8 @@
+use super::utils;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, Ty};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use std::fmt;
 use std::fmt::Display;
-use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 
@@ -23,14 +23,19 @@ impl Var {
 pub static DUMMY_INPUT_VAR: Var = Var(0, true);
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub struct ApiCall {
+pub struct ApiCall<'tcx> {
     pub fn_did: DefId,
     pub args: Vec<Var>,
+    pub generic_args: ty::GenericArgsRef<'tcx>,
 }
 
-impl ApiCall {
-    pub fn new(fn_did: DefId, args: Vec<Var>) -> Self {
-        Self { fn_did, args }
+impl<'tcx> ApiCall<'tcx> {
+    pub fn new(fn_did: DefId, args: Vec<Var>, tcx: TyCtxt<'tcx>) -> Self {
+        Self {
+            fn_did,
+            args,
+            generic_args: tcx.mk_args(&[]),
+        }
     }
 
     pub fn args(&self) -> &[Var] {
@@ -40,14 +45,22 @@ impl ApiCall {
     pub fn fn_did(&self) -> DefId {
         self.fn_did
     }
+
+    pub fn generic_args(&self) -> &[ty::GenericArg<'tcx>] {
+        self.generic_args
+    }
+
+    pub fn fn_sig(&self, tcx: TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+        utils::fn_sig_with_generic_args(self.fn_did, self.generic_args, tcx)
+    }
 }
 
 // pub type StmtRef<'tcx> = Rc<Stmt<'tcx>>;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum StmtKind {
+pub enum StmtKind<'tcx> {
     Input,
-    Call(ApiCall),
+    Call(ApiCall<'tcx>),
     Split(usize, Vec<Var>),        // (a, b) -> a, b
     Concat(Vec<Var>),              // a, b -> (a, b)
     Ref(Box<Var>, ty::Mutability), // a -> &(mut) b
@@ -55,7 +68,7 @@ pub enum StmtKind {
     Drop(Box<Var>),
 }
 
-impl StmtKind {
+impl<'tcx> StmtKind<'tcx> {
     pub fn is_input(&self) -> bool {
         matches!(self, StmtKind::Input)
     }
@@ -65,20 +78,20 @@ impl StmtKind {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Stmt {
-    pub kind: StmtKind,
+pub struct Stmt<'tcx> {
+    pub kind: StmtKind<'tcx>,
     pub place: Var,
 }
 
-impl Stmt {
-    pub fn input(place: Var) -> Stmt {
+impl<'tcx> Stmt<'tcx> {
+    pub fn input(place: Var) -> Stmt<'tcx> {
         Stmt {
             kind: StmtKind::Input,
             place,
         }
     }
 
-    pub fn kind(&self) -> &StmtKind {
+    pub fn kind(&self) -> &StmtKind<'tcx> {
         &self.kind
     }
 
@@ -93,28 +106,28 @@ impl Stmt {
         }
     }
 
-    pub fn ref_(place: Var, ref_place: Var, mutability: ty::Mutability) -> Stmt {
+    pub fn ref_(place: Var, ref_place: Var, mutability: ty::Mutability) -> Stmt<'tcx> {
         Stmt {
             kind: StmtKind::Ref(Box::new(ref_place), mutability),
             place,
         }
     }
 
-    pub fn drop_(place: Var, dropped: Var) -> Stmt {
+    pub fn drop_(place: Var, dropped: Var) -> Stmt<'tcx> {
         Stmt {
             kind: StmtKind::Drop(Box::new(dropped)),
             place,
         }
     }
 
-    pub fn api_call(&self) -> &ApiCall {
+    pub fn api_call(&self) -> &ApiCall<'tcx> {
         match self.kind() {
             StmtKind::Call(call) => call,
             _ => panic!("not a call"),
         }
     }
 
-    pub fn var_for_call_arg(&self, no: usize) -> Var {
+    pub fn as_call_arg(&self, no: usize) -> Var {
         match self.kind() {
             StmtKind::Call(call) => {
                 if no == 0 {
@@ -123,7 +136,7 @@ impl Stmt {
                     call.args()[no - 1]
                 }
             }
-            _ => panic!("not a call"),
+            _ => panic!("stmt is not a call: {self:?}"),
         }
     }
 }

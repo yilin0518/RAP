@@ -3,7 +3,7 @@ use std::hash::Hash;
 use super::ty_wrapper::TyWrapper;
 use rustc_middle::{
     query::IntoQueryParam,
-    ty::{Ty, TyCtxt},
+    ty::{self, Ty, TyCtxt},
 };
 
 use rustc_hir::def_id::DefId;
@@ -15,14 +15,14 @@ enum IntrinsicKind {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum DepNode<'tcx> {
-    Api(DefId),
+    Api(DefId, ty::GenericArgsRef<'tcx>),
     Ty(TyWrapper<'tcx>),
     GenericParamDef(DefId, usize, String, bool), // (fn_def_id, index, symbol, is_lifetime_param)
 }
 
 pub fn desc_str<'tcx>(node: DepNode<'tcx>, tcx: TyCtxt<'tcx>) -> String {
     match node {
-        DepNode::Api(def_id) => tcx.def_path_str(def_id),
+        DepNode::Api(def_id, args) => tcx.def_path_str_with_args(def_id, args),
         DepNode::Ty(ty) => ty.desc_str(tcx),
         DepNode::GenericParamDef(idx, index, sym, is_lifetime) => {
             format!("{sym}/#{index}")
@@ -31,8 +31,8 @@ pub fn desc_str<'tcx>(node: DepNode<'tcx>, tcx: TyCtxt<'tcx>) -> String {
 }
 
 impl<'tcx> DepNode<'tcx> {
-    pub fn api(id: impl IntoQueryParam<DefId>) -> DepNode<'tcx> {
-        DepNode::Api(id.into_query_param())
+    pub fn api(id: impl IntoQueryParam<DefId>, args: ty::GenericArgsRef<'tcx>) -> DepNode<'tcx> {
+        DepNode::Api(id.into_query_param(), args)
     }
     pub fn ty(ty: Ty<'tcx>) -> DepNode<'tcx> {
         DepNode::Ty(TyWrapper::from(ty))
@@ -49,9 +49,18 @@ impl<'tcx> DepNode<'tcx> {
         matches!(self, DepNode::Ty(_))
     }
     pub fn is_api(&self) -> bool {
-        matches!(self, DepNode::Api(_))
+        matches!(self, DepNode::Api(..))
     }
     pub fn is_generic(&self) -> bool {
         matches!(self, DepNode::GenericParamDef(..))
+    }
+
+    pub fn as_ty(&self) -> TyWrapper<'tcx> {
+        match self {
+            DepNode::Ty(ty) => *ty,
+            _ => {
+                panic!("{self:?} is not a ty")
+            }
+        }
     }
 }

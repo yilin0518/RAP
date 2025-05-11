@@ -1,28 +1,34 @@
 pub mod dep_edge;
 pub mod dep_node;
+pub mod transform;
 mod ty_wrapper;
 
+use super::Config;
 use crate::analysis::core::api_dep::visitor::FnVisitor;
+use crate::rap_trace;
 use crate::utils::fs::rap_create_file;
-pub use dep_edge::{DepEdge, TransformKind};
+pub use dep_edge::DepEdge;
 pub use dep_node::{desc_str, DepNode};
 use petgraph::dot;
 use petgraph::graph::NodeIndex;
 use petgraph::Direction;
 use petgraph::Graph;
+use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::Hash;
 use std::io::Write;
 use std::path::Path;
+pub use transform::TransformKind;
 pub use ty_wrapper::TyWrapper;
 
 type InnerGraph<'tcx> = Graph<DepNode<'tcx>, DepEdge>;
 pub struct ApiDepGraph<'tcx> {
     graph: InnerGraph<'tcx>,
     node_indices: HashMap<DepNode<'tcx>, NodeIndex>,
-    config: Config,
     tcx: TyCtxt<'tcx>,
+    tys: HashSet<TyWrapper<'tcx>>,
 }
 
 pub struct Statistics {
@@ -32,29 +38,51 @@ pub struct Statistics {
     pub edge_cnt: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Config {
-    pub pub_only: bool,
+fn get_bound_var_attr(var: ty::BoundVariableKind) -> (String, bool) {
+    let name: String;
+    let is_lifetime;
+    match var {
+        ty::BoundVariableKind::Ty(bound_ty_kind) => {
+            is_lifetime = false;
+            name = match bound_ty_kind {
+                ty::BoundTyKind::Param(_, sym) => sym.to_string(),
+                _ => "anon".to_string(),
+            }
+        }
+        ty::BoundVariableKind::Region(bound_region_kind) => {
+            is_lifetime = true;
+            name = match bound_region_kind {
+                ty::BoundRegionKind::BrNamed(_, name) => name.to_string(),
+                _ => "anon".to_string(),
+            }
+        }
+        ty::BoundVariableKind::Const => {
+            is_lifetime = false;
+            name = "anon const".to_string();
+        }
+    }
+    (name, is_lifetime)
 }
 
 impl<'tcx> ApiDepGraph<'tcx> {
-    pub fn new(config: Config, tcx: TyCtxt<'tcx>) -> ApiDepGraph<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> ApiDepGraph<'tcx> {
         ApiDepGraph {
             graph: Graph::new(),
             node_indices: HashMap::new(),
-            config,
             tcx,
+            tys: HashSet::new(),
         }
     }
 
     pub fn num_api(&self) -> usize {
         self.graph
             .node_indices()
-            .filter(|index| matches!(self.graph[*index], DepNode::Api(_)))
+            .filter(|index| matches!(self.graph[*index], DepNode::Api(..)))
             .count()
     }
 
     pub fn num_ty(&self) -> usize {
+        // self.tys.len()
         self.graph
             .node_indices()
             .filter(|index| matches!(self.graph[*index], DepNode::Ty(_)))
@@ -65,14 +93,14 @@ impl<'tcx> ApiDepGraph<'tcx> {
         self.tcx
     }
 
-    pub fn build(&mut self) {
+    pub fn build(&mut self, config: Config) {
         // 1. scan
         let tcx = self.tcx();
-        let mut fn_visitor = FnVisitor::new(tcx, self);
+        let mut fn_visitor = FnVisitor::new(self, config, tcx);
         tcx.hir().visit_all_item_likes_in_crate(&mut fn_visitor);
 
         // 2. add transform node
-        self.add_transform_edges();
+        // self.add_transform_edges();
 
         // 3. prune redundant nodes
         self.prune_redundant_nodes();
@@ -121,10 +149,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         self.node_indices.contains_key(&DepNode::Ty(ty.into()))
     }
 
-    pub fn pub_only(&self) -> bool {
-        self.config.pub_only
-    }
-
     pub fn inner_graph(&self) -> &InnerGraph<'tcx> {
         &self.graph
     }
@@ -137,7 +161,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
         for node in self.graph.node_indices() {
             match self.graph[node] {
-                DepNode::Api(_) => api_cnt += 1,
+                DepNode::Api(..) => api_cnt += 1,
                 DepNode::Ty(_) => ty_cnt += 1,
                 DepNode::GenericParamDef(..) => generic_param_cnt += 1,
             }
@@ -194,8 +218,84 @@ impl<'tcx> ApiDepGraph<'tcx> {
         tys
     }
 
+    pub fn add_generic_api(&mut self, fn_did: DefId) -> bool {
+        let args = ty::GenericArgs::identity_for_item(self.tcx, fn_did);
+
+        if !self.add_api(fn_did, args) {
+            return false;
+        }
+
+        let api_node = self.get_node(DepNode::api(fn_did, args));
+        let binder_fn_sig = self.tcx.fn_sig(fn_did).instantiate_identity();
+
+        // add generic param def to graph
+        // NOTE: generics_of query only return early bound generics
+        let generics = self.tcx.generics_of(fn_did);
+        let early_generic_count = generics.count();
+        // rap_debug!("early bound generic count = {}", early_generic_count);
+        for i in 0..early_generic_count {
+            let generic_param_def = generics.param_at(i, self.tcx);
+            // rap_debug!("early bound generic#{i}: {:?}", generic_param_def);
+            let node_index = self.get_node(DepNode::generic_param_def(
+                fn_did,
+                i,
+                generic_param_def.name,
+                !generic_param_def.kind.is_ty_or_const(),
+            ));
+            self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
+        }
+
+        // add late bound generic
+        for (i, var) in binder_fn_sig.bound_vars().iter().enumerate() {
+            // rap_debug!("bound var#{i}: {var:?}");
+            let (name, is_lifetime) = get_bound_var_attr(var);
+            let node_index = self.get_node(DepNode::generic_param_def(
+                fn_did,
+                early_generic_count + i,
+                name,
+                is_lifetime,
+            ));
+            self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
+        }
+        true
+    }
+
+    // pub fn add_generics_nodes(&mut self, from: NodeIndex, generics: &ty::Generics<'tcx>) {}
+
+    pub fn add_api(&mut self, fn_did: DefId, args: &[ty::GenericArg<'tcx>]) -> bool {
+        let api_node = self.get_node(DepNode::api(fn_did, self.tcx.mk_args(args)));
+
+        rap_trace!("[ApiDepGraph] add fn: {:?} args: {:?}", fn_did, args);
+
+        let binder_fn_sig = self.tcx.fn_sig(fn_did).instantiate(self.tcx, args);
+        let fn_sig = binder_fn_sig.skip_binder();
+
+        // add inputs/output to graph, and compute constraints based on subtyping
+        for (no, input_ty) in fn_sig.inputs().iter().enumerate() {
+            let input_node = self.get_node(DepNode::ty(*input_ty));
+            self.add_edge(input_node, api_node, DepEdge::arg(no));
+        }
+
+        let output_ty = fn_sig.output();
+        let output_node = self.get_node(DepNode::ty(output_ty));
+        self.add_edge(api_node, output_node, DepEdge::ret());
+
+        true
+    }
+
+    // pub fn add_ty_node(&mut self, ty_node: DepNode<'tcx>) {
+    //     let ty = ty_node.as_ty();
+    //     if self.tys.contains(&ty) {
+    //         self.add_possible_transform::<3>(ty, 0);
+    //         for ty in self.tys.iter(){
+    //             self.add_
+    //         }
+    //         self.tys.insert(ty);
+    //     }
+    // }
+
     /// return all transform kind for `ty` that we intersted in.
-    pub fn all_transform_for(&self, ty: Ty<'tcx>) -> Vec<TransformKind> {
+    pub fn all_transforms(&self, ty: Ty<'tcx>) -> Vec<TransformKind> {
         let mut tfs = Vec::new();
         if let Some(index) = self.get_index_by_node(DepNode::Ty(ty.into())) {
             for edge in self.graph.edges_directed(index, Direction::Outgoing) {
@@ -222,7 +322,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
                              node_ref: (NodeIndex, &DepNode<'tcx>)| {
             format!("label={:?}, ", desc_str(node_ref.1.clone(), tcx))
                 + match node_ref.1 {
-                    DepNode::Api(_) => "color = blue",
+                    DepNode::Api(..) => "color = blue",
                     DepNode::Ty(_) => "color = red",
                     DepNode::GenericParamDef(..) => "color = green",
                 }

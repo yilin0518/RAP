@@ -1,7 +1,9 @@
 use super::folder::*;
+use super::pattern::EdgePatterns;
 use crate::analysis::testgen::context::Var;
+use crate::analysis::testgen::generator::ltgen::pattern::PatternNode;
 use crate::analysis::testgen::utils;
-use crate::rap_debug;
+use crate::{rap_debug, rap_trace};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::NodeIndex;
 use rustc_hir::def_id::DefId;
@@ -13,41 +15,20 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::io::Write;
 
-#[derive(Debug)]
-pub enum PatternNode {
-    Named(usize),
-    Temp(usize),
-}
-
-#[derive(Debug)]
-pub struct EdgePattern(PatternNode, PatternNode);
-
-#[derive(Debug, Default)]
-pub struct EdgePatterns {
-    named_region_num: usize,
-    temp_num: usize,
-    patterns: Vec<EdgePattern>,
-}
-
-impl EdgePatterns {
-    pub fn named_region_num(&self) -> usize {
-        self.named_region_num
-    }
-
-    pub fn temp_num(&self) -> usize {
-        self.temp_num
-    }
-
-    pub fn patterns(&self) -> &[EdgePattern] {
-        &self.patterns
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionNode {
     Static,
     Named(Var),
     Anon,
+}
+
+impl RegionNode {
+    pub fn as_var(&self) -> Var {
+        match self {
+            RegionNode::Named(var) => *var,
+            _ => panic!("not a named node: {:?}", self),
+        }
+    }
 }
 
 impl Display for RegionNode {
@@ -158,6 +139,7 @@ impl RegionGraph {
     /// from: the index of start named node
     /// to: the index of end named node
     pub fn prove(&self, from: Rid, to: Rid) -> bool {
+        rap_debug!("try to prove {:?} -> {:?}", from, to);
         let mut visited = vec![false; self.inner.node_count()];
         self.dfs_find_path(from.into(), to.into(), &mut visited)
     }
@@ -166,7 +148,7 @@ impl RegionGraph {
         *self.inner.node_weight(rid.into()).unwrap()
     }
 
-    pub fn add_edges_with<'tcx>(&mut self, patterns: &EdgePatterns, subst: &[Rid]) {
+    pub fn add_edges_by_patterns<'tcx>(&mut self, patterns: &EdgePatterns, subst: &[Rid]) {
         assert!(subst.len() == patterns.named_region_num());
 
         let mut temp = Vec::new();
@@ -181,8 +163,8 @@ impl RegionGraph {
                 PatternNode::Named(i) => subst[*i],
                 PatternNode::Temp(i) => temp[*i],
             };
-            let from = get_index(&pattern.0);
-            let to = get_index(&pattern.1);
+            let from = get_index(&pattern.from());
+            let to = get_index(&pattern.to());
             self.add_edge(from, to);
         }
     }
@@ -230,9 +212,9 @@ impl RegionGraph {
         self.inner.node_count()
     }
 
-    pub fn find_sources(&self, rid: Rid) -> Vec<Rid> {
+    pub fn for_each_source(&self, rid: Rid, f: &mut impl FnMut(Rid)) {
         let mut visited = vec![false; self.total_node_count()];
-        let mut sources = Vec::new();
+        // let mut sources = Vec::new();
         let mut q = VecDeque::new();
         q.push_back(rid.into());
         visited[rid.index()] = true;
@@ -246,10 +228,11 @@ impl RegionGraph {
                 }
             }
             if outgoing_cnt == 0 {
-                sources.push(node.into());
+                f(node.into());
+                // sources.push(node.into());
             }
         }
-        sources
+        // sources
     }
 }
 
@@ -311,90 +294,6 @@ pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'
         }
         _ => {}
     }
-}
-
-pub fn extract_constraints<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> EdgePatterns {
-    let infcx = tcx.infer_ctxt().build();
-    let mut folder = InfcxVarFolder::new(&infcx, tcx);
-
-    let fn_sig = utils::fn_sig_without_binders(fn_did, tcx);
-    let fn_with_free_vars = fn_sig.fold_with(&mut folder);
-
-    let param_env = tcx.param_env(fn_did);
-
-    let res = infcx
-        .at(&ObligationCause::dummy(), param_env)
-        .sub(infer::DefineOpaqueTypes::Yes, fn_sig, fn_with_free_vars)
-        .unwrap();
-    res.obligations.into_iter().for_each(|obligation| {
-        rap_debug!("obligation: {obligation:?}");
-    });
-
-    let dummy = ObligationCause::dummy();
-    let at = infcx.at(&dummy, param_env);
-    let mut f = |prev_region, region| {
-        let _ = at
-            .sub(infer::DefineOpaqueTypes::Yes, region, prev_region)
-            .unwrap();
-    };
-
-    for input in fn_sig.inputs().iter() {
-        visit_structure_region_with(*input, None, tcx, &mut f);
-    }
-    visit_structure_region_with(fn_sig.output(), None, tcx, &mut f);
-
-    let region_constraint_data = infcx.take_and_reset_region_constraints();
-    let mut map = HashMap::new();
-    let mut temp_region_no = |region: ty::Region<'tcx>| -> usize {
-        if region.is_var() {
-            panic!("region is var");
-        }
-        let len = map.len();
-        *map.entry(*region).or_insert(len)
-    };
-    let mut subgraph = EdgePatterns::default();
-
-    for (constraint, _) in region_constraint_data.constraints {
-        let edge = match constraint {
-            Constraint::VarSubVar(a, b) => EdgePattern(
-                PatternNode::Named(a.as_usize()),
-                PatternNode::Named(b.as_usize()),
-            ),
-            Constraint::RegSubVar(a, b) => EdgePattern(
-                PatternNode::Temp(temp_region_no(a)),
-                PatternNode::Named(b.as_usize()),
-            ),
-            Constraint::VarSubReg(a, b) => EdgePattern(
-                PatternNode::Named(a.as_usize()),
-                PatternNode::Temp(temp_region_no(b)),
-            ),
-            Constraint::RegSubReg(a, b) => EdgePattern(
-                PatternNode::Temp(temp_region_no(a)),
-                PatternNode::Temp(temp_region_no(b)),
-            ),
-        };
-        subgraph.patterns.push(edge);
-    }
-
-    // extract constraints from where clauses of Fn
-    let predicates = tcx.predicates_of(fn_did);
-    predicates.predicates.iter().for_each(|(pred, _)| {
-        if let Some(outlive_pred) = pred.as_region_outlives_clause() {
-            let outlive_pred = outlive_pred.skip_binder();
-            // lhs : rhs
-            let (lhs, rhs) = (outlive_pred.0, outlive_pred.1);
-
-            // build edge from rhs to lhs
-            subgraph.patterns.push(EdgePattern(
-                PatternNode::Temp(temp_region_no(rhs)),
-                PatternNode::Temp(temp_region_no(lhs)),
-            ));
-        }
-    });
-
-    subgraph.named_region_num = folder.cnt();
-    subgraph.temp_num = map.len();
-    subgraph
 }
 
 pub struct FreeVarFolder<'tcx, 'a> {

@@ -24,7 +24,7 @@ extern crate stable_mir;
 
 use crate::analysis::core::heap_item::TypeAnalysis;
 use analysis::core::alias::mop::MopAlias;
-use analysis::core::api_dep::ApiDep;
+use analysis::core::api_dep::{self, ApiDep};
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;
 use analysis::core::range_analysis::SSATrans;
@@ -290,7 +290,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_api_dep_enabled() {
-        ApiDep::new(tcx).start(true);
+        ApiDep::new(tcx).start(api_dep::Config {
+            pub_only: true,
+            include_generic_api: true,
+        });
     }
 
     if callback.is_testgen_enabled() {

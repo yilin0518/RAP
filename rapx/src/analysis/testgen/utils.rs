@@ -7,7 +7,7 @@ use rustc_hir::{
     BodyOwnerKind,
 };
 use rustc_middle::ty::{
-    self, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable, TypeVisitor,
+    self, AdtFlags, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable, TypeVisitor,
 };
 use std::collections::VecDeque;
 
@@ -47,17 +47,6 @@ pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     let ty1 = tcx.erase_regions(ty1);
     let ty2 = tcx.erase_regions(ty2);
     return ty1 == ty2;
-
-    // FIXME: code below cause crash
-    // let infcx = tcx.infer_ctxt().build();
-    // let env = ParamEnv::reveal_all();
-    // TODO: How to deal with lifetime?
-    // let res = infcx.at(&ObligationCause::dummy(), env).eq(
-    //     rustc_infer::infer::DefineOpaqueTypes::Yes,
-    //     ty1,
-    //     ty2,
-    // );
-    // res.is_ok()
 }
 
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
@@ -116,6 +105,16 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 pub fn fn_sig_without_binders<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> FnSig<'tcx> {
     let early_fn_sig = tcx.fn_sig(fn_did);
     let binder_fn_sig = early_fn_sig.instantiate_identity();
+    tcx.liberate_late_bound_regions(fn_did, binder_fn_sig)
+}
+
+pub fn fn_sig_with_generic_args<'tcx>(
+    fn_did: DefId,
+    args: &[ty::GenericArg<'tcx>],
+    tcx: TyCtxt<'tcx>,
+) -> FnSig<'tcx> {
+    let early_fn_sig = tcx.fn_sig(fn_did);
+    let binder_fn_sig = early_fn_sig.instantiate(tcx, args);
     tcx.liberate_late_bound_regions(fn_did, binder_fn_sig)
 }
 
@@ -197,7 +196,7 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
                     return true;
                 }
             }
-            DepNode::Api(fn_did) => {
+            DepNode::Api(fn_did, _) => {
                 if fn_requires_monomorphization(fn_did, tcx) {
                     return false;
                 }
@@ -213,7 +212,7 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
 
     // initialize queue with fuzzable type
     while let Some(index) = worklist.pop_front() {
-        if let DepNode::Api(did) = inner_graph[index] {
+        if let DepNode::Api(did, _) = inner_graph[index] {
             if did.is_local() {
                 num_reachable += 1;
             }
@@ -227,7 +226,7 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
                         worklist.push_back(next);
                     }
                 }
-                DepNode::Api(fn_did) => {
+                DepNode::Api(fn_did, _) => {
                     // regard the function as unreachalbe if it need monomorphization
                     if fn_requires_monomorphization(fn_did, tcx) {
                         continue;
@@ -256,4 +255,28 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
         }
     }
     (num_reachable, num_total)
+}
+
+pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(Ty<'tcx>) -> bool) {
+    if !f(ty) {
+        return;
+    }
+    match ty.kind() {
+        TyKind::Ref(_, inner_ty, _) | TyKind::Array(inner_ty, _) | TyKind::Slice(inner_ty) => {
+            visit_ty_while(*inner_ty, tcx, f);
+        }
+
+        // Tuple
+        TyKind::Tuple(tys) => tys
+            .iter()
+            .for_each(|inner_ty| visit_ty_while(inner_ty, tcx, f)),
+
+        // ADT
+        TyKind::Adt(adt_def, substs) => {
+            adt_def.all_fields().for_each(|field| {
+                visit_ty_while(field.ty(tcx, &substs), tcx, f);
+            });
+        }
+        _ => {}
+    }
 }

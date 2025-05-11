@@ -2,6 +2,8 @@ pub mod context;
 mod folder;
 mod lifetime;
 mod mono;
+mod pattern;
+mod safety;
 
 use crate::analysis::core::alias::{FnRetAlias, RetAlias};
 use crate::analysis::core::api_dep::ApiDepGraph;
@@ -10,8 +12,7 @@ use crate::analysis::testgen::context::{ApiCall, Context, Stmt, StmtKind, Var};
 use crate::analysis::testgen::utils::{self, get_all_pub_apis};
 use crate::{rap_debug, rap_info};
 use context::LtContext;
-
-use lifetime::EdgePatterns;
+use pattern::{EdgePatterns, PatternProvider};
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
@@ -21,18 +22,17 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
-type RegionSubgraphMap = HashMap<DefId, EdgePatterns>;
 
-pub fn initialize_subgraph_map<'tcx>(tcx: TyCtxt<'tcx>) -> RegionSubgraphMap {
-    let mut map = HashMap::new();
-    for fn_did in get_all_pub_apis(tcx) {
-        if utils::fn_requires_monomorphization(fn_did, tcx) {
-            continue;
-        }
-        map.insert(fn_did, lifetime::extract_constraints(fn_did, tcx));
-    }
-    map
-}
+// pub fn initialize_subgraph_map<'tcx>(tcx: TyCtxt<'tcx>) -> RegionSubgraphMap {
+//     let mut map = HashMap::new();
+//     for fn_did in get_all_pub_apis(tcx) {
+//         if utils::fn_requires_monomorphization(fn_did, tcx) {
+//             continue;
+//         }
+//         map.insert(fn_did, lifetime::extract_constraints(fn_did, tcx));
+//     }
+//     map
+// }
 
 pub struct LtGenBuilder<'tcx, 'a, R: Rng> {
     tcx: TyCtxt<'tcx>,
@@ -105,7 +105,7 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
     rng: RefCell<R>,
     max_complexity: usize,
     alias_map: &'a FnAliasMap,
-    subgraph_map: RegionSubgraphMap,
+    pattern_provider: PatternProvider<'tcx>,
     api_graph: &'a ApiDepGraph<'tcx>,
 }
 
@@ -170,9 +170,9 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             pub_api: utils::get_all_pub_apis(tcx),
             tcx,
             rng: RefCell::new(rng),
+            pattern_provider: PatternProvider::new(tcx),
             max_complexity,
             alias_map,
-            subgraph_map: initialize_subgraph_map(tcx),
             api_graph,
         }
     }
@@ -185,52 +185,24 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         &self.pub_api
     }
 
-    // Vec<Var, [LifetimeBinding]>
-    // drop(LifetimeRelated)
-    // use(Projection)
-    // 如果alias（a，b），且a中含有unsafe ptr，则a -> all_lifetime(b)，对于b也一样
-    pub fn is_api_vulnerable(&self, did: DefId) -> bool {
-        if let Some(fn_ret_alias) = self.alias_map.get(&did) {
-            let fn_sig = utils::fn_sig_without_binders(did, self.tcx());
-            let mut is_vulnerable = false;
-            for ret_alias in fn_ret_alias.aliases() {
-                let (lhs_ty, rhs_ty) = destruct_ret_alias(fn_sig, ret_alias, self.tcx());
-                let lhs_result = utils::ty_check_ptr(lhs_ty, self.tcx());
-                let rhs_result = utils::ty_check_ptr(rhs_ty, self.tcx());
-                let has_unsafe_ptr = lhs_result.has_unsafe_ptr || rhs_result.has_unsafe_ptr;
-                // let has_ptr = lhs_result.has_any_ptr || rhs_result.has_any_ptr;
-                is_vulnerable = is_vulnerable || has_unsafe_ptr;
-                rap_debug!("{did:?} is_vulnerable={is_vulnerable} lhs: {lhs_ty}, rhs: {rhs_ty}");
-            }
-            is_vulnerable
-        } else {
-            panic!("Cannot find alias result: {:?}", did);
-        }
-    }
-
-    pub fn check_all_vulnerable_api(&self) -> Vec<DefId> {
-        let mut vulnerable_apis = Vec::new();
-        for fn_did in self.pub_api_def_id() {
-            if self.is_api_vulnerable(*fn_did) {
-                vulnerable_apis.push(*fn_did);
-            }
-        }
-        vulnerable_apis
-    }
-
     pub fn enable_monomorphization(&self) -> bool {
         true
+        // false
     }
 
-    pub fn is_api_eligable(&self, fn_did: DefId, cx: &LtContext<'tcx, '_, '_>) -> Option<ApiCall> {
+    pub fn is_api_eligable(
+        &self,
+        fn_did: DefId,
+        cx: &LtContext<'tcx, '_>,
+    ) -> Option<ApiCall<'tcx>> {
         let tcx = self.tcx();
 
         let mut api_call = ApiCall {
             fn_did,
             args: Vec::new(),
+            generic_args: tcx.mk_args(&[]),
         };
 
-        // TODO: now only consider fn_sig without type & const parameters
         if tcx.generics_of(fn_did).requires_monomorphization(tcx) {
             if !self.enable_monomorphization() {
                 return None;
@@ -242,15 +214,22 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                     set.insert(tcx.erase_regions(cx.type_of(*var)));
                     set
                 });
-            let monos = mono::get_mono_set(fn_did, available_ty, tcx);
-            rap_debug!("monos: {:?}", monos);
-        }
 
-        let fn_sig = utils::fn_sig_without_binders(fn_did, tcx);
+            let monos = mono::get_all_concrete_mono_solution(fn_did, available_ty, tcx);
+            rap_debug!("monos: {:?}", monos);
+            if monos.is_empty() {
+                return None;
+            }
+            let idx = self.rng.borrow_mut().random_range(0..monos.count());
+
+            api_call.generic_args = tcx.mk_args(monos.args_at(idx));
+        }
+        let fn_sig =
+            utils::fn_sig_with_generic_args(api_call.fn_did(), api_call.generic_args(), tcx);
 
         rap_debug!("check eligible api: {fn_did:?}");
         for input_ty in fn_sig.inputs().iter() {
-            rap_debug!("input_ty = {input_ty:?}");
+            rap_debug!("input_ty = {input_ty}");
             let providers = cx.all_possible_providers(*input_ty);
             if providers.is_empty() {
                 rap_debug!("no possible providers");
@@ -264,8 +243,9 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         Some(api_call)
     }
 
-    fn choose_eligable_api(&self, cx: &LtContext<'tcx, 'a, '_>) -> Option<ApiCall> {
+    fn choose_eligable_api(&self, cx: &LtContext<'tcx, 'a>) -> Option<ApiCall<'tcx>> {
         let mut eligable_calls = Vec::new();
+        rap_debug!("available vars: {:?}", cx.available_values());
         for fn_did in self.pub_api_def_id() {
             if let Some(call) = self.is_api_eligable(*fn_did, cx) {
                 eligable_calls.push(call);
@@ -279,11 +259,11 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         Some(eligable_calls.swap_remove(idx))
     }
 
-    fn choose_transform(&self, cx: &mut LtContext<'tcx, 'a, '_>) -> Option<(Var, TransformKind)> {
+    fn choose_transform(&self, cx: &mut LtContext<'tcx, 'a>) -> Option<(Var, TransformKind)> {
         let mut vec: Vec<(Var, TransformKind)> = Vec::new();
         for var in cx.available_values() {
             let ty = cx.type_of(*var);
-            for transform in self.api_graph.all_transform_for(ty) {
+            for transform in self.api_graph.all_transforms(ty) {
                 vec.push((*var, transform));
             }
         }
@@ -295,14 +275,14 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         Some(vec.swap_remove(idx))
     }
 
-    pub fn next_operation(&self, cx: &mut LtContext<'tcx, 'a, '_>) -> bool {
+    fn next(&self, cx: &mut LtContext<'tcx, 'a>) -> bool {
         let hit = self.rng.borrow_mut().random_ratio(2, 3);
 
         if hit {
             if let Some(call) = self.choose_eligable_api(cx) {
-                if self.is_api_vulnerable(call.fn_did()) {
-                    rap_info!("{:?} is vulnerable", call.fn_did());
-                }
+                // if self.is_api_vulnerable(call.fn_did()) {
+                //     rap_info!("{:?} maybe vulnerable", call.fn_did());
+                // }
                 cx.add_call_stmt(call);
                 if cx.try_inject_drop() {
                     rap_debug!("successfully inject drop");
@@ -325,9 +305,10 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         false
     }
 
-    pub fn gen(&mut self) -> LtContext<'tcx, 'a, '_> {
-        let mut cx = LtContext::new(self.tcx(), &self.subgraph_map, &self.alias_map);
-        let (estimated, total) = utils::estimate_max_coverage(self.api_graph, self.tcx());
+    pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
+        let tcx = self.tcx();
+        let mut cx = LtContext::new(self.tcx, &self.alias_map);
+        let (estimated, total) = utils::estimate_max_coverage(self.api_graph, tcx);
         let mut count = 0;
         loop {
             count += 1;
@@ -336,7 +317,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 rap_info!("complexity limit reached, generation terminate");
                 break;
             }
-            self.next_operation(&mut cx);
+            self.next(&mut cx);
 
             // if !self.next_operation(&mut cx) {
             //     rap_info!("no more operation can be performed, generation terminate");

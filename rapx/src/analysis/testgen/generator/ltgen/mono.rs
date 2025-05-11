@@ -1,5 +1,5 @@
 use crate::analysis::testgen::utils;
-use crate::{rap_debug, rap_info, rap_warn};
+use crate::{rap_debug, rap_info, rap_trace, rap_warn};
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::canonical::ir::InferCtxtLike;
 use rustc_infer::infer::TyCtxtInferExt;
@@ -15,10 +15,6 @@ use std::io::Write;
 
 use super::context::LtContext;
 
-impl<'tcx, 'a, 'b> LtContext<'tcx, 'a, 'b> {
-    pub fn get_possible_generic_args(&self) {}
-}
-
 #[derive(Clone, Debug)]
 pub struct MonoSet<'tcx> {
     pub value: Vec<Vec<ty::GenericArg<'tcx>>>,
@@ -29,6 +25,18 @@ impl<'tcx> MonoSet<'tcx> {
         MonoSet {
             value: vec![Vec::from(args)],
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.value.len()
+    }
+
+    pub fn args_at(&self, no: usize) -> &[ty::GenericArg<'tcx>] {
+        &self.value[no]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
     }
 
     pub fn empty() -> MonoSet<'tcx> {
@@ -48,7 +56,9 @@ impl<'tcx> MonoSet<'tcx> {
 
         for args in self.value.iter() {
             for other_args in other.value.iter() {
-                if let Some(new_args) = self.merge_args(args, other_args, tcx) {
+                let merged = self.merge_args(args, other_args, tcx);
+                rap_trace!("merged: {:?}", merged);
+                if let Some(new_args) = merged {
                     res.value.push(new_args);
                 }
             }
@@ -63,7 +73,7 @@ impl<'tcx> MonoSet<'tcx> {
         other_args: &[ty::GenericArg<'tcx>],
         tcx: TyCtxt<'tcx>,
     ) -> Option<Vec<ty::GenericArg<'tcx>>> {
-        rap_debug!(
+        rap_trace!(
             "[MonoSet::merge_args] args: {:?} other_args: {:?}",
             args,
             other_args
@@ -105,9 +115,9 @@ impl<'tcx> MonoSet<'tcx> {
     }
 }
 
-pub fn get_mono_set<'tcx>(
+fn get_mono_set<'tcx>(
     fn_did: DefId,
-    available_ty: HashSet<Ty<'tcx>>,
+    available_ty: &HashSet<Ty<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
     let fn_sig = tcx.fn_sig(fn_did);
@@ -118,7 +128,7 @@ pub fn get_mono_set<'tcx>(
     let fn_sig = tcx.liberate_late_bound_regions(fn_did, fn_sig);
     let generics = tcx.generics_of(fn_did);
     for i in 0..fresh_args.len() {
-        rap_debug!(
+        rap_trace!(
             "arg#{}: {:?} -> {:?}",
             i,
             generics.param_at(i, tcx).name,
@@ -127,7 +137,7 @@ pub fn get_mono_set<'tcx>(
     }
     let dummy_cause = ObligationCause::dummy();
 
-    rap_debug!("param_env: {:?}", param_env);
+    rap_trace!("param_env: {:?}", param_env);
 
     fn_sig
         .inputs()
@@ -144,10 +154,10 @@ pub fn get_mono_set<'tcx>(
                                 *ty,
                             ) {
                                 Ok(infer_ok) => {
-                                    rap_debug!("{} can eq to {}: {:?}", ty, input_ty, infer_ok);
+                                    rap_trace!("{} can eq to {}: {:?}", ty, input_ty, infer_ok);
                                 }
                                 Err(e) => {
-                                    rap_debug!("{} cannot eq to {}: {:?}", ty, input_ty, e);
+                                    rap_trace!("{} cannot eq to {}: {:?}", ty, input_ty, e);
                                     return;
                                 }
                             }
@@ -169,15 +179,36 @@ pub fn get_mono_set<'tcx>(
                         reachable_set
                     });
 
-            acc.merge(&reachable_set, tcx);
-            acc
+            acc.merge(&reachable_set, tcx)
         })
 }
 
 pub fn get_all_concrete_mono_solution<'tcx>(
     fn_did: DefId,
-    available_ty: HashSet<Ty<'tcx>>,
+    mut available_ty: HashSet<Ty<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
-    get_mono_set(fn_did, available_ty, tcx).filter_unbound_solution()
+    add_prelude_ty(&mut available_ty, tcx);
+    rap_debug!("[mono] input => {fn_did:?}: {available_ty:?}");
+    let ret = get_mono_set(fn_did, &available_ty, tcx).filter_unbound_solution();
+    rap_debug!("possible mono solution for {fn_did:?}: {ret:?}");
+    ret
+}
+
+pub fn add_prelude_ty<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt<'tcx>) {
+    let prelude_tys = [
+        tcx.types.bool,
+        tcx.types.char,
+        tcx.types.f32,
+        tcx.types.f64,
+        tcx.types.i8,
+        tcx.types.i32,
+        tcx.types.u8,
+        tcx.types.u32,
+        tcx.types.usize,
+        tcx.types.isize,
+    ];
+    prelude_tys.iter().for_each(|ty| {
+        available_ty.insert(*ty);
+    });
 }

@@ -33,7 +33,7 @@ impl Rulf {
     ) -> Vec<api_dep::DepNode<'tcx>> {
         let mut api_starts = Vec::new();
         for (node_idx, node) in graph.inner_graph().node_references() {
-            if let api_dep::DepNode::Api(_) = node {
+            if let api_dep::DepNode::Api(..) = node {
                 let all_params_primitive = graph
                     .inner_graph()
                     .edges_directed(node_idx, Direction::Incoming)
@@ -68,7 +68,7 @@ impl Rulf {
         rap_info!("start_api stage");
 
         for start_api in api_starts {
-            if let api_dep::DepNode::Api(def_id) = start_api {
+            if let api_dep::DepNode::Api(def_id, _) = start_api {
                 let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                 let mut args = Vec::new();
                 for input_ty in fn_sig.inputs() {
@@ -86,6 +86,7 @@ impl Rulf {
                 let call = ApiCall {
                     fn_did: def_id,
                     args,
+                    generic_args: tcx.mk_args(&[]),
                 };
                 cx.add_call_stmt(call);
                 visited.insert(start_api.clone());
@@ -148,7 +149,7 @@ impl Rulf {
                     for consumer_edge in consumer_edges {
                         let consumer_api_idx = consumer_edge.target();
                         let consumer_api = graph.inner_graph()[consumer_api_idx].clone();
-                        if let api_dep::DepNode::Api(_) = consumer_api {
+                        if let api_dep::DepNode::Api(..) = consumer_api {
                             if !visited.contains(&consumer_api) {
                                 unvisited_consumers.push(consumer_api);
                             }
@@ -156,7 +157,7 @@ impl Rulf {
                     }
                     // process unvisited consume api
                     for consumer_api in unvisited_consumers {
-                        if let api_dep::DepNode::Api(def_id) = consumer_api {
+                        if let api_dep::DepNode::Api(def_id, _) = consumer_api {
                             let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                             let mut param_providers: Vec<Vec<_>> = Vec::new();
                             let mut satisfy_all_input = true;
@@ -198,6 +199,7 @@ impl Rulf {
                                 let call = ApiCall {
                                     fn_did: def_id,
                                     args,
+                                    generic_args: tcx.mk_args(&[]),
                                 };
                                 cx.add_call_stmt(call);
                                 let mut new_seq = current_seq.clone();
@@ -258,7 +260,7 @@ impl Rulf {
             .inner_graph()
             .node_references()
             .filter_map(|(_, node)| {
-                if let api_dep::DepNode::Api(_) = node {
+                if let api_dep::DepNode::Api(..) = node {
                     Some(node.clone())
                 } else {
                     None
@@ -298,7 +300,7 @@ impl Rulf {
         rng: &mut R,
         tcx: TyCtxt<'tcx>,
     ) -> bool {
-        if let api_dep::DepNode::Api(def_id) = target_api {
+        if let api_dep::DepNode::Api(def_id, ..) = target_api {
             rap_info!("backward search for target_api: {:?}", target_api);
             let fn_sig = utils::fn_sig_without_binders(*def_id, tcx);
             let mut vars = Vec::new();
@@ -409,6 +411,7 @@ impl Rulf {
             let call = ApiCall {
                 fn_did: *def_id,
                 args: vars,
+                generic_args: tcx.mk_args(&[]),
             };
             cx.add_call_stmt(call);
 
@@ -539,6 +542,7 @@ impl Rulf {
             let call = ApiCall {
                 fn_did: def_id,
                 args,
+                generic_args: tcx.mk_args(&[]),
             };
             ret_var = Some(cx.add_call_stmt(call));
         }
@@ -563,7 +567,7 @@ impl Rulf {
             .inner_graph()
             .node_references()
             .filter_map(|(_, node)| {
-                if let api_dep::DepNode::Api(_) = node {
+                if let api_dep::DepNode::Api(..) = node {
                     Some(node.clone())
                 } else {
                     None
@@ -585,7 +589,7 @@ impl Rulf {
             visited.insert(current_api.clone());
             let current_idx = graph.get_node(current_api.clone());
 
-            if let api_dep::DepNode::Api(def_id) = current_api {
+            if let api_dep::DepNode::Api(def_id, _) = current_api {
                 let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                 let output_ty = fn_sig.output();
                 available_types.insert(output_ty);
@@ -629,7 +633,7 @@ impl Rulf {
                         for consumer_edge in consumer_edges {
                             let consumer_api_idx = consumer_edge.target();
                             let consumer_api = graph.inner_graph()[consumer_api_idx].clone();
-                            if let api_dep::DepNode::Api(def_id) = consumer_api {
+                            if let api_dep::DepNode::Api(def_id, _) = consumer_api {
                                 if !visited.contains(&consumer_api) {
                                     let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                                     let all_inputs_satisfied =
@@ -673,7 +677,7 @@ impl Rulf {
             let mut i = 0;
             while i < unvisited_api_nodes.len() {
                 let target_api = unvisited_api_nodes[i].clone();
-                let reachable = if let api_dep::DepNode::Api(def_id) = target_api {
+                let reachable = if let api_dep::DepNode::Api(def_id, _) = target_api {
                     let fn_sig = utils::fn_sig_without_binders(def_id, tcx);
                     let all_inputs_satisfied = fn_sig.inputs().iter().all(|input_ty| {
                         if let ty::Ref(_, inner_ty, ty::Mutability::Mut) = input_ty.kind() {

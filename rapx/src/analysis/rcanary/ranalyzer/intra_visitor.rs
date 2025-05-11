@@ -1,3 +1,4 @@
+use rustc_data_structures::graph;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     AggregateKind, BasicBlock, BasicBlockData, Body, Local, Operand, Place, ProjectionElem, Rvalue,
@@ -15,7 +16,6 @@ use z3::ast::{self, Ast};
 use super::super::{IcxMut, IcxSliceMut, Rcx, RcxMut};
 use super::is_z3_goal_verbose;
 use super::ownership::IntraVar;
-use super::utils::has_cycle;
 use super::{FlowAnalysis, IcxSliceFroBlock, IntraFlowAnalysis};
 use crate::analysis::core::heap_item::ownership::*;
 use crate::analysis::core::heap_item::type_visitor::*;
@@ -47,7 +47,7 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
         for each_mir in mir_keys {
             let def_id = each_mir.to_def_id();
             let body = mir_body(tcx, def_id);
-            if has_cycle(&body.basic_blocks) {
+            if graph::is_cyclic(&body.basic_blocks) {
                 continue;
             }
 

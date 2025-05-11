@@ -115,9 +115,7 @@ impl<'tcx> MopGraph<'tcx> {
                                 recursion_set.remove(target_id);
                             }
                         } else if self.values[lv].may_drop {
-                            if target_id.index.as_usize() == CALL_MUT
-                                || target_id.index.as_usize() == NEXT
-                            {
+                            if target_id.index.as_usize() == CALL_MUT {
                                 continue;
                             }
 

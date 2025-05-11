@@ -17,10 +17,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         //     let mut c = || {x+1;};
         //     c.call_mut(());
         // }
-        if def_id.index.as_usize() == CALL_MUT
-            || def_id.index.as_usize() == NEXT
-            || def_id.index.as_usize() == CLONE
-        {
+        if def_id.index.as_usize() == CALL_MUT || def_id.index.as_usize() == CLONE {
             return true;
         }
 
@@ -84,6 +81,15 @@ pub fn is_corner_adt(str: String) -> bool {
         return true;
     }
     if let Some(_) = str.find("rc::Rc") {
+        return true;
+    }
+    if let Some(_) = str.find("arc::Arc") {
+        return true;
+    }
+    if let Some(_) = str.find("rc::Weak") {
+        return true;
+    }
+    if let Some(_) = str.find("sync::Weak") {
         return true;
     }
     return false;

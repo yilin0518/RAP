@@ -2,7 +2,6 @@ pub mod inter_visitor;
 pub mod intra_visitor;
 pub mod order;
 pub mod ownership;
-pub mod utils;
 
 use rustc_middle::mir::{Body, Terminator};
 use rustc_middle::ty::TyCtxt;

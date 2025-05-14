@@ -9,7 +9,7 @@ Application:
     -M or -mleak    memory leakage detection.
     -O or -opt      automatically detect code optimization chances.
     -I or -infer    (under development) infer the safety properties required by unsafe APIs.
-    -V or -verify   (under development) verify if the safety requirements of unsafe API are satisfied.
+    -C or -check    (under development) check if the safety requirements of unsafe API are satisfied.
 
 Analysis:
     -alias          perform alias analysis (meet-over-paths)
@@ -22,11 +22,6 @@ Analysis:
 General command: 
     -H or -help:     show help information
     -V or -version:  show the version of RAPx
-
-The following features are under development
-Unsafe code tracing
-
-
 
 NOTE: multiple detections can be processed in single run by 
 appending the options to the arguments. Like `cargo rapx -F -M`
@@ -59,7 +54,7 @@ Environment Variables (Values are case insensitive):
 "#;
 
 pub const RAPX_VERSION: &str = r#"
-rapx version 0.1
-released at 2025-01-06
+rapx version 0.2
+released at 2025-05-14
 developped by artisan-lab @ Fudan university 
 "#;

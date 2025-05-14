@@ -31,7 +31,7 @@ fn main() {
             "-F" | "-uaf" => compiler.enable_safedrop(),
             "-M" | "-mleak" => compiler.enable_rcanary(),
             "-I" | "-infer" => compiler.enable_infer(),
-            "-V" | "-verify" => compiler.enable_verify(),
+            "-C" | "-check" => compiler.enable_verify(),
             "-O" | "-opt" => compiler.enable_opt(1),
             "-opt=all" => compiler.enable_opt(2),
             "-opt=report" => compiler.enable_opt(0),

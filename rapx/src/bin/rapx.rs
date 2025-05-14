@@ -16,8 +16,6 @@ fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) {
     rustc_driver::init_rustc_env_logger(&handler);
     rustc_driver::install_ice_hook("bug_report_url", |_| ());
 
-    //let run_compiler = rustc_driver::RunCompiler::new(args, callback);
-    //let exit_code = rustc_driver::catch_with_exit_code(move || run_compiler.run());
     rustc_driver::run_compiler(args, callback);
     rap_trace!("The arg for compilation is {:?}", args);
 }
@@ -31,7 +29,7 @@ fn main() {
             "-F" | "-uaf" => compiler.enable_safedrop(),
             "-M" | "-mleak" => compiler.enable_rcanary(),
             "-I" | "-infer" => compiler.enable_infer(),
-            "-C" | "-check" => compiler.enable_verify(),
+            "-V" | "-verify" => compiler.enable_verify(),
             "-O" | "-opt" => compiler.enable_opt(1),
             "-opt=all" => compiler.enable_opt(2),
             "-opt=report" => compiler.enable_opt(0),
@@ -56,5 +54,4 @@ fn main() {
     rap_trace!("arguments to rustc: {:?}", &args);
 
     run_complier(&mut args, &mut compiler);
-    //std::process::exit(exit_code)
 }

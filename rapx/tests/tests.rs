@@ -258,7 +258,7 @@ fn test_audit_case1() {
 }
 
 #[test]
-fn test_check() {
+fn test_verify() {
     let output = running_tests_with_arg("safety_check/slice_from_raw_parts", "-verify");
     assert_eq!(output.contains("Aligned"), true);
 }

@@ -54,7 +54,7 @@ Environment Variables (Values are case insensitive):
 "#;
 
 pub const RAPX_VERSION: &str = r#"
-rapx version 0.2
-released at 2025-05-14
+rapx version 0.21
+released at 2025-05-16
 developped by artisan-lab @ Fudan university 
 "#;

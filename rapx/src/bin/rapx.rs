@@ -26,14 +26,14 @@ fn main() {
     let mut compiler = RapCallback::default();
     for arg in env::args() {
         match arg.as_str() {
-            "-F" | "-uaf" => compiler.enable_safedrop(),
+            "-F" | "-F0" | "-F1" | "-F2" | "-uaf" => compiler.enable_safedrop(arg),
             "-M" | "-mleak" => compiler.enable_rcanary(),
             "-I" | "-infer" => compiler.enable_infer(),
             "-V" | "-verify" => compiler.enable_verify(),
             "-O" | "-opt" => compiler.enable_opt(1),
             "-opt=all" => compiler.enable_opt(2),
             "-opt=report" => compiler.enable_opt(0),
-            "-alias" => compiler.enable_mop(),
+            "-alias" | "-alias0" | "-alias1" | "-alias2" => compiler.enable_mop(arg),
             "-heap" => compiler.enable_heap_item(),
             "-adg" => compiler.enable_api_dep(), // api dependency graph
             "-callgraph" => compiler.enable_callgraph(),

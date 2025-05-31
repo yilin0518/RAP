@@ -252,18 +252,38 @@ fn test_heap_proxy() {
 }
 
 #[test]
-fn test_audit_case1() {
-    let output = running_tests_with_arg("safety_check/audit_case1", "-I");
-    assert_eq!(output.contains("Lack safety annotations"), true);
+fn test_test_cons_merge() {
+    let output = running_tests_with_arg("safety_check/test_cons_merge", "-verify");
+    assert_eq!(output.contains("NonNull"), true);
 }
 
 #[test]
-fn test_verify() {
-    let output = running_tests_with_arg("safety_check/slice_from_raw_parts", "-verify");
+fn test_aligned() {
+    let output = running_tests_with_arg("safety_check/align", "-verify");
     assert_eq!(output.contains("Aligned"), true);
 }
+
+#[test]
+fn test_init() {
+    let output = running_tests_with_arg("safety_check/init", "-verify");
+    assert_eq!(output.contains("Init"), true);
+}
+
 #[test]
 fn test_ssa_transform() {
     let output = running_tests_with_arg("ssa/ssa_transform", "-ssa");
     assert_eq!(output.contains("ssa lvalue check true"), true);
+}
+#[test]
+fn test_range_analysis() {
+    let output = running_tests_with_arg("ssa/ssa_transform", "-range");
+    print!("Output: {}", output);
+    assert_eq!(
+        output.contains("var: _1. Range { rtype: Regular, range: Interval { left: Closed(0), right: Closed(0) } }"),
+        true
+    );
+    assert_eq!(
+        output.contains("var: _5. Range { rtype: Regular, range: Interval { left: Closed(0), right: Closed(0) } }"),
+        true
+    );
 }

@@ -341,6 +341,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "intervals"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb8afb56709168f3ebb79cd1cff7c02d3af1a87a64f7bff707bd9d571c8bceaf"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "is-terminal"
 version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -539,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "rapx"
-version = "0.1.9"
+version = "0.2.1"
 dependencies = [
  "annotate-snippets",
  "cargo_metadata",
@@ -547,8 +556,10 @@ dependencies = [
  "colorful",
  "fern",
  "if_chain",
+ "intervals",
  "lazy_static",
  "log",
+ "num-traits",
  "once_cell",
  "petgraph",
  "rand",

@@ -4,6 +4,7 @@ use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::Operand::{Constant, Copy, Move};
 use rustc_middle::mir::TerminatorKind;
+use rustc_middle::ty::TypingEnv;
 use std::collections::{HashMap, HashSet};
 use std::env;
 
@@ -198,8 +199,8 @@ impl<'tcx> MopGraph<'tcx> {
 
         /* Handle cases if the current block is a merged scc block with sub block */
         if !cur_block.scc_sub_blocks.is_empty() {
-            match env::var_os("FAST_ALIAS") {
-                Some(_) => {
+            match env::var_os("MOP") {
+                Some(val) if val == "0" => {
                     order.push(cur_block.scc_sub_blocks.clone());
                 }
                 _ => {
@@ -287,8 +288,8 @@ impl<'tcx> MopGraph<'tcx> {
                         }
                         Constant(c) => {
                             single_target = true;
-                            let param_env = self.tcx.param_env(self.def_id);
-                            if let Some(val) = c.const_.try_eval_target_usize(self.tcx, param_env) {
+                            let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
+                            if let Some(val) = c.const_.try_eval_target_usize(self.tcx, ty_env) {
                                 sw_val = val as usize;
                             }
                         }

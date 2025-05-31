@@ -5,7 +5,10 @@ use super::{
     matcher::{get_arg_place, UnsafeApi},
     visitor::{BodyVisitor, CheckResult, PlaceTy},
 };
-use crate::analysis::senryx::FnMap;
+use crate::analysis::{
+    senryx::FnMap,
+    utils::fn_info::{display_hashmap, is_strict_ty_convert},
+};
 use crate::{analysis::utils::fn_info::get_cleaned_def_path_name, rap_warn};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::Operand;
@@ -13,25 +16,27 @@ use rustc_middle::mir::Place;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 
-impl<'tcx> BodyVisitor<'tcx> {
+impl BodyVisitor<'_> {
     pub fn handle_std_unsafe_call(
         &mut self,
         _dst_place: &Place<'_>,
         def_id: &DefId,
-        args: &Box<[Spanned<Operand>]>,
+        args: &[Spanned<Operand>],
         _path_index: usize,
         _fn_map: &FnMap,
         fn_span: Span,
         fn_result: UnsafeApi,
     ) {
         for (idx, sp_set) in fn_result.sps.iter().enumerate() {
-            if args.len() == 0 {
+            if args.is_empty() {
                 break;
             }
-            let arg_place = get_arg_place(&args[idx].node);
-            if arg_place == 0 {
+            let arg_tuple = get_arg_place(&args[idx].node);
+            // if this arg is a constant
+            if arg_tuple.0 {
                 continue;
             }
+            let arg_place = arg_tuple.1;
             let _self_func_name = get_cleaned_def_path_name(self.tcx, self.def_id);
             let func_name = get_cleaned_def_path_name(self.tcx, *def_id);
             for sp in sp_set {
@@ -71,7 +76,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                         }
                     }
                     "AllocatorConsistency" => {
-                        if !self.check_allocator_consistency(arg_place) {
+                        if !self.check_allocator_consistency(func_name.clone(), arg_place) {
                             self.insert_failed_check_result(
                                 func_name.clone(),
                                 fn_span,
@@ -190,12 +195,12 @@ impl<'tcx> BodyVisitor<'tcx> {
                         }
                     }
                     "ValidInt" => {
-                        if !self.check_valid_int(arg_place) {
+                        if !self.check_valid_num(arg_place) {
                             self.insert_failed_check_result(
                                 func_name.clone(),
                                 fn_span,
                                 idx + 1,
-                                "ValidInt",
+                                "ValidNum",
                             );
                         } else {
                             self.insert_successful_check_result(
@@ -335,18 +340,24 @@ impl<'tcx> BodyVisitor<'tcx> {
         }
     }
 
+    // ----------------------Sp checking functions--------------------------
+
+    // TODO: Currently can not support unaligned offset checking
     pub fn check_align(&self, arg: usize) -> bool {
         let obj_ty = self.chains.get_obj_ty_through_chain(arg);
-        let var_ty = self.chains.get_var_node(arg);
-        if obj_ty.is_none() || var_ty.is_none() {
+        let var = self.chains.get_var_node(arg);
+        if obj_ty.is_none() || var.is_none() {
             rap_warn!(
                 "In func {:?}, visitor checker error! Can't get {arg} in chain!",
                 get_cleaned_def_path_name(self.tcx, self.def_id)
             );
+            display_hashmap(&self.chains.variables, 1);
         }
         let ori_ty = self.visit_ty_and_get_layout(obj_ty.unwrap());
-        let cur_ty = self.visit_ty_and_get_layout(var_ty.unwrap().ty.unwrap());
-        return AlignState::Cast(ori_ty, cur_ty).check();
+        let cur_ty = self.visit_ty_and_get_layout(var.unwrap().ty.unwrap());
+        let point_to_id = self.chains.get_point_to_id(arg);
+        let var_ty = self.chains.get_var_node(point_to_id);
+        return AlignState::Cast(ori_ty, cur_ty).check() && var_ty.unwrap().states.align;
     }
 
     pub fn check_non_zst(&self, arg: usize) -> bool {
@@ -356,14 +367,13 @@ impl<'tcx> BodyVisitor<'tcx> {
                 "In func {:?}, visitor checker error! Can't get {arg} in chain!",
                 get_cleaned_def_path_name(self.tcx, self.def_id)
             );
+            display_hashmap(&self.chains.variables, 1);
         }
         let ori_ty = self.visit_ty_and_get_layout(obj_ty.unwrap());
         match ori_ty {
-            PlaceTy::Ty(_align, size) => {
-                return size == 0;
-            }
+            PlaceTy::Ty(_align, size) => size == 0,
             PlaceTy::GenericTy(_, _, tys) => {
-                if tys.len() == 0 {
+                if tys.is_empty() {
                     return false;
                 }
                 for (_, size) in tys {
@@ -371,14 +381,22 @@ impl<'tcx> BodyVisitor<'tcx> {
                         return false;
                     }
                 }
-                return true;
+                true
             }
-            _ => return false,
+            _ => false,
         }
     }
 
-    pub fn check_typed(&self, _arg: usize) -> bool {
-        return true;
+    // checking the value ptr points to is valid for its type
+    pub fn check_typed(&self, arg: usize) -> bool {
+        let obj_ty = self.chains.get_obj_ty_through_chain(arg).unwrap();
+        let var = self.chains.get_var_node(arg);
+        // display_hashmap(&self.chains.variables, 1);
+        let var_ty = var.unwrap().ty.unwrap();
+        if obj_ty != var_ty && is_strict_ty_convert(self.tcx, obj_ty, var_ty) {
+            return false;
+        }
+        self.check_init(arg)
     }
 
     pub fn check_non_null(&self, arg: usize) -> bool {
@@ -390,50 +408,67 @@ impl<'tcx> BodyVisitor<'tcx> {
                 get_cleaned_def_path_name(self.tcx, self.def_id)
             );
         }
-        return var_ty.unwrap().states.nonnull;
+        var_ty.unwrap().states.nonnull
     }
 
-    pub fn check_allocator_consistency(&self, _arg: usize) -> bool {
-        return true;
+    // check each field's init state in the tree.
+    // check arg itself when it doesn't have fields.
+    pub fn check_init(&self, arg: usize) -> bool {
+        let point_to_id = self.chains.get_point_to_id(arg);
+        let var = self.chains.get_var_node(point_to_id);
+        // display_hashmap(&self.chains.variables, 1);
+        if var.unwrap().field.is_empty() {
+            let mut init_flag = true;
+            for field in &var.unwrap().field {
+                init_flag &= self.check_init(*field.1);
+            }
+            init_flag
+        } else {
+            var.unwrap().states.init
+        }
+    }
+
+    pub fn check_allocator_consistency(&self, _func_name: String, _arg: usize) -> bool {
+        true
     }
 
     pub fn check_allocated(&self, _arg: usize) -> bool {
-        return true;
+        true
     }
 
     pub fn check_inbounded(&self, _arg: usize) -> bool {
-        return true;
+        true
     }
 
     pub fn check_valid_string(&self, _arg: usize) -> bool {
-        return true;
+        true
     }
 
     pub fn check_valid_cstr(&self, _arg: usize) -> bool {
-        return true;
+        true
     }
 
-    pub fn check_valid_int(&self, _arg: usize) -> bool {
-        return true;
+    pub fn check_valid_num(&self, _arg: usize) -> bool {
+        true
     }
 
-    pub fn check_init(&self, _arg: usize) -> bool {
-        return true;
+    pub fn check_alias(&self, _arg: usize) -> bool {
+        true
     }
 
     // Compound SPs
     pub fn check_valid_ptr(&self, arg: usize) -> bool {
-        return !self.check_non_zst(arg) || (self.check_non_zst(arg) && self.check_deref(arg));
+        !self.check_non_zst(arg) || (self.check_non_zst(arg) && self.check_deref(arg))
     }
 
     pub fn check_deref(&self, arg: usize) -> bool {
-        return self.check_allocated(arg) && self.check_inbounded(arg);
+        self.check_allocated(arg) && self.check_inbounded(arg)
     }
 
     pub fn check_ref_to_ptr(&self, arg: usize) -> bool {
-        return self.check_allocated(arg)
-            && self.check_inbounded(arg)
+        self.check_deref(arg)
             && self.check_init(arg)
-            && self.check_align(arg);
+            && self.check_align(arg)
+            && self.check_alias(arg)
     }
 }

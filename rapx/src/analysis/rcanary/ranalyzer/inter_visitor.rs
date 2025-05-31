@@ -1,6 +1,7 @@
 use super::super::RcxMut;
 use super::FlowAnalysis;
 use crate::analysis::core::heap_item::mir_body;
+use rustc_data_structures::graph;
 
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
     pub fn inter_run(&mut self) {
@@ -11,8 +12,7 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
             //let sw = Stopwatch::start_new();
             let def_id = each_mir.to_def_id();
             let body = mir_body(tcx, def_id);
-
-            if body.basic_blocks.is_cfg_cyclic() {
+            if graph::is_cyclic(&body.basic_blocks) {
                 continue;
             }
 

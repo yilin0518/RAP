@@ -8,7 +8,7 @@ use rustc_session::config::ErrorOutputType;
 use rustc_session::EarlyDiagCtxt;
 use std::env;
 
-fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) -> i32 {
+fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) {
     // Finally, add the default flags all the way in the beginning, but after the binary name.
     args.splice(1..1, RAP_DEFAULT_ARGS.iter().map(ToString::to_string));
 
@@ -16,11 +16,8 @@ fn run_complier(args: &mut Vec<String>, callback: &mut RapCallback) -> i32 {
     rustc_driver::init_rustc_env_logger(&handler);
     rustc_driver::install_ice_hook("bug_report_url", |_| ());
 
-    let run_compiler = rustc_driver::RunCompiler::new(args, callback);
-    let exit_code = rustc_driver::catch_with_exit_code(move || run_compiler.run());
+    rustc_driver::run_compiler(args, callback);
     rap_trace!("The arg for compilation is {:?}", args);
-
-    exit_code
 }
 
 fn main() {
@@ -29,18 +26,20 @@ fn main() {
     let mut compiler = RapCallback::default();
     for arg in env::args() {
         match arg.as_str() {
-            "-F" | "-uaf" => compiler.enable_safedrop(),
+            "-F" | "-F0" | "-F1" | "-F2" | "-uaf" => compiler.enable_safedrop(arg),
             "-M" | "-mleak" => compiler.enable_rcanary(),
             "-I" | "-infer" => compiler.enable_infer(),
             "-V" | "-verify" => compiler.enable_verify(),
             "-O" | "-opt" => compiler.enable_opt(1),
             "-opt=all" => compiler.enable_opt(2),
-            "-alias" => compiler.enable_mop(),
+            "-opt=report" => compiler.enable_opt(0),
+            "-alias" | "-alias0" | "-alias1" | "-alias2" => compiler.enable_mop(arg),
             "-heap" => compiler.enable_heap_item(),
             "-adg" => compiler.enable_api_dep(), // api dependency graph
             "-callgraph" => compiler.enable_callgraph(),
             "-dataflow" => compiler.enable_dataflow(1),
             "-ssa" => compiler.enable_ssa_transform(),
+            "-range" => compiler.enable_range_analysis(),
             "-dataflow=debug" => compiler.enable_dataflow(2),
             "-audit" => compiler.enable_unsafety_isolation(1),
             "-doc" => compiler.enable_unsafety_isolation(2),
@@ -56,6 +55,5 @@ fn main() {
     rap_trace!("rap received arguments: {:#?}", env::args());
     rap_trace!("arguments to rustc: {:?}", &args);
 
-    let exit_code = run_complier(&mut args, &mut compiler);
-    std::process::exit(exit_code)
+    run_complier(&mut args, &mut compiler);
 }

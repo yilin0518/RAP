@@ -1,11 +1,10 @@
-use rustc_middle::mir::{Operand, Place, ProjectionElem, TerminatorKind};
-use rustc_middle::ty;
-use rustc_middle::ty::TyCtxt;
-
 use super::graph::*;
 use super::types::*;
 use crate::analysis::core::alias::{FnMap, RetAlias};
 use crate::rap_error;
+use rustc_middle::mir::{Operand, Place, ProjectionElem, TerminatorKind};
+use rustc_middle::ty;
+use rustc_middle::ty::{TyCtxt, TypingEnv};
 
 impl<'tcx> SafeDropGraph<'tcx> {
     /* alias analysis for a single block */
@@ -35,7 +34,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             );
             self.fill_birth(lv_aliaset_idx, self.scc_indices[bb_index] as isize);
             if self.values[lv_aliaset_idx].local != self.values[rv_aliaset_idx].local {
-                self.merge_alias(lv_aliaset_idx, rv_aliaset_idx);
+                self.merge_alias(lv_aliaset_idx, rv_aliaset_idx, 0);
             }
         }
     }
@@ -113,7 +112,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                         }
                                     }
                                     if right_set.len() == 1 {
-                                        self.merge_alias(lv, right_set[0]);
+                                        self.merge_alias(lv, right_set[0], 0);
                                     }
                                 }
                             }
@@ -163,8 +162,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     }
                     let field_idx = field.as_usize();
                     if !self.values[proj_id].fields.contains_key(&field_idx) {
-                        let param_env = tcx.param_env(self.def_id);
-                        let need_drop = ty.needs_drop(tcx, param_env);
+                        let ty_env = TypingEnv::post_analysis(tcx, self.def_id);
+                        let need_drop = ty.needs_drop(tcx, ty_env);
                         let may_drop = !is_not_drop(tcx, ty);
                         let mut node =
                             ValueNode::new(new_id, local, need_drop, need_drop || may_drop);
@@ -185,7 +184,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     //instruction to assign alias for a variable.
-    pub fn merge_alias(&mut self, lv: usize, rv: usize) {
+    pub fn merge_alias(&mut self, lv: usize, rv: usize, depth: usize) {
         // if self.values[lv].alias.len() > 1 {
         //     let mut alias_clone = self.values[rv].alias.clone();
         //     self.values[lv].alias.append(&mut alias_clone);
@@ -196,6 +195,19 @@ impl<'tcx> SafeDropGraph<'tcx> {
             return;
         }
         self.union_merge(lv, rv);
+
+        let max_field_depth = match std::env::var_os("SAFEDROP") {
+            Some(val) if val == "0" => 10,
+            Some(val) if val == "1" => 20,
+            Some(val) if val == "2" => 30,
+            Some(val) if val == "3" => 50,
+            _ => 15,
+        };
+
+        if depth > max_field_depth {
+            return;
+        }
+
         for field in self.values[rv].fields.clone().into_iter() {
             if !self.values[lv].fields.contains_key(&field.0) {
                 let mut node = ValueNode::new(
@@ -213,7 +225,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 self.values.push(node);
             }
             let lv_field = *(self.values[lv].fields.get(&field.0).unwrap());
-            self.merge_alias(lv_field, field.1);
+            self.merge_alias(lv_field, field.1, depth + 1);
         }
     }
 
@@ -263,7 +275,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             }
             rv = *self.values[rv].fields.get(&index).unwrap();
         }
-        self.merge_alias(lv, rv);
+        self.merge_alias(lv, rv, 0);
     }
 
     #[inline(always)]

@@ -1,3 +1,4 @@
+use rustc_data_structures::graph;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
     AggregateKind, BasicBlock, BasicBlockData, Body, Local, Operand, Place, ProjectionElem, Rvalue,
@@ -46,7 +47,10 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
         for each_mir in mir_keys {
             let def_id = each_mir.to_def_id();
             let body = mir_body(tcx, def_id);
-            if body.basic_blocks.is_cfg_cyclic() {
+            if graph::is_cyclic(&body.basic_blocks) {
+                continue;
+            }
+            if format!("{:?}", def_id).contains("syscall_dispatch") {
                 continue;
             }
 

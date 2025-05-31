@@ -5,6 +5,8 @@
 pub mod utils;
 pub mod analysis;
 
+extern crate intervals;
+extern crate rustc_abi;
 extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_driver;
@@ -28,7 +30,7 @@ use analysis::core::alias::mop::MopAlias;
 use analysis::core::api_dep::{self, ApiDep};
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;
-use analysis::core::range_analysis::SSATrans;
+use analysis::core::range_analysis::{RangeAnalysis, SSATrans};
 use analysis::opt::Opt;
 use analysis::rcanary::rCanary;
 use analysis::safedrop::SafeDrop;
@@ -39,10 +41,11 @@ use analysis::utils::show_mir::ShowMir;
 use rustc_data_structures::sync::Lrc;
 use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::interface::Compiler;
-use rustc_interface::{Config, Queries};
+use rustc_interface::Config;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::util::Providers;
 use rustc_session::search_paths::PathKind;
+use std::env;
 use std::path::PathBuf;
 
 // Insert rustc arguments at the beginning of the argument list that RAP wants to be
@@ -67,6 +70,7 @@ pub struct RapCallback {
     opt: usize,
     heap_item: bool,
     ssa: bool,
+    range: bool,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -84,9 +88,10 @@ impl Default for RapCallback {
             testgen: false,
             show_mir: false,
             dataflow: 0,
-            opt: 0,
+            opt: usize::MAX,
             heap_item: false,
             ssa: false,
+            range: false,
         }
     }
 }
@@ -107,16 +112,9 @@ impl Callbacks for RapCallback {
         });
     }
 
-    fn after_analysis<'tcx>(
-        &mut self,
-        _compiler: &Compiler,
-        queries: &'tcx Queries<'tcx>,
-    ) -> Compilation {
+    fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         rap_trace!("Execute after_analysis() of compiler callbacks");
-        queries
-            .global_ctxt()
-            .unwrap()
-            .enter(|tcx| start_analyzer(tcx, *self));
+        start_analyzer(tcx, *self);
         rap_trace!("analysis done");
         Compilation::Continue
     }
@@ -131,16 +129,54 @@ impl RapCallback {
         self.rcanary
     }
 
-    pub fn enable_mop(&mut self) {
+    pub fn enable_mop(&mut self, arg: String) {
         self.mop = true;
+        match arg.as_str() {
+            "-alias" => {
+                env::set_var("MOP", "1");
+            }
+            "-alias0" => {
+                env::set_var("MOP", "0");
+            }
+            "-alias1" => {
+                env::set_var("MOP", "1");
+            }
+            "-alias2" => {
+                env::set_var("MOP", "2");
+            }
+            _ => {}
+        }
     }
 
     pub fn is_mop_enabled(&self) -> bool {
         self.mop
     }
 
-    pub fn enable_safedrop(&mut self) {
+    pub fn enable_safedrop(&mut self, arg: String) {
         self.safedrop = true;
+        match arg.as_str() {
+            "-F" => {
+                env::set_var("SAFEDROP", "1");
+                env::set_var("MOP", "1");
+            }
+            "-F0" => {
+                env::set_var("SAFEDROP", "0");
+                env::set_var("MOP", "0");
+            }
+            "-F1" => {
+                env::set_var("SAFEDROP", "1");
+                env::set_var("MOP", "1");
+            }
+            "-F2" => {
+                env::set_var("SAFEDROP", "2");
+                env::set_var("MOP", "2");
+            }
+            "-uaf" => {
+                env::set_var("SAFEDROP", "1");
+                env::set_var("MOP", "1");
+            }
+            _ => {}
+        }
     }
 
     pub fn is_safedrop_enabled(&self) -> bool {
@@ -232,6 +268,12 @@ impl RapCallback {
     pub fn is_ssa_transform_enabled(self) -> bool {
         self.ssa
     }
+    pub fn enable_range_analysis(&mut self) {
+        self.range = true;
+    }
+    pub fn is_range_analysis_enabled(self) -> bool {
+        self.range
+    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -277,12 +319,12 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_verify_enabled() {
-        let check_level = CheckLevel::High;
+        let check_level = CheckLevel::Medium;
         SenryxCheck::new(tcx, 2).start(check_level, true);
     }
 
     if callback.is_infer_enabled() {
-        let check_level = CheckLevel::High;
+        let check_level = CheckLevel::Medium;
         SenryxCheck::new(tcx, 2).start(check_level, false);
     }
 
@@ -312,11 +354,15 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     match callback.is_opt_enabled() {
+        0 => Opt::new(tcx, 0).start(),
         1 => Opt::new(tcx, 1).start(),
         2 => Opt::new(tcx, 2).start(),
         _ => {}
     }
     if callback.is_ssa_transform_enabled() {
         SSATrans::new(tcx, false).start();
+    }
+    if callback.is_range_analysis_enabled() {
+        RangeAnalysis::new(tcx, false).start();
     }
 }

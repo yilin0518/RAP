@@ -8,14 +8,12 @@ use rustc_middle::mir::{
     UnwindAction,
 };
 use rustc_middle::ty;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{TyCtxt, TypingEnv};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::vec::Vec;
-
-//use crate::rap_info;
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AssignType {
@@ -199,9 +197,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut values = Vec::<ValueNode>::new();
         let mut alias = Vec::<usize>::new();
         let mut dead = Vec::<bool>::new();
-        let param_env = tcx.param_env(def_id);
+        let ty_env = TypingEnv::post_analysis(tcx, def_id);
         for (local, local_decl) in locals.iter_enumerated() {
-            let need_drop = local_decl.ty.needs_drop(tcx, param_env); // the type is drop
+            let need_drop = local_decl.ty.needs_drop(tcx, ty_env); // the type is drop
             let may_drop = !is_not_drop(tcx, local_decl.ty);
             let mut node = ValueNode::new(
                 local.as_usize(),
@@ -260,15 +258,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     /* We should check the correctness due to the update of rustc */
                                     match constant.const_ {
                                         Const::Ty(_ty, const_value) => {
-                                            if let Some((_ty, scalar)) =
-                                                const_value.try_eval_scalar_int(tcx, param_env)
+                                            if let Some(val) = const_value.try_to_target_usize(tcx)
                                             {
-                                                let val = scalar.to_uint(scalar.size());
                                                 cur_bb.const_value.push((lv_local, val as usize));
                                             }
                                         }
                                         Const::Unevaluated(_unevaluated, _ty) => {}
                                         Const::Val(const_value, _ty) => {
+                                            //if let Some(val) = const_value.try_to_target_usize(tcx) {
                                             if let Some(scalar) = const_value.try_to_scalar_int() {
                                                 let val = scalar.to_uint(scalar.size());
                                                 cur_bb.const_value.push((lv_local, val as usize));
@@ -398,11 +395,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 } => {
                     if let Operand::Constant(c) = func {
                         if let ty::FnDef(id, ..) = c.ty().kind() {
-                            //rap_info!("The ID of {:?} is {:?}", c, id);
                             if id.index.as_usize() == DROP
                                 || id.index.as_usize() == DROP_IN_PLACE
                                 || id.index.as_usize() == MANUALLYDROP
-                                || id.index.as_usize() == BOX_DROP_IN_PLACE
                                 || id.index.as_usize() == DEALLOC
                             {
                                 cur_bb.drops.push(terminator.clone());
@@ -613,11 +608,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     pub fn get_paths(&self) -> Vec<Vec<usize>> {
-        // rap_debug!("dfs here");
         let mut paths: Vec<Vec<usize>> = Vec::new();
         let mut stack: Vec<usize> = vec![0];
         self.dfs_on_spanning_tree(0, &mut stack, &mut paths);
-
         paths
     }
 

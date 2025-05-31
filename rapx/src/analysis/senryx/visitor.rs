@@ -10,6 +10,7 @@ use crate::analysis::utils::show_mir::display_mir;
 use crate::rap_warn;
 use rustc_middle::mir::Local;
 use rustc_middle::mir::ProjectionElem;
+use rustc_middle::ty::PseudoCanonicalInput;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
@@ -21,10 +22,11 @@ use super::contracts::abstract_state::{
 };
 use super::contracts::contract::Contract;
 use super::dominated_chain::DominatedGraph;
+use super::dominated_chain::InterResultNode;
 use super::generic_check::GenericChecker;
 use super::inter_record::InterAnalysisRecord;
 use super::matcher::UnsafeApi;
-use super::matcher::{get_arg_place, match_unsafe_api_and_check_contracts, parse_unsafe_api};
+use super::matcher::{get_arg_place, parse_unsafe_api};
 use crate::analysis::core::heap_item::AdtOwner;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
@@ -108,6 +110,8 @@ impl<'tcx> BodyVisitor<'tcx> {
         let param_env = tcx.param_env(def_id);
         let satisfied_ty_map_for_generic =
             GenericChecker::new(tcx, param_env).get_satisfied_ty_map();
+        let mut chains = DominatedGraph::new(tcx, def_id);
+        chains.init_arg();
         Self {
             tcx,
             def_id,
@@ -120,7 +124,7 @@ impl<'tcx> BodyVisitor<'tcx> {
             generic_map: satisfied_ty_map_for_generic,
             global_recorder,
             proj_ty: HashMap::new(),
-            chains: DominatedGraph::new(tcx, def_id),
+            chains,
             paths: Vec::new(),
         }
     }
@@ -131,16 +135,24 @@ impl<'tcx> BodyVisitor<'tcx> {
         return locals[Local::from(p)].ty;
     }
 
-    pub fn path_forward_check(&mut self, fn_map: &FnMap) {
+    pub fn update_fields_states(&mut self, inter_result: InterResultNode<'tcx>) {
+        self.chains.init_self_with_inter(inter_result);
+    }
+
+    pub fn path_forward_check(&mut self, fn_map: &FnMap) -> InterResultNode<'tcx> {
+        let tmp_chain = self.chains.clone();
+        let mut inter_return_value =
+            InterResultNode::construct_from_var_node(self.chains.clone(), 0);
         if self.visit_time >= 1000 {
-            return;
+            return inter_return_value;
         }
+
+        // get path and body
         let paths: Vec<Vec<usize>> = self.get_all_paths();
         self.paths = paths.clone();
-        if self.visit_time == 0 {
-            // rap_warn!("{:?}",self.chains.variables);
-        }
         let body = self.tcx.optimized_mir(self.def_id);
+
+        // initialize local vars' types
         let locals = body.local_decls.clone();
         for (idx, local) in locals.iter().enumerate() {
             let local_ty = local.ty;
@@ -148,10 +160,9 @@ impl<'tcx> BodyVisitor<'tcx> {
             self.local_ty.insert(idx, layout);
         }
 
-        // display_mir(self.def_id,&body);
+        // Iterate all the paths. Paths have been handled by tarjan.
         for (index, path_info) in paths.iter().enumerate() {
-            self.chains = DominatedGraph::new(self.tcx, self.def_id);
-            self.chains.init_arg();
+            self.chains = tmp_chain.clone();
             self.abstract_states.insert(index, PathInfo::new());
             for block_index in path_info.iter() {
                 if block_index >= &body.basic_blocks.len() {
@@ -177,11 +188,17 @@ impl<'tcx> BodyVisitor<'tcx> {
                     }
                 }
             }
-            if self.visit_time == 0 {
-                // rap_warn!("In path {index}");
-                // display_hashmap(&self.chains.variables, 1);
-            }
+            // merge path analysis results
+            let curr_path_inter_return_value =
+                InterResultNode::construct_from_var_node(self.chains.clone(), 0);
+            inter_return_value.merge(curr_path_inter_return_value);
         }
+
+        if get_cleaned_def_path_name(self.tcx, self.def_id).contains("::get") {
+            display_hashmap(&self.chains.variables, 1);
+        }
+
+        inter_return_value
     }
 
     pub fn path_analyze_block(
@@ -195,6 +212,29 @@ impl<'tcx> BodyVisitor<'tcx> {
             self.path_analyze_statement(statement, path_index);
         }
         self.path_analyze_terminator(&block.terminator(), path_index, bb_index, fn_map);
+    }
+
+    pub fn path_analyze_statement(&mut self, statement: &Statement<'tcx>, _path_index: usize) {
+        match statement.kind {
+            StatementKind::Assign(box (ref lplace, ref rvalue)) => {
+                self.path_analyze_assign(lplace, rvalue, _path_index);
+            }
+            StatementKind::Intrinsic(box ref intrinsic) => match intrinsic {
+                mir::NonDivergingIntrinsic::CopyNonOverlapping(cno) => {
+                    if cno.src.place().is_some() && cno.dst.place().is_some() {
+                        let _src_pjc_local =
+                            self.handle_proj(true, cno.src.place().unwrap().clone());
+                        let _dst_pjc_local =
+                            self.handle_proj(true, cno.dst.place().unwrap().clone());
+                    }
+                }
+                _ => {}
+            },
+            StatementKind::StorageDead(local) => {
+                // self.chains.delete_node(local.as_usize());
+            }
+            _ => {}
+        }
     }
 
     pub fn path_analyze_terminator(
@@ -217,34 +257,6 @@ impl<'tcx> BodyVisitor<'tcx> {
                 if let Operand::Constant(func_constant) = func {
                     if let ty::FnDef(ref callee_def_id, raw_list) = func_constant.const_.ty().kind()
                     {
-                        let func_name = get_cleaned_def_path_name(self.tcx, *callee_def_id);
-                        if self.visit_time == 0 {
-                            for generic_arg in raw_list.iter() {
-                                match generic_arg.unpack() {
-                                    GenericArgKind::Type(ty) => {
-                                        if let Some(new_check_result) =
-                                            match_unsafe_api_and_check_contracts(
-                                                func_name.as_str(),
-                                                args,
-                                                &self.abstract_states.get(&path_index).unwrap(),
-                                                *fn_span,
-                                                ty,
-                                            )
-                                        {
-                                            if let Some(_existing) =
-                                                self.check_results.iter_mut().find(|result| {
-                                                    result.func_name == new_check_result.func_name
-                                                })
-                                            {
-                                            } else {
-                                                self.check_results.push(new_check_result);
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
                         self.handle_call(
                             dst_place,
                             callee_def_id,
@@ -264,35 +276,11 @@ impl<'tcx> BodyVisitor<'tcx> {
             } => {
                 let drop_local = self.handle_proj(false, *place);
                 if !self.chains.set_drop(drop_local) {
-                    // display_hashmap(&self.chains.variables, 1);
-                    rap_warn!(
-                        "In path {:?}, double drop {drop_local} in block {bb_index}",
-                        self.paths[path_index]
-                    );
+                    // rap_warn!(
+                    //     "In path {:?}, double drop {drop_local} in block {bb_index}",
+                    //     self.paths[path_index]
+                    // );
                 }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn path_analyze_statement(&mut self, statement: &Statement<'tcx>, _path_index: usize) {
-        match statement.kind {
-            StatementKind::Assign(box (ref lplace, ref rvalue)) => {
-                self.path_analyze_assign(lplace, rvalue, _path_index);
-            }
-            StatementKind::Intrinsic(box ref intrinsic) => match intrinsic {
-                mir::NonDivergingIntrinsic::CopyNonOverlapping(cno) => {
-                    if cno.src.place().is_some() && cno.dst.place().is_some() {
-                        let _src_pjc_local =
-                            self.handle_proj(true, cno.src.place().unwrap().clone());
-                        let _dst_pjc_local =
-                            self.handle_proj(true, cno.dst.place().unwrap().clone());
-                    }
-                }
-                _ => {}
-            },
-            StatementKind::StorageDead(local) => {
-                // self.chains.delete_node(local.as_usize());
             }
             _ => {}
         }
@@ -331,7 +319,7 @@ impl<'tcx> BodyVisitor<'tcx> {
             Rvalue::Cast(cast_kind, op, ty) => match op {
                 Operand::Move(rplace) | Operand::Copy(rplace) => {
                     let rpjc_local = self.handle_proj(true, rplace.clone());
-                    self.chains.point(lpjc_local, rpjc_local);
+                    self.chains.merge(lpjc_local, rpjc_local);
                     self.handle_cast(rpjc_local, lpjc_local, ty, path_index, cast_kind);
                 }
                 _ => {}
@@ -343,8 +331,23 @@ impl<'tcx> BodyVisitor<'tcx> {
                 }
                 _ => {}
             },
-            Rvalue::Aggregate(box ref agg_kind, _op_vec) => match agg_kind {
+            Rvalue::Aggregate(box ref agg_kind, op_vec) => match agg_kind {
                 AggregateKind::Array(_ty) => {}
+                AggregateKind::Adt(_adt_def_id, _, _, _, _) => {
+                    for (idx, op) in op_vec.into_iter().enumerate() {
+                        let (is_const, val) = get_arg_place(op);
+                        if is_const {
+                            self.chains.insert_field_node(
+                                lpjc_local,
+                                idx,
+                                Some(Ty::new_uint(self.tcx, rustc_middle::ty::UintTy::Usize)),
+                            );
+                        } else {
+                            let node = self.chains.get_var_node_mut(lpjc_local).unwrap();
+                            node.field.insert(idx, val);
+                        }
+                    }
+                }
                 _ => {}
             },
             Rvalue::Discriminant(_place) => {
@@ -381,13 +384,15 @@ impl<'tcx> BodyVisitor<'tcx> {
             );
         }
 
+        // merge alias results
         self.handle_ret_alias(dst_place, def_id, fn_map, args);
 
+        // to be deleted!
         // get pre analysis state
         let mut pre_analysis_state = HashMap::new();
         for (idx, arg) in args.iter().enumerate() {
             let arg_place = get_arg_place(&arg.node);
-            let ab_state_item = self.get_abstate_by_place_in_path(arg_place, path_index);
+            let ab_state_item = self.get_abstate_by_place_in_path(arg_place.1, path_index);
             pre_analysis_state.insert(idx, ab_state_item);
         }
 
@@ -442,25 +447,36 @@ impl<'tcx> BodyVisitor<'tcx> {
                     alias_set.left_field_seq.clone(),
                     alias_set.right_field_seq.clone(),
                 );
-                let mut fst_var;
-                let mut snd_var;
-                if l == 0 && r != 0 {
-                    fst_var = self.chains.find_var_id_with_fields_seq(d_local, l_fields);
-                    let r_place = get_arg_place(&args[r - 1].node);
-                    snd_var = self.chains.find_var_id_with_fields_seq(r_place, r_fields);
-                } else if l != 0 && r == 0 {
-                    let l_place = get_arg_place(&args[l - 1].node);
-                    fst_var = self.chains.find_var_id_with_fields_seq(l_place, l_fields);
-                    snd_var = self.chains.find_var_id_with_fields_seq(d_local, r_fields);
-                } else if l != 0 && r != 0 {
-                    let l_place = get_arg_place(&args[l - 1].node);
-                    fst_var = self.chains.find_var_id_with_fields_seq(l_place, l_fields);
-                    let r_place = get_arg_place(&args[r - 1].node);
-                    snd_var = self.chains.find_var_id_with_fields_seq(r_place, r_fields);
-                } else {
-                    fst_var = self.chains.find_var_id_with_fields_seq(d_local, l_fields);
-                    snd_var = self.chains.find_var_id_with_fields_seq(d_local, r_fields);
+                let (l_place, r_place) = (
+                    if l != 0 {
+                        get_arg_place(&args[l - 1].node)
+                    } else {
+                        (false, d_local)
+                    },
+                    if r != 0 {
+                        get_arg_place(&args[r - 1].node)
+                    } else {
+                        (false, d_local)
+                    },
+                );
+                // if left value is a constant, then update right variable's value
+                if l_place.0 {
+                    let snd_var = self.chains.find_var_id_with_fields_seq(r_place.1, r_fields);
+                    self.chains
+                        .update_value(self.chains.get_point_to_id(snd_var), l_place.1);
+                    continue;
                 }
+                // if right value is a constant, then update left variable's value
+                if r_place.0 {
+                    let fst_var = self.chains.find_var_id_with_fields_seq(l_place.1, l_fields);
+                    self.chains
+                        .update_value(self.chains.get_point_to_id(fst_var), r_place.1);
+                    continue;
+                }
+                let (fst_var, snd_var) = (
+                    self.chains.find_var_id_with_fields_seq(l_place.1, l_fields),
+                    self.chains.find_var_id_with_fields_seq(r_place.1, r_fields),
+                );
                 // If this var is ptr or ref, then get the next level node.
                 let fst_to = self.chains.get_point_to_id(fst_var);
                 let snd_to = self.chains.get_point_to_id(snd_var);
@@ -496,7 +512,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         for (idx, arg) in args.iter().enumerate() {
             let arg_place = get_arg_place(&arg.node);
             if let Some(state_item) = post_state.get(&idx) {
-                self.insert_path_abstate(path_index, arg_place, state_item.clone());
+                self.insert_path_abstate(path_index, arg_place.1, state_item.clone());
             }
         }
     }
@@ -548,27 +564,6 @@ impl<'tcx> BodyVisitor<'tcx> {
             }
         }
         result_state
-    }
-
-    pub fn abstate_debug(&self) {
-        if self.visit_time != 0 {
-            return;
-        }
-        // Self::display_hashmap(&self.local_ty, 1);
-        display_mir(self.def_id, self.tcx.optimized_mir(self.def_id));
-        println!("---------------");
-        println!("--def_id: {:?}", self.def_id);
-
-        let mut sorted_states: Vec<_> = self.abstract_states.iter().collect();
-        sorted_states.sort_by(|a, b| a.0.cmp(b.0));
-        for (path, abstract_state) in &sorted_states {
-            println!("--Path-{:?}:", path);
-            let mut sorted_state_map: Vec<_> = abstract_state.state_map.iter().collect();
-            sorted_state_map.sort_by_key(|&(place, _)| place);
-            for (place, ab_item) in sorted_state_map {
-                println!("Place-{:?} has abstract states:{:?}", place, ab_item);
-            }
-        }
     }
 
     pub fn update_callee_report_level(&mut self, unsafe_callee: String, report_level: usize) {
@@ -658,7 +653,12 @@ impl<'tcx> BodyVisitor<'tcx> {
             }
             _ => {
                 let param_env = self.tcx.param_env(self.def_id);
-                if let Ok(layout) = self.tcx.layout_of(param_env.and(ty)) {
+                let ty_env = ty::TypingEnv::post_analysis(self.tcx, self.def_id);
+                let input = PseudoCanonicalInput {
+                    typing_env: ty_env,
+                    value: ty,
+                };
+                if let Ok(layout) = self.tcx.layout_of(input) {
                     // let layout = self.tcx.layout_of(param_env.and(ty)).unwrap();
                     let align = layout.align.abi.bytes_usize();
                     let size = layout.size.bytes() as usize;
@@ -681,7 +681,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                 return abs;
             }
         }
-        return AbstractStateItem::new_default();
+        AbstractStateItem::new_default()
     }
 
     pub fn handle_cast(
@@ -730,36 +730,11 @@ impl<'tcx> BodyVisitor<'tcx> {
     ) {
         match bin_op {
             BinOp::Offset => {
-                let first_place = self.handle_operand(first_op);
-                let _second_place = self.handle_operand(second_op);
-                let _abitem = self.get_abstate_by_place_in_path(first_place, path_index);
+                let _first_place = get_arg_place(first_op);
+                let _second_place = get_arg_place(second_op);
             }
             _ => {}
         }
-    }
-
-    pub fn handle_operand(&self, op: &Operand) -> usize {
-        match op {
-            Operand::Move(place) => place.local.as_usize(),
-            Operand::Copy(place) => place.local.as_usize(),
-            _ => 0,
-        }
-    }
-
-    pub fn get_proj_ty(&self, place: usize) -> Option<Ty<'tcx>> {
-        let graph_node = &self.safedrop_graph.values[place];
-        let local_place = Place::from(Local::from_usize(graph_node.local));
-        for proj in local_place.projection {
-            match proj {
-                ProjectionElem::Field(field, ty) => {
-                    if field.as_usize() == graph_node.field_id {
-                        return Some(ty);
-                    }
-                }
-                _ => {}
-            }
-        }
-        return None;
     }
 
     pub fn handle_proj(&mut self, is_right: bool, place: Place<'tcx>) -> usize {
@@ -768,6 +743,9 @@ impl<'tcx> BodyVisitor<'tcx> {
             match proj {
                 ProjectionElem::Deref => {
                     proj_id = self.chains.get_point_to_id(place.local.as_usize());
+                    if proj_id == place.local.as_usize() {
+                        proj_id = self.chains.check_ptr(proj_id);
+                    }
                 }
                 ProjectionElem::Field(field, ty) => {
                     proj_id = self

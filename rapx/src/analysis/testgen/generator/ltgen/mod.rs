@@ -10,14 +10,14 @@ use crate::analysis::core::api_dep::ApiDepGraph;
 use crate::analysis::testgen::api_dep::graph::TransformKind;
 use crate::analysis::testgen::context::{ApiCall, Context, Stmt, StmtKind, Var};
 use crate::analysis::testgen::utils::{self, get_all_pub_apis};
-use crate::{rap_debug, rap_info};
+use crate::{rap_debug, rap_info, rap_trace};
 use context::LtContext;
 use pattern::{EdgePatterns, PatternProvider};
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, GenericArgs, Ty, TyCtxt, TyKind};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
@@ -39,7 +39,7 @@ pub struct LtGenBuilder<'tcx, 'a, R: Rng> {
     rng: R,
     max_complexity: usize,
     alias_map: &'a FnAliasMap,
-    api_graph: &'a ApiDepGraph<'tcx>,
+    api_graph: ApiDepGraph<'tcx>,
     population_size: usize,
 }
 
@@ -47,7 +47,7 @@ impl<'tcx, 'a> LtGenBuilder<'tcx, 'a, ThreadRng> {
     pub fn new(
         tcx: TyCtxt<'tcx>,
         alias_map: &'a FnAliasMap,
-        api_graph: &'a ApiDepGraph<'tcx>,
+        api_graph: ApiDepGraph<'tcx>,
     ) -> LtGenBuilder<'tcx, 'a, ThreadRng> {
         LtGenBuilder {
             tcx,
@@ -55,7 +55,7 @@ impl<'tcx, 'a> LtGenBuilder<'tcx, 'a, ThreadRng> {
             max_complexity: 20,
             population_size: 100,
             alias_map,
-            api_graph,
+            api_graph: api_graph,
         }
     }
 }
@@ -87,18 +87,6 @@ impl<'tcx, 'a, R: Rng> LtGenBuilder<'tcx, 'a, R> {
     }
 }
 
-// pub struct CrateInfo<'tcx> {
-//     pub subgraph_map: RegionSubgraphMap,
-//     pub alias_map: FnAliasMap,
-//     pub api_graph: ApiDepGraph<'tcx>,
-// }
-
-// impl CrateInfo<'tcx> {
-//     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
-//         let subgraph_map = initialize_subgraph_map(tcx);
-//     }
-// }
-
 pub struct LtGen<'tcx, 'a, R: Rng> {
     pub_api: Vec<DefId>,
     tcx: TyCtxt<'tcx>,
@@ -106,7 +94,7 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
     max_complexity: usize,
     alias_map: &'a FnAliasMap,
     pattern_provider: PatternProvider<'tcx>,
-    api_graph: &'a ApiDepGraph<'tcx>,
+    api_graph: RefCell<ApiDepGraph<'tcx>>,
 }
 
 fn ty_project_to<'tcx>(mut ty: Ty<'tcx>, proj: &[usize], tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
@@ -164,7 +152,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         alias_map: &'a FnAliasMap,
         rng: R,
         max_complexity: usize,
-        api_graph: &'a ApiDepGraph<'tcx>,
+        api_graph: ApiDepGraph<'tcx>,
     ) -> Self {
         LtGen {
             pub_api: utils::get_all_pub_apis(tcx),
@@ -173,7 +161,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             pattern_provider: PatternProvider::new(tcx),
             max_complexity,
             alias_map,
-            api_graph,
+            api_graph: RefCell::new(api_graph),
         }
     }
 
@@ -200,7 +188,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         let mut api_call = ApiCall {
             fn_did,
             args: Vec::new(),
-            generic_args: tcx.mk_args(&[]),
+            generic_args: GenericArgs::identity_for_item(tcx, fn_did),
         };
 
         if tcx.generics_of(fn_did).requires_monomorphization(tcx) {
@@ -214,15 +202,20 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                     set.insert(tcx.erase_regions(cx.type_of(*var)));
                     set
                 });
-
+            rap_debug!("available types: {:?}", available_ty);
             let monos = mono::get_all_concrete_mono_solution(fn_did, available_ty, tcx);
             rap_debug!("monos: {:?}", monos);
             if monos.is_empty() {
                 return None;
             }
             let idx = self.rng.borrow_mut().random_range(0..monos.count());
-
-            api_call.generic_args = tcx.mk_args(monos.args_at(idx));
+            let args = monos.args_at(idx);
+            rap_debug!("choosed mono args: {args:?}");
+            api_call.generic_args = tcx.mk_args(args);
+            // update api_graph
+            if self.api_graph.borrow_mut().add_api(fn_did, args) {
+                self.api_graph.borrow_mut().update_transform_edges();
+            }
         }
         let fn_sig =
             utils::fn_sig_with_generic_args(api_call.fn_did(), api_call.generic_args(), tcx);
@@ -243,7 +236,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         Some(api_call)
     }
 
-    fn choose_eligable_api(&self, cx: &LtContext<'tcx, 'a>) -> Option<ApiCall<'tcx>> {
+    fn choose_eligable_api(&mut self, cx: &LtContext<'tcx, 'a>) -> Option<ApiCall<'tcx>> {
         let mut eligable_calls = Vec::new();
         rap_debug!("available vars: {:?}", cx.available_values());
         for fn_did in self.pub_api_def_id() {
@@ -263,7 +256,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         let mut vec: Vec<(Var, TransformKind)> = Vec::new();
         for var in cx.available_values() {
             let ty = cx.type_of(*var);
-            for transform in self.api_graph.all_transforms(ty) {
+            for transform in self.api_graph.borrow().all_transforms(ty) {
                 vec.push((*var, transform));
             }
         }
@@ -275,7 +268,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         Some(vec.swap_remove(idx))
     }
 
-    fn next(&self, cx: &mut LtContext<'tcx, 'a>) -> bool {
+    fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> bool {
         let hit = self.rng.borrow_mut().random_ratio(2, 3);
 
         if hit {
@@ -308,10 +301,15 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
         let tcx = self.tcx();
         let mut cx = LtContext::new(self.tcx, &self.alias_map);
-        let (estimated, total) = utils::estimate_max_coverage(self.api_graph, tcx);
+        let (estimated, total) = utils::estimate_max_coverage(self.api_graph.get_mut(), tcx);
         let mut count = 0;
+        let max_iteration = 1000;
         loop {
             count += 1;
+            if count > max_iteration {
+                rap_info!("max iteration reached, generation terminate");
+                break;
+            }
             rap_info!("<<<<< Iter {} >>>>>", count);
             if cx.complexity() > self.max_complexity {
                 rap_info!("complexity limit reached, generation terminate");
@@ -339,9 +337,14 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             );
         }
 
+        // dump debug files
+
         let mut file = std::fs::File::create("region_graph.dot").unwrap();
         // cx.region_graph().dump(&mut std::io::stdout()).unwrap();
         cx.region_graph().dump(&mut file).unwrap();
+
+        // let mut file  = std::
+        self.api_graph.borrow().dump_to_dot("api_graph.dot", tcx);
         cx
     }
 }

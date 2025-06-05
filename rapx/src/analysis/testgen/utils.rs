@@ -1,28 +1,42 @@
+pub use crate::analysis::core::api_dep::is_api_public;
 use crate::{
     analysis::core::api_dep::{ApiDepGraph, DepNode},
-    rap_debug,
+    rap_debug, rap_info,
 };
 use rustc_hir::{
-    def_id::{DefId, LOCAL_CRATE},
-    BodyOwnerKind,
+    def_id::{DefId, LocalDefId, LOCAL_CRATE},
+    BodyOwnerKind, ItemKind,
 };
-use rustc_middle::ty::{
-    self, AdtFlags, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable, TypeVisitor,
+use rustc_infer::infer::TyCtxtInferExt as _;
+use rustc_middle::{
+    query::cached::effective_visibilities,
+    ty::{
+        self, AdtFlags, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable,
+        TypeVisitor, TypingEnv,
+    },
 };
+use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::VecDeque;
-
-pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
-    matches!(tcx.visibility(fn_def_id.into()), ty::Visibility::Public)
-}
 
 /// return all DefId of all pub APIs
 pub fn get_all_pub_apis(tcx: TyCtxt<'_>) -> Vec<DefId> {
     let mut apis = Vec::new();
 
+    for id in tcx.hir().items() {
+        let item = tcx.hir().item(id);
+        if let ItemKind::Use(path, kind) = item.kind {
+            let owner_id = item.owner_id;
+            rap_info!("{:?}", item);
+            rap_info!("{:?}", tcx.def_path(owner_id.to_def_id()));
+            rap_info!("{:?}", tcx.def_path_str(owner_id.to_def_id()));
+        }
+    }
+
     for local_def_id in tcx.hir().body_owners() {
         if matches!(tcx.hir().body_owner_kind(local_def_id), BodyOwnerKind::Fn)
             && is_api_public(local_def_id, tcx)
         {
+            // tcx.hir().
             apis.push(local_def_id.to_def_id());
         }
     }
@@ -34,13 +48,14 @@ pub fn fn_requires_monomorphization<'tcx>(fn_did: DefId, tcx: TyCtxt<'_>) -> boo
 }
 
 pub fn is_ty_impl_copy<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
-    let param_env = ParamEnv::reveal_all();
-    // let infcx = tcx.infer_ctxt().build();
+    let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
+    let param_env = ParamEnv::empty();
+    infcx.type_is_copy_modulo_regions(param_env, ty)
     // let copy_trait = tcx.require_lang_item(rustc_hir::LangItem::Copy, None);
     // let copy_pred = ty::TraitRef::new(tcx, copy_trait, vec![ty]);
     // let obligation = Obligation::new(tcx, ObligationCause::dummy(), param_env, copy_pred);
     // infcx.predicate_must_hold_modulo_regions(&obligation)
-    tcx.erase_regions(ty).is_copy_modulo_regions(tcx, param_env)
+    // tcx.type_is_copy_modulo_regions(ty::TypingMode::PostAnalysis, ty)
 }
 
 pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {

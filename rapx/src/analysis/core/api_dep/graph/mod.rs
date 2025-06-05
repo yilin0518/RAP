@@ -52,7 +52,7 @@ fn get_bound_var_attr(var: ty::BoundVariableKind) -> (String, bool) {
         ty::BoundVariableKind::Region(bound_region_kind) => {
             is_lifetime = true;
             name = match bound_region_kind {
-                ty::BoundRegionKind::BrNamed(_, name) => name.to_string(),
+                ty::BoundRegionKind::Named(_, name) => name.to_string(),
                 _ => "anon".to_string(),
             }
         }
@@ -100,14 +100,13 @@ impl<'tcx> ApiDepGraph<'tcx> {
         tcx.hir().visit_all_item_likes_in_crate(&mut fn_visitor);
 
         // 2. add transform node
-        // self.add_transform_edges();
+        self.update_transform_edges();
 
         // 3. prune redundant nodes
         self.prune_redundant_nodes();
     }
 
-    pub fn add_transform_edges(&mut self) {
-        // let mut transforms =
+    pub fn update_transform_edges(&mut self) {
         for node_index in self.graph.node_indices() {
             if let DepNode::Ty(ty) = self.graph[node_index] {
                 self.add_possible_transform::<3>(ty, 0);
@@ -177,6 +176,10 @@ impl<'tcx> ApiDepGraph<'tcx> {
             generic_param_count: generic_param_cnt,
             edge_cnt,
         }
+    }
+
+    pub fn is_node_exist(&self, node: &DepNode<'tcx>) -> bool {
+        self.node_indices.contains_key(&node)
     }
 
     pub fn get_node(&mut self, node: DepNode<'tcx>) -> NodeIndex {
@@ -263,7 +266,11 @@ impl<'tcx> ApiDepGraph<'tcx> {
     // pub fn add_generics_nodes(&mut self, from: NodeIndex, generics: &ty::Generics<'tcx>) {}
 
     pub fn add_api(&mut self, fn_did: DefId, args: &[ty::GenericArg<'tcx>]) -> bool {
-        let api_node = self.get_node(DepNode::api(fn_did, self.tcx.mk_args(args)));
+        let node = DepNode::api(fn_did, self.tcx.mk_args(args));
+        if self.is_node_exist(&node) {
+            return false;
+        }
+        let api_node = self.get_node(node);
 
         rap_trace!("[ApiDepGraph] add fn: {:?} args: {:?}", fn_did, args);
 
@@ -273,12 +280,12 @@ impl<'tcx> ApiDepGraph<'tcx> {
         // add inputs/output to graph, and compute constraints based on subtyping
         for (no, input_ty) in fn_sig.inputs().iter().enumerate() {
             let input_node = self.get_node(DepNode::ty(*input_ty));
-            self.add_edge(input_node, api_node, DepEdge::arg(no));
+            self.add_edge_once(input_node, api_node, DepEdge::arg(no));
         }
 
         let output_ty = fn_sig.output();
         let output_node = self.get_node(DepNode::ty(output_ty));
-        self.add_edge(api_node, output_node, DepEdge::ret());
+        self.add_edge_once(api_node, output_node, DepEdge::ret());
 
         true
     }

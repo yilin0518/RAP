@@ -1,7 +1,8 @@
 use super::graph::ApiDepGraph;
 use super::graph::{DepEdge, DepNode};
+use super::is_api_public;
 use super::Config;
-use crate::rap_debug;
+use crate::{rap_debug, rap_trace};
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{FnKind, Visitor},
@@ -10,10 +11,6 @@ use rustc_hir::{
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::Span;
 use std::io::Write;
-
-fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
-    matches!(tcx.visibility(fn_def_id.into()), ty::Visibility::Public)
-}
 
 pub struct FnVisitor<'tcx, 'a> {
     fn_cnt: usize,
@@ -70,7 +67,8 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
             return;
         }
         let res = if !is_generic {
-            self.graph.add_api(fn_did, &[])
+            let args = ty::GenericArgs::identity_for_item(self.tcx, fn_did);
+            self.graph.add_api(fn_did, &args)
         } else {
             self.graph.add_generic_api(fn_did)
         };

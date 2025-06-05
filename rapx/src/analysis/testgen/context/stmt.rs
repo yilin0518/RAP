@@ -18,6 +18,9 @@ impl Var {
     pub fn unique_id(&self) -> usize {
         self.0
     }
+    pub fn is_input(&self) -> bool {
+        self.1
+    }
 }
 
 pub static DUMMY_INPUT_VAR: Var = Var(0, true);

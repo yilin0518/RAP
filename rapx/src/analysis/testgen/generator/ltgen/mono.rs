@@ -4,11 +4,12 @@ use rustc_hir::def_id::DefId;
 use rustc_infer::infer::canonical::ir::InferCtxtLike;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
-use rustc_infer::traits::ObligationCause;
+use rustc_infer::traits::{select, Obligation, ObligationCause};
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitableExt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::infer::InferCtxtExt;
-use rustc_trait_selection::traits::ObligationCtxt;
+use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
+use rustc_trait_selection::traits::{FulfillmentContext, ObligationCtxt};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
@@ -113,6 +114,46 @@ impl<'tcx> MonoSet<'tcx> {
         });
         self
     }
+
+    fn filter_by_trait_bound(mut self, fn_did: DefId, tcx: TyCtxt<'tcx>) -> Self {
+        let early_fn_sig = tcx.fn_sig(fn_did);
+        self.value.retain(|args| {
+            let args = tcx.mk_args(args);
+            // let fn_sig = early_fn_sig.instantiate(tcx, args);
+            let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
+            let pred = tcx.predicates_of(fn_did);
+            let inst_pred = pred.instantiate(tcx, args);
+            let param_env = tcx.param_env(fn_did);
+            rap_trace!("[trait bound] {fn_did:?} {args:?} {param_env:?} {inst_pred:?}");
+
+            for pred in inst_pred.predicates.iter() {
+                let obligation = Obligation::new(
+                    tcx,
+                    ObligationCause::dummy(),
+                    param_env,
+                    pred.as_predicate(),
+                );
+
+                let res = infcx.evaluate_obligation(&obligation);
+                rap_trace!("{obligation:?}");
+                rap_trace!("{res:?}");
+                match res {
+                    Ok(eva) => {
+                        if !eva.may_apply() {
+                            return false;
+                        }
+                    }
+                    Err(_) => {
+                        rap_trace!("[trait bound] check fail");
+                        return false;
+                    }
+                }
+            }
+            rap_trace!("[trait bound] check succ");
+            true
+        });
+        self
+    }
 }
 
 fn get_mono_set<'tcx>(
@@ -121,7 +162,10 @@ fn get_mono_set<'tcx>(
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
     let fn_sig = tcx.fn_sig(fn_did);
-    let infcx = tcx.infer_ctxt().ignoring_regions().build();
+    let infcx = tcx
+        .infer_ctxt()
+        .ignoring_regions()
+        .build(ty::TypingMode::PostAnalysis);
     let param_env = tcx.param_env(fn_did);
     let fresh_args = infcx.fresh_args_for_item(DUMMY_SP, fn_did);
     let fn_sig = fn_sig.instantiate(tcx, fresh_args);
@@ -138,6 +182,8 @@ fn get_mono_set<'tcx>(
     let dummy_cause = ObligationCause::dummy();
 
     rap_trace!("param_env: {:?}", param_env);
+    // let mut ret = MonoSet::all(fresh_args);
+    // for input_ty in fn_sig.inputs().iter() {}
 
     fn_sig
         .inputs()
@@ -188,14 +234,40 @@ pub fn get_all_concrete_mono_solution<'tcx>(
     mut available_ty: HashSet<Ty<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
-    add_prelude_ty(&mut available_ty, tcx);
+    rap_trace!("enter get_all_concrete_mono_solution for {fn_did:?}");
+
+    add_prelude_tys(&mut available_ty, tcx);
+    add_transform_tys(&mut available_ty, tcx);
     rap_debug!("[mono] input => {fn_did:?}: {available_ty:?}");
-    let ret = get_mono_set(fn_did, &available_ty, tcx).filter_unbound_solution();
+    let ret = get_mono_set(fn_did, &available_ty, tcx)
+        .filter_unbound_solution()
+        .filter_by_trait_bound(fn_did, tcx);
     rap_debug!("possible mono solution for {fn_did:?}: {ret:?}");
     ret
 }
 
-pub fn add_prelude_ty<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt<'tcx>) {
+pub fn add_transform_tys<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt<'tcx>) {
+    let mut new_tys = Vec::new();
+    available_ty.iter().for_each(|ty| {
+        new_tys.push(Ty::new_ref(
+            tcx,
+            tcx.lifetimes.re_erased,
+            *ty,
+            ty::Mutability::Not,
+        ));
+        new_tys.push(Ty::new_ref(
+            tcx,
+            tcx.lifetimes.re_erased,
+            *ty,
+            ty::Mutability::Mut,
+        ));
+    });
+    new_tys.into_iter().for_each(|ty| {
+        available_ty.insert(ty);
+    });
+}
+
+pub fn add_prelude_tys<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt<'tcx>) {
     let prelude_tys = [
         tcx.types.bool,
         tcx.types.char,

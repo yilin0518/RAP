@@ -6,10 +6,10 @@
 pub mod graph;
 #[allow(unused)]
 mod visitor;
-use crate::{rap_debug, rap_info};
+use crate::{rap_debug, rap_info, rap_trace};
 pub use graph::ApiDepGraph;
 pub use graph::{DepEdge, DepNode};
-use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_middle::ty::TyCtxt;
 
 pub struct ApiDep<'tcx> {
@@ -20,6 +20,19 @@ pub struct ApiDep<'tcx> {
 pub struct Config {
     pub pub_only: bool,
     pub include_generic_api: bool,
+}
+
+pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
+    let fn_def_id: DefId = fn_def_id.into();
+    let local_id = fn_def_id.expect_local();
+    rap_trace!(
+        "vis: {:?} (path: {}) => {:?}",
+        fn_def_id,
+        tcx.def_path_str(fn_def_id),
+        tcx.effective_visibilities(()).effective_vis(local_id)
+    );
+    // is_re_exported(tcx, target_defid, module_defid)
+    tcx.effective_visibilities(()).is_directly_public(local_id)
 }
 
 impl<'tcx> ApiDep<'tcx> {

@@ -81,7 +81,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         let var = stmt.place;
         let var_ty = cx.type_of(var);
         let stmt_str = self.stmt_kind_str(&stmt, cx);
-        if !var_ty.is_unit() {
+        if !var_ty.is_unit() || (var_ty.is_unit() && var.is_input()) {
             format!(
                 "let {}{}: {} = {};",
                 cx.var_mutability(var).prefix_str(),
@@ -99,10 +99,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
     }
 
     fn header_str(&self) -> String {
-        format!(
-            "extern crate {};\nuse {}::*;",
-            self.option.crate_name, self.option.crate_name
-        )
+        format!("use {}::*;", self.option.crate_name)
     }
 
     fn main_str<'tcx>(&mut self, cx: &impl Context<'tcx>) -> String {

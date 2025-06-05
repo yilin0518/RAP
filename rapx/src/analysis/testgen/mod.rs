@@ -83,7 +83,7 @@ impl<'tcx> Testgen<'tcx> {
         // }
 
         // run random program generator
-        let mut lt_gen = LtGenBuilder::new(self.tcx, alias_map, &api_dep_graph)
+        let mut lt_gen = LtGenBuilder::new(self.tcx, alias_map, api_dep_graph)
             .max_complexity(20)
             .build();
 

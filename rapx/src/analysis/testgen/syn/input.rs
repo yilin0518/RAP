@@ -21,10 +21,9 @@ impl InputGen for SillyInputGen {
             TyKind::Char => "'a'".to_owned(),
             TyKind::Array(inner_ty, const_) => {
                 let len = const_
-                    .to_valtree()
-                    .try_to_scalar_int()
-                    .unwrap()
-                    .to_target_usize(tcx);
+                    .to_value()
+                    .try_to_target_usize(tcx)
+                    .expect("Failed to get array length");
                 let mut arr: Vec<String> = Vec::new();
                 for _ in 0..len {
                     arr.push(self.gen(*inner_ty, tcx).to_string());

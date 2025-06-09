@@ -24,24 +24,33 @@ impl<'tcx> SSATrans<'tcx> {
     pub fn start(&mut self) {
         for local_def_id in self.tcx.iter_local_def_id() {
             if matches!(self.tcx.def_kind(local_def_id), DefKind::Fn) {
-                let hir_map = self.tcx.hir();
-                if hir_map.maybe_body_owned_by(local_def_id).is_some() {
+                if self.tcx.hir_maybe_body_owned_by(local_def_id).is_some() {
                     if let Some(def_id) = self
                         .tcx
-                        .hir()
-                        .body_owners()
+                        .hir_body_owners()
                         .find(|id| self.tcx.def_path_str(*id) == "main")
                     {
-                        if let Some(ssa_def_id) = self.tcx.hir().items().find(|id| {
-                            let item = self.tcx.hir().item(*id);
-                            item.ident.name.to_string() == "SSAstmt"
-                        }) {
+                        if let Some(ssa_def_id) =
+                            self.tcx.hir_crate_items(()).free_items().find(|id| {
+                                let hir_id = id.hir_id();
+                                if let Some(ident_name) = self.tcx.hir_opt_name(hir_id) {
+                                    ident_name.to_string() == "SSAstmt"
+                                } else {
+                                    false
+                                }
+                            })
+                        {
                             let ssa_def_id = ssa_def_id.owner_id.to_def_id();
-
-                            if let Some(essa_def_id) = self.tcx.hir().items().find(|id| {
-                                let item = self.tcx.hir().item(*id);
-                                item.ident.name.to_string() == "ESSAstmt"
-                            }) {
+                            if let Some(essa_def_id) =
+                                self.tcx.hir_crate_items(()).free_items().find(|id| {
+                                    let hir_id = id.hir_id();
+                                    if let Some(ident_name) = self.tcx.hir_opt_name(hir_id) {
+                                        ident_name.to_string() == "ESSAstmt"
+                                    } else {
+                                        false
+                                    }
+                                })
+                            {
                                 let essa_def_id = essa_def_id.owner_id.to_def_id();
                                 self.analyze_mir(self.tcx, def_id, ssa_def_id, essa_def_id);
                             }
@@ -83,24 +92,33 @@ impl<'tcx> RangeAnalysis<'tcx> {
     pub fn start(&mut self) {
         for local_def_id in self.tcx.iter_local_def_id() {
             if matches!(self.tcx.def_kind(local_def_id), DefKind::Fn) {
-                let hir_map = self.tcx.hir();
-                if hir_map.maybe_body_owned_by(local_def_id).is_some() {
+                if self.tcx.hir_maybe_body_owned_by(local_def_id).is_some() {
                     if let Some(def_id) = self
                         .tcx
-                        .hir()
-                        .body_owners()
+                        .hir_body_owners()
                         .find(|id| self.tcx.def_path_str(*id) == "main")
                     {
-                        if let Some(ssa_def_id) = self.tcx.hir().items().find(|id| {
-                            let item = self.tcx.hir().item(*id);
-                            item.ident.name.to_string() == "SSAstmt"
-                        }) {
+                        if let Some(ssa_def_id) =
+                            self.tcx.hir_crate_items(()).free_items().find(|id| {
+                                let hir_id = id.hir_id();
+                                if let Some(ident_name) = self.tcx.hir_opt_name(hir_id) {
+                                    ident_name.to_string() == "SSAstmt"
+                                } else {
+                                    false
+                                }
+                            })
+                        {
                             let ssa_def_id = ssa_def_id.owner_id.to_def_id();
-
-                            if let Some(essa_def_id) = self.tcx.hir().items().find(|id| {
-                                let item = self.tcx.hir().item(*id);
-                                item.ident.name.to_string() == "ESSAstmt"
-                            }) {
+                            if let Some(essa_def_id) =
+                                self.tcx.hir_crate_items(()).free_items().find(|id| {
+                                    let hir_id = id.hir_id();
+                                    if let Some(ident_name) = self.tcx.hir_opt_name(hir_id) {
+                                        ident_name.to_string() == "ESSAstmt"
+                                    } else {
+                                        false
+                                    }
+                                })
+                            {
                                 let essa_def_id = essa_def_id.owner_id.to_def_id();
                                 self.analyze_mir(self.tcx, def_id, ssa_def_id, essa_def_id);
                             }

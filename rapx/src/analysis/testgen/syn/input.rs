@@ -1,7 +1,7 @@
 use rand::{rng, Rng};
+use rustc_abi::FIRST_VARIANT;
 use rustc_middle::ty::cast::IntTy;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
-use rustc_target::abi::{VariantIdx, FIRST_VARIANT};
 
 pub trait InputGen {
     fn gen<'tcx>(&mut self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> impl ToString;
@@ -53,6 +53,7 @@ impl InputGen for SillyInputGen {
                 if adt_def.is_enum() {
                     let mut fields = Vec::new();
                     // Always generate the first variant
+                    
                     let variant_def = adt_def.variant(FIRST_VARIANT);
                     let variant_name = variant_def.name.to_string();
                     for field in variant_def.fields.iter() {

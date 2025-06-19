@@ -282,7 +282,7 @@ pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'
         // ADT
         ty::TyKind::Adt(_, substs) => {
             for arg in substs.iter() {
-                match arg.unpack() {
+                match arg.kind() {
                     ty::GenericArgKind::Lifetime(region) => {
                         if let Some(prev_region) = prev {
                             f(prev_region, region);

@@ -127,7 +127,7 @@ pub fn extract_constraints<'tcx>(
             panic!("region is var");
         }
         let len = map.len();
-        *map.entry(*region).or_insert(len)
+        *map.entry(region).or_insert(len)
     };
     let mut subgraph = EdgePatterns::default();
 

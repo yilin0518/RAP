@@ -97,7 +97,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         // 1. scan
         let tcx = self.tcx();
         let mut fn_visitor = FnVisitor::new(self, config, tcx);
-        tcx.hir().visit_all_item_likes_in_crate(&mut fn_visitor);
+        tcx.hir_visit_all_item_likes_in_crate(&mut fn_visitor);
 
         // 2. add transform node
         self.update_transform_edges();

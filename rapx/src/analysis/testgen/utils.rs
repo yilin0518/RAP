@@ -21,19 +21,9 @@ use std::collections::VecDeque;
 /// return all DefId of all pub APIs
 pub fn get_all_pub_apis(tcx: TyCtxt<'_>) -> Vec<DefId> {
     let mut apis = Vec::new();
-
-    for id in tcx.hir().items() {
-        let item = tcx.hir().item(id);
-        if let ItemKind::Use(path, kind) = item.kind {
-            let owner_id = item.owner_id;
-            rap_info!("{:?}", item);
-            rap_info!("{:?}", tcx.def_path(owner_id.to_def_id()));
-            rap_info!("{:?}", tcx.def_path_str(owner_id.to_def_id()));
-        }
-    }
-
-    for local_def_id in tcx.hir().body_owners() {
-        if matches!(tcx.hir().body_owner_kind(local_def_id), BodyOwnerKind::Fn)
+    
+    for local_def_id in tcx.hir_body_owners() {
+        if matches!(tcx.hir_body_owner_kind(local_def_id), BodyOwnerKind::Fn)
             && is_api_public(local_def_id, tcx)
         {
             // tcx.hir().
@@ -136,30 +126,30 @@ pub fn fn_sig_with_generic_args<'tcx>(
 #[derive(Debug, Copy, Clone, Default)]
 pub struct PtrCheckResult {
     pub has_any_ptr: bool,
-    pub has_unsafe_ptr: bool,
+    pub has_raw_ptr: bool,
 }
 
 impl PtrCheckResult {
     fn or(self, other: Self) -> Self {
         PtrCheckResult {
             has_any_ptr: self.has_any_ptr || other.has_any_ptr,
-            has_unsafe_ptr: self.has_unsafe_ptr || other.has_unsafe_ptr,
+            has_raw_ptr: self.has_raw_ptr || other.has_raw_ptr,
         }
     }
 
     pub fn has_ref(&self) -> bool {
-        self.has_any_ptr && !self.has_unsafe_ptr
+        self.has_any_ptr && !self.has_raw_ptr
     }
 
-    pub fn has_unsafe_ptr(&self) -> bool {
-        self.has_unsafe_ptr
+    pub fn has_raw_ptr(&self) -> bool {
+        self.has_raw_ptr
     }
 }
 
 pub fn ty_check_ptr<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> PtrCheckResult {
     let mut res = PtrCheckResult::default();
     res.has_any_ptr = ty.is_any_ptr();
-    res.has_unsafe_ptr = ty.is_unsafe_ptr();
+    res.has_raw_ptr = ty.is_raw_ptr();
 
     match ty.kind() {
         // Reference, Array, Slice

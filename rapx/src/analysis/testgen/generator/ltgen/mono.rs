@@ -107,7 +107,7 @@ impl<'tcx> MonoSet<'tcx> {
 
     fn filter_unbound_solution(mut self) -> Self {
         self.value.retain(|args| {
-            args.iter().all(|arg| match arg.unpack() {
+            args.iter().all(|arg| match arg.kind() {
                 ty::GenericArgKind::Type(ty) => !ty.is_ty_var(),
                 _ => true,
             })
@@ -209,7 +209,7 @@ fn get_mono_set<'tcx>(
                             }
 
                             reachable_set.add_from_iter(fresh_args.iter().map(|arg| {
-                                match arg.unpack() {
+                                match arg.kind() {
                                     ty::GenericArgKind::Lifetime(region) => {
                                         infcx.resolve_vars_if_possible(region).into()
                                     }

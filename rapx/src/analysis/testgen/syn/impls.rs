@@ -30,7 +30,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                 let args = call
                     .generic_args()
                     .into_iter()
-                    .map(|arg| match arg.unpack() {
+                    .map(|arg| match arg.kind() {
                         ty::GenericArgKind::Lifetime(_) => {
                             ty::GenericArg::from(tcx.lifetimes.re_erased)
                         }

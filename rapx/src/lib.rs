@@ -25,11 +25,11 @@ extern crate rustc_traits;
 extern crate rustc_type_ir;
 extern crate stable_mir;
 
-use crate::analysis::core::heap_item::TypeAnalysis;
 use analysis::core::alias::mop::MopAlias;
 use analysis::core::api_dep::{self, ApiDep};
 use analysis::core::call_graph::CallGraph;
 use analysis::core::dataflow::DataFlow;
+use analysis::core::heap_item::TypeAnalysis;
 use analysis::core::range_analysis::{RangeAnalysis, SSATrans};
 use analysis::opt::Opt;
 use analysis::rcanary::rCanary;
@@ -38,15 +38,16 @@ use analysis::senryx::{CheckLevel, SenryxCheck};
 use analysis::testgen::Testgen;
 use analysis::unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck};
 use analysis::utils::show_mir::ShowMir;
-use rustc_data_structures::sync::Lrc;
 use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::interface::Compiler;
 use rustc_interface::Config;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::util::Providers;
 use rustc_session::search_paths::PathKind;
-use std::env;
 use std::path::PathBuf;
+use std::{env, sync::Arc};
+
+use crate::analysis::core::range_analysis::RangeAnalysisStrategy;
 
 // Insert rustc arguments at the beginning of the argument list that RAP wants to be
 // set per default, for maximal validation power.
@@ -106,7 +107,7 @@ impl Callbacks for RapCallback {
                 // HACK: rustc will emit "crate ... required to be available in rlib format, but
                 // was not found in this form" errors once we use `tcx.dependency_formats()` if
                 // there's no rlib provided, so setting a dummy path here to workaround those errors.
-                Lrc::make_mut(&mut crate_source).rlib = Some((PathBuf::new(), PathKind::All));
+                Arc::make_mut(&mut crate_source).rlib = Some((PathBuf::new(), PathKind::All));
                 crate_source
             };
         });
@@ -363,6 +364,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         SSATrans::new(tcx, false).start();
     }
     if callback.is_range_analysis_enabled() {
-        RangeAnalysis::new(tcx, false).start();
+        let mut analysis = RangeAnalysis::<i32>::new(tcx, false);
+        analysis.start(None);
+        // analysis
+        //     .get_range(rustc_middle::mir::Local::from_u32(12))
+        //     .map(|range| println!("Range for local 12: {}", range));
     }
 }

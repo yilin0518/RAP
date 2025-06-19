@@ -1,11 +1,11 @@
 #![allow(non_snake_case)]
 #![allow(unused_variables)]
 #![allow(dead_code)]
-
 use super::SSATransformer::SSATransformer;
+use rustc_abi::FieldIdx;
 use rustc_index::IndexVec;
-use rustc_middle::mir::*;
 use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::*, ty::GenericArgs};
 use std::collections::{HashMap, HashSet, VecDeque};
 // use stable_mir::mir::FieldIdx;
 // use stable_mir::ty::ConstantKind;
@@ -28,8 +28,8 @@ impl<'tcx> Replacer<'tcx> {
             .ssatransformer
             .local_assign_blocks
             .iter()
-            .filter(|(_, blocks)| blocks.len() >= 2) // 只保留基本块数量大于等于 2 的条目
-            .map(|(&local, _)| local) // 提取 Local
+            .filter(|(_, blocks)| blocks.len() >= 2)
+            .map(|(&local, _)| local)
             .collect();
         for var in &variables {
             if let Some(def_blocks) = self.ssatransformer.local_assign_blocks.get(var) {
@@ -65,14 +65,29 @@ impl<'tcx> Replacer<'tcx> {
                 for _ in 0..predecessors.len() {
                     operands.push(Operand::Copy(Place::from(var)));
                 }
-                let phi_stmt = Statement {
+                let phi_stmt: Statement<'_> = Statement {
                     source_info: SourceInfo::outermost(body.span),
                     kind: StatementKind::Assign(Box::new((
                         Place::from(var),
-                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operands),
+                        Rvalue::Aggregate(
+                            Box::new(AggregateKind::Adt(
+                                self.ssatransformer.phi_def_id.clone(),
+                                rustc_abi::VariantIdx::from_u32(0),
+                                GenericArgs::empty(),
+                                None,
+                                None,
+                            )),
+                            operands,
+                        ),
                     ))),
                 };
-
+                // let phi_stmt = Statement {
+                //     source_info: SourceInfo::outermost(body.span),
+                //     kind: StatementKind::Assign(Box::new((
+                //         Place::from(var),
+                //         Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operands),
+                //     ))),
+                // };
                 body.basic_blocks_mut()[block]
                     .statements
                     .insert(0, phi_stmt);
@@ -118,7 +133,7 @@ impl<'tcx> Replacer<'tcx> {
     fn extract_condition(
         &self,
         place: &Place<'tcx>,
-        switch_block: BasicBlockData<'tcx>,
+        switch_block: &BasicBlockData<'tcx>,
     ) -> Option<(Operand<'tcx>, Operand<'tcx>, BinOp)> {
         for stmt in &switch_block.statements {
             if let StatementKind::Assign(box (lhs, Rvalue::BinaryOp(bin_op, box (op1, op2)))) =
@@ -162,8 +177,7 @@ impl<'tcx> Replacer<'tcx> {
         discr: &Operand<'tcx>,
         body: &mut Body<'tcx>,
     ) {
-        let switch_block_data = body.basic_blocks[*switch_block].clone();
-        let block_data: &mut BasicBlockData<'tcx> = &mut body.basic_blocks.as_mut()[*bb];
+        let switch_block_data = &body.basic_blocks[*switch_block];
 
         // let mut essa_operands: IndexVec<_, _> = IndexVec::with_capacity(2);
         let magic_number = 213134123 as u64;
@@ -196,6 +210,8 @@ impl<'tcx> Replacer<'tcx> {
             if let Some((op1, op2, cmp_op)) =
                 self.extract_condition(switch_place, switch_block_data)
             {
+                let block_data: &mut BasicBlockData<'tcx> = &mut body.basic_blocks.as_mut()[*bb];
+
                 let const_op1: Option<&ConstOperand<'_>> = op1.constant();
                 let const_op2: Option<&ConstOperand<'_>> = op2.constant();
                 let cmp_operand: Operand<'_> = match cmp_op.clone() {
@@ -220,6 +236,13 @@ impl<'tcx> Replacer<'tcx> {
                                 Operand::Copy(p1) | Operand::Move(p1),
                                 Operand::Copy(p2) | Operand::Move(p2),
                             ) => {
+                                let ADT = AggregateKind::Adt(
+                                    self.ssatransformer.essa_def_id.clone(),
+                                    rustc_abi::VariantIdx::from_u32(0),
+                                    GenericArgs::empty(),
+                                    None,
+                                    None,
+                                );
                                 let place1 = Place::from(p1);
                                 let place2 = Place::from(p2);
                                 let rvalue1;
@@ -237,10 +260,12 @@ impl<'tcx> Replacer<'tcx> {
                                     operand2.push(Operand::Copy(Place::from(p1)));
                                     operand2.push(cmp_operand.clone());
                                     operand2.push(magic_number_operand.clone());
-                                    rvalue1 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
-                                    rvalue2 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    //     rvalue1 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
+                                    // rvalue2 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    rvalue1 = Rvalue::Aggregate(Box::new(ADT.clone()), operand1);
+                                    rvalue2 = Rvalue::Aggregate(Box::new(ADT.clone()), operand2);
                                 } else {
                                     operand1.push(Operand::Copy(Place::from(p1)));
                                     operand1.push(Operand::Copy(Place::from(p2)));
@@ -251,10 +276,12 @@ impl<'tcx> Replacer<'tcx> {
                                     operand2.push(Operand::Copy(Place::from(p1)));
                                     operand2.push(flip_cmp_operand.clone());
                                     operand2.push(magic_number_operand.clone());
-                                    rvalue1 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
-                                    rvalue2 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    // rvalue1 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
+                                    // rvalue2 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    rvalue1 = Rvalue::Aggregate(Box::new(ADT.clone()), operand1);
+                                    rvalue2 = Rvalue::Aggregate(Box::new(ADT.clone()), operand2);
                                 }
 
                                 let assign_stmt1 = Statement {
@@ -265,11 +292,12 @@ impl<'tcx> Replacer<'tcx> {
                                     source_info: SourceInfo::outermost(body.span),
                                     kind: StatementKind::Assign(Box::new((place2, rvalue2))),
                                 };
-                                block_data.statements.insert(0, assign_stmt1);
                                 block_data.statements.insert(0, assign_stmt2);
+                                block_data.statements.insert(0, assign_stmt1);
+
                                 for i in 0..2 {
                                     let essa_in_body = block_data.statements.get_mut(i).unwrap();
-                                    let essa_ptr = essa_in_body as *const _; // 获取 statement 的指针作为 key
+                                    let essa_ptr = essa_in_body as *const _;
                                     self.ssatransformer.essa_statements.insert(essa_ptr, true);
                                 }
                             }
@@ -291,7 +319,14 @@ impl<'tcx> Replacer<'tcx> {
                         } else {
                             operand.push(cmp_operand.clone());
                         }
-                        rvalue = Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand);
+                        let ADT = AggregateKind::Adt(
+                            self.ssatransformer.essa_def_id.clone(),
+                            rustc_abi::VariantIdx::from_u32(0),
+                            GenericArgs::empty(),
+                            None,
+                            None,
+                        );
+                        rvalue = Rvalue::Aggregate(Box::new(ADT.clone()), operand);
                         let assign_stmt = Statement {
                             source_info: SourceInfo::outermost(body.span),
                             kind: StatementKind::Assign(Box::new((place, rvalue))),
@@ -300,7 +335,7 @@ impl<'tcx> Replacer<'tcx> {
 
                         for i in 0..1 {
                             let essa_in_body = block_data.statements.get_mut(i).unwrap();
-                            let essa_ptr = essa_in_body as *const _; // 获取 statement 的指针作为 key
+                            let essa_ptr = essa_in_body as *const _;
                             self.ssatransformer.essa_statements.insert(essa_ptr, true);
                         }
                     }
@@ -357,8 +392,8 @@ impl<'tcx> Replacer<'tcx> {
         body: &mut Body<'tcx>,
         switch_bb: BasicBlock,
     ) {
-        let switch_block_data = body.basic_blocks[switch_bb].clone();
-        if let Some(terminator) = &switch_block_data.clone().terminator {
+        let switch_block_data = &body.basic_blocks[switch_bb];
+        if let Some(terminator) = &switch_block_data.terminator {
             if let TerminatorKind::SwitchInt { discr, .. } = &terminator.kind {
                 if let Operand::Copy(switch_place) | Operand::Move(switch_place) = discr {
                     if let Some((op1, op2, cmp_op)) =
@@ -374,8 +409,9 @@ impl<'tcx> Replacer<'tcx> {
                                     if let Rvalue::Aggregate(_, operands) = rvalue {
                                         let loc_1: usize = 0;
                                         let loc_2: usize = 1;
-                                        operands[loc_1.into()] = op1.clone();
-                                        operands[loc_2.into()] = op2.clone();
+
+                                        operands[FieldIdx::from_usize(loc_1)] = op1.clone();
+                                        operands[FieldIdx::from_usize(loc_2)] = op2.clone();
                                     }
                                 }
                                 _ => {}
@@ -389,8 +425,8 @@ impl<'tcx> Replacer<'tcx> {
                                     if let Rvalue::Aggregate(_, operands) = rvalue {
                                         let loc_1: usize = 0;
                                         let loc_2: usize = 1;
-                                        operands[loc_1.into()] = op2.clone();
-                                        operands[loc_2.into()] = op1.clone();
+                                        operands[FieldIdx::from_usize(loc_1)] = op2.clone();
+                                        operands[FieldIdx::from_usize(loc_2)] = op1.clone();
                                     }
                                 }
                                 _ => {}
@@ -404,7 +440,7 @@ impl<'tcx> Replacer<'tcx> {
                                 StatementKind::Assign(box (place, rvalue)) => {
                                     if let Rvalue::Aggregate(_, operands) = rvalue {
                                         let loc: usize = 0;
-                                        operands[loc.into()] = op1.clone();
+                                        operands[FieldIdx::from_usize(loc)] = op1.clone();
                                     }
                                 }
                                 _ => {}
@@ -438,7 +474,7 @@ impl<'tcx> Replacer<'tcx> {
 
                         if index < operand_count {
                             // self.replace_operand(&mut operands[(index).into()], &succ_bb);s
-                            match &mut operands[(index).into()] {
+                            match &mut operands[FieldIdx::from_usize(index)] {
                                 Operand::Copy(place) | Operand::Move(place) => {
                                     self.replace_place(place, &do_bb);
                                 }
@@ -467,24 +503,21 @@ impl<'tcx> Replacer<'tcx> {
                             self.replace_rvalue(rvalue, &bb);
                             self.rename_local_def(place, &bb, true);
                         } else {
-                            self.rename_local_def(place, &bb, true);
+                            self.ssa_rename_local_def(place, &bb, true);
                         }
                     } else {
-                        self.rename_local_def(place, &bb, false);
+                        self.ssa_rename_local_def(place, &bb, false);
                     }
                 }
-                // 2. FakeRead: 变量使用
                 // StatementKind::FakeRead(_, place)
                 StatementKind::Deinit(place) | StatementKind::SetDiscriminant { place, .. } => {
                     // let place_mut = unsafe { &mut *(place as *const _ as *mut _) };
 
                     // self.replace_place(place.as_mut());
                 }
-                // 3. StorageLive: 变量定义
                 StatementKind::StorageLive(local) => {
                     // self.rename_local_def(*local);
                 }
-                // 4. StorageDead: 变量使用
                 StatementKind::StorageDead(local) => {
                     // self.replace_local(local);
                 }
@@ -562,6 +595,46 @@ impl<'tcx> Replacer<'tcx> {
         }
     }
 
+    fn ssa_rename_local_def(&mut self, place: &mut Place<'tcx>, bb: &BasicBlock, not_phi: bool) {
+        // let old_local = place.as_local().as_mut().unwrap();
+        self.update_reachinf_def(&place.local, &bb);
+        let Place {
+            local: old_local,
+            projection: _,
+        } = place;
+
+        let new_local = Local::from_u32(self.ssatransformer.local_index);
+        self.ssatransformer.local_index += 1;
+
+        let _old_local = old_local.clone();
+        self.ssatransformer
+            .ssa_locals_map
+            .entry(*old_local)
+            .or_insert_with(HashSet::new)
+            .insert(new_local.clone());
+
+        *place = Place::from(new_local);
+        self.ssatransformer
+            .local_defination_block
+            .insert(new_local.clone(), bb.clone());
+        let old_local_reaching = self
+            .ssatransformer
+            .reaching_def
+            .get(&_old_local.clone())
+            .unwrap();
+
+        self.ssatransformer
+            .reaching_def
+            .insert(new_local.clone(), *old_local_reaching);
+        self.ssatransformer
+            .reaching_def
+            .insert(_old_local.clone(), Some(new_local.clone()));
+
+        // self.reaching_def
+        //     .entry(old_local)
+        //     .or_default()
+        //     .replace(Some(old_local));
+    }
     fn rename_local_def(&mut self, place: &mut Place<'tcx>, bb: &BasicBlock, not_phi: bool) {
         // let old_local = place.as_local().as_mut().unwrap();
         self.update_reachinf_def(&place.local, &bb);
@@ -569,16 +642,26 @@ impl<'tcx> Replacer<'tcx> {
             local: old_local,
             projection: _,
         } = place;
+        //find the original local defination assign statement
         if self.ssatransformer.skipped.contains(&old_local.as_u32()) && not_phi {
             self.ssatransformer.skipped.remove(&old_local.as_u32());
             self.ssatransformer
                 .reaching_def
                 .insert(*old_local, Some(*old_local));
-
+            self.ssatransformer
+                .locals_map
+                .entry(*old_local)
+                .or_insert_with(HashSet::new)
+                .insert(*old_local);
             return;
         }
         let new_local = Local::from_u32(self.ssatransformer.local_index);
         self.ssatransformer.local_index += 1;
+        self.ssatransformer
+            .locals_map
+            .entry(*old_local)
+            .or_insert_with(HashSet::new)
+            .insert(new_local);
 
         let _old_local = old_local.clone();
         *place = Place::from(new_local);

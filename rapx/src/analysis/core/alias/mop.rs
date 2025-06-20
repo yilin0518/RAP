@@ -80,7 +80,6 @@ pub struct MopAAResult {
     alias_set: HashSet<MopAAFact>,
 }
 
-
 impl fmt::Display for MopAAResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(

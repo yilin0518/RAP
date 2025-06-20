@@ -16,6 +16,9 @@ use crate::analysis::rcanary::rCanary;
 use graph::SafeDropGraph;
 use safedrop::*;
 
+use super::core::alias::AliasAnalysis;
+use super::Analysis;
+
 pub struct SafeDrop<'tcx> {
     pub tcx: TyCtxt<'tcx>,
 }
@@ -26,7 +29,8 @@ impl<'tcx> SafeDrop<'tcx> {
     }
     pub fn start(&self) {
         let mut mop = MopAlias::new(self.tcx);
-        let fn_map = mop.start();
+        mop.run();
+        let fn_map = mop.get_all_fn_alias();
 
         let rcx_boxed = Box::new(rCanary::new(self.tcx));
         let rcx = Box::leak(rcx_boxed);

@@ -149,31 +149,12 @@ pub struct MopAlias<'tcx> {
     pub fn_map: FnMap,
 }
 
-impl<'tcx> Analysis<DefId, AAResult> for MopAlias<'tcx> {
+impl<'tcx> Analysis for MopAlias<'tcx> {
     fn name(&self) -> &'static str {
         "Alias Analysis (MoP)"
     }
 
-    fn get(&mut self, query: DefId) -> AAResult {
-        self.fn_map
-            .get(&query)
-            .expect(&format!("cannot find alias analysis result for {query:?}"))
-            .clone()
-            .into()
-    }
-}
-
-impl<'tcx> AliasAnalysis for MopAlias<'tcx> {}
-
-impl<'tcx> MopAlias<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
-        Self {
-            tcx,
-            fn_map: FxHashMap::default(),
-        }
-    }
-
-    pub fn start(&mut self) -> &FnMap {
+    fn run(&mut self) {
         rap_debug!("Start alias analysis via MoP.");
         let mir_keys = self.tcx.mir_keys(());
         for local_def_id in mir_keys {
@@ -188,10 +169,36 @@ impl<'tcx> MopAlias<'tcx> {
             }
         }
         self.handle_conor_cases();
-        &self.fn_map
     }
 
-    pub fn handle_conor_cases(&mut self) {
+    fn reset(&mut self){
+        todo!();
+    }
+}
+
+impl<'tcx> AliasAnalysis for MopAlias<'tcx> {
+    fn get_fn_alias(&mut self, def_id: DefId) -> AAResult {
+        self.fn_map
+            .get(&def_id)
+            .expect(&format!("cannot find alias analysis result for {def_id:?}"))
+            .clone()
+            .into()
+    }
+
+    fn get_all_fn_alias(&mut self) -> &FnMap {
+        &self.fn_map
+    }
+}
+
+impl<'tcx> MopAlias<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+        Self {
+            tcx,
+            fn_map: FxHashMap::default(),
+        }
+    }
+
+    fn handle_conor_cases(&mut self) {
         let cases = [
             COPY_FROM_NONOVERLAPPING,
             COPY_TO_NONOVERLAPPING,
@@ -207,7 +214,7 @@ impl<'tcx> MopAlias<'tcx> {
         }
     }
 
-    pub fn query_mop(&mut self, def_id: DefId) {
+    fn query_mop(&mut self, def_id: DefId) {
         let fn_name = get_fn_name(self.tcx, def_id);
         rap_trace!("query_mop: {:?}", fn_name);
         /* filter const mir */

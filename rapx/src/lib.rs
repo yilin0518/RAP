@@ -33,6 +33,7 @@ use analysis::safedrop::SafeDrop;
 use analysis::senryx::{CheckLevel, SenryxCheck};
 use analysis::unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck};
 use analysis::utils::show_mir::ShowMir;
+use analysis::Analysis;
 use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::interface::Compiler;
 use rustc_interface::Config;
@@ -278,7 +279,8 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     };
 
     if callback.is_mop_enabled() {
-        MopAlias::new(tcx).start();
+        let mut alias = MopAlias::new(tcx);
+        alias.run();
     }
 
     if callback.is_safedrop_enabled() {

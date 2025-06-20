@@ -6,10 +6,13 @@ pub mod senryx;
 pub mod unsafety_isolation;
 pub mod utils;
 
-pub trait Analysis<Q, R> {
-    /// Returns the name of the analysis.
+pub trait Analysis {
+    /// Return the name of the analysis.
     fn name(&self) -> &'static str;
 
-    /// returns the result for the given query.
-    fn get(&mut self, query: Q) -> R;
+    /// Execute the analysis.
+    fn run(&mut self);
+
+    /// Reset the analysis result.
+    fn reset(&mut self);
 }

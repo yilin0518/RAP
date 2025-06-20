@@ -171,7 +171,7 @@ impl<'tcx> Analysis for MopAlias<'tcx> {
         self.handle_conor_cases();
     }
 
-    fn reset(&mut self){
+    fn reset(&mut self) {
         todo!();
     }
 }

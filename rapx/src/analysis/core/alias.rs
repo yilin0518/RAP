@@ -1,12 +1,12 @@
 pub mod mop;
 use super::super::Analysis;
-use mop::FnMap;
 use rustc_hir::def_id::DefId;
 use std::{collections::HashSet, fmt};
+use rustc_data_structures::fx::FxHashMap;
 
-pub trait AliasAnalysis: Analysis {
-    fn get_fn_alias(&mut self, def_id: DefId) -> AAResult;
-    fn get_all_fn_alias(&mut self) -> &FnMap;
+pub trait AliasAnalysis<T>: Analysis {
+    fn get_fn_alias(&mut self, def_id: DefId) -> T;
+    fn get_all_fn_alias(&mut self) -> FxHashMap<DefId, T>;
 }
 
 /// To store the alias relationships among arguments and return values.

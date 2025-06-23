@@ -40,7 +40,7 @@ impl<'tcx> SafeDrop<'tcx> {
         for local_def_id in mir_keys {
             query_safedrop(
                 self.tcx,
-                fn_map,
+                &fn_map,
                 local_def_id.to_def_id(),
                 rcx.adt_owner().clone(),
             );

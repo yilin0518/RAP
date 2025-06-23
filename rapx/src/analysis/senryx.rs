@@ -57,7 +57,7 @@ impl<'tcx> SenryxCheck<'tcx> {
         let tcx = self.tcx;
         let mut mop = MopAlias::new(self.tcx);
         mop.run();
-        let fn_map = mop.get_all_fn_alias();
+        let fn_map = &mop.get_all_fn_alias();
         let related_items = RelatedFnCollector::collect(tcx);
         for vec in related_items.clone().values() {
             for (body_id, _span) in vec {

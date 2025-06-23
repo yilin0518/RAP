@@ -9,6 +9,7 @@ use crate::analysis::utils::intrinsic_id::{
     COPY_FROM, COPY_FROM_NONOVERLAPPING, COPY_TO, COPY_TO_NONOVERLAPPING,
 };
 use crate::analysis::Analysis;
+use std::convert::From;
 use crate::utils::source::*;
 use crate::{rap_debug, rap_info, rap_trace};
 use graph::MopGraph;
@@ -146,7 +147,7 @@ pub type FnMap = FxHashMap<DefId, MopAAResult>;
 
 pub struct MopAlias<'tcx> {
     pub tcx: TyCtxt<'tcx>,
-    pub fn_map: FnMap,
+    pub fn_map: FxHashMap<DefId, MopAAResult>,
 }
 
 impl<'tcx> Analysis for MopAlias<'tcx> {
@@ -176,8 +177,11 @@ impl<'tcx> Analysis for MopAlias<'tcx> {
     }
 }
 
-impl<'tcx> AliasAnalysis for MopAlias<'tcx> {
-    fn get_fn_alias(&mut self, def_id: DefId) -> AAResult {
+impl<'tcx,T> AliasAnalysis<T> for MopAlias<'tcx>
+    where
+        T: From<MopAAResult> + Clone,
+    {
+    fn get_fn_alias(&mut self, def_id: DefId) -> T {
         self.fn_map
             .get(&def_id)
             .expect(&format!("cannot find alias analysis result for {def_id:?}"))
@@ -185,8 +189,11 @@ impl<'tcx> AliasAnalysis for MopAlias<'tcx> {
             .into()
     }
 
-    fn get_all_fn_alias(&mut self) -> &FnMap {
-        &self.fn_map
+    fn get_all_fn_alias(&mut self) -> FxHashMap<DefId, T> {
+        self.fn_map
+        .iter()
+        .map(|(k, v)| (*k, T::from(v.clone())))
+        .collect::<FxHashMap<DefId, T>>()
     }
 }
 

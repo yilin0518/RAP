@@ -1,8 +1,8 @@
 pub mod mop;
 use super::super::Analysis;
+use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use std::{collections::HashSet, fmt};
-use rustc_data_structures::fx::FxHashMap;
 
 pub trait AliasAnalysis<T>: Analysis {
     fn get_fn_alias(&mut self, def_id: DefId) -> T;

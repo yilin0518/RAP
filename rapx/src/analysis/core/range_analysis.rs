@@ -93,12 +93,11 @@ impl<'tcx> SSATrans<'tcx> {
 }
 
 pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Analysis {
-
     fn start_analysis(&mut self, def_id: Option<LocalDefId>);
     fn get_range(&self, local: Local) -> Option<Range<T>>;
 }
 
-pub struct RangeAnalyzer<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
+pub struct DefaultRange<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
     pub tcx: TyCtxt<'tcx>,
     pub debug: bool,
     pub ssa_def_id: Option<DefId>,
@@ -107,7 +106,7 @@ pub struct RangeAnalyzer<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
     pub ssa_locals_mapping: HashMap<Local, HashSet<Local>>,
 }
 
-impl<'tcx, T> Analysis for RangeAnalyzer<'tcx, T>
+impl<'tcx, T> Analysis for DefaultRange<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {
@@ -127,11 +126,10 @@ where
 }
 
 impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> RangeAnalysis<'tcx, T>
-    for RangeAnalyzer<'tcx, T>
+    for DefaultRange<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {
-
     //start analysis with a specific function definition ID
     fn start_analysis(&mut self, def_id: Option<LocalDefId>) {
         self.start(def_id);
@@ -141,7 +139,7 @@ where
         self.final_vars.get(&local).cloned()
     }
 }
-impl<'tcx, T> RangeAnalyzer<'tcx, T>
+impl<'tcx, T> DefaultRange<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {

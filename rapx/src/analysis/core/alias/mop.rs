@@ -9,7 +9,6 @@ use crate::analysis::utils::intrinsic_id::{
     COPY_FROM, COPY_FROM_NONOVERLAPPING, COPY_TO, COPY_TO_NONOVERLAPPING,
 };
 use crate::analysis::Analysis;
-use std::convert::From;
 use crate::utils::source::*;
 use crate::{rap_debug, rap_info, rap_trace};
 use graph::MopGraph;
@@ -17,6 +16,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashSet;
+use std::convert::From;
 use std::fmt;
 
 pub const VISIT_LIMIT: usize = 1000;
@@ -177,10 +177,10 @@ impl<'tcx> Analysis for MopAlias<'tcx> {
     }
 }
 
-impl<'tcx,T> AliasAnalysis<T> for MopAlias<'tcx>
-    where
-        T: From<MopAAResult> + Clone,
-    {
+impl<'tcx, T> AliasAnalysis<T> for MopAlias<'tcx>
+where
+    T: From<MopAAResult> + Clone,
+{
     fn get_fn_alias(&mut self, def_id: DefId) -> T {
         self.fn_map
             .get(&def_id)
@@ -191,9 +191,9 @@ impl<'tcx,T> AliasAnalysis<T> for MopAlias<'tcx>
 
     fn get_all_fn_alias(&mut self) -> FxHashMap<DefId, T> {
         self.fn_map
-        .iter()
-        .map(|(k, v)| (*k, T::from(v.clone())))
-        .collect::<FxHashMap<DefId, T>>()
+            .iter()
+            .map(|(k, v)| (*k, T::from(v.clone())))
+            .collect::<FxHashMap<DefId, T>>()
     }
 }
 

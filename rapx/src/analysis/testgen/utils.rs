@@ -1,20 +1,9 @@
 pub use crate::analysis::core::api_dep::is_api_public;
-use crate::{
-    analysis::core::api_dep::{ApiDepGraph, DepNode},
-    rap_debug, rap_info,
-};
-use rustc_hir::{
-    def_id::{DefId, LocalDefId, LOCAL_CRATE},
-    BodyOwnerKind, ItemKind,
-};
+use crate::analysis::core::api_dep::{ApiDepGraph, DepNode};
+use rustc_hir::{def::Namespace, def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
-use rustc_middle::{
-    query::cached::effective_visibilities,
-    ty::{
-        self, AdtFlags, FnSig, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitable,
-        TypeVisitor, TypingEnv,
-    },
-};
+use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter, Printer};
+use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::VecDeque;
 
@@ -284,4 +273,19 @@ pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(
         }
         _ => {}
     }
+}
+
+pub fn effective_path_str<'tcx>(
+    def_id: DefId,
+    args: &'tcx [ty::GenericArg<'tcx>],
+    tcx: TyCtxt<'tcx>,
+) -> String {
+    let ns = Namespace::TypeNS;
+    FmtPrinter::print_string(tcx, ns, |cx| {
+        if !cx.force_print_trimmed_def_path(def_id)? {
+            cx.print_def_path(def_id, args)?;
+        }
+        Ok(())
+    })
+    .unwrap()
 }

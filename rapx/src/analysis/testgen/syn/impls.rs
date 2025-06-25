@@ -1,3 +1,4 @@
+use crate::analysis::testgen::utils::effective_path_str;
 use crate::rap_debug;
 
 use super::super::context::{Context, Stmt, StmtKind, Var};
@@ -36,8 +37,9 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
 
                 format!(
                     "{}({})",
-                    cx.tcx()
-                        .def_path_str_with_args(call.fn_did(), tcx.mk_args_from_iter(args)),
+                    /* cx.tcx()
+                    .def_path_str_with_args(call.fn_did(), tcx.mk_args_from_iter(args)), */
+                    effective_path_str(call.fn_did(), tcx.mk_args_from_iter(args), tcx),
                     call.args
                         .iter()
                         .map(|arg| arg.to_string())
@@ -71,6 +73,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         if debug_state() {
             return format!("{:?}", ty);
         }
+
         format!("{}", ty)
     }
 

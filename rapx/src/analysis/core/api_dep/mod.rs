@@ -31,8 +31,8 @@ pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
         tcx.def_path_str(fn_def_id),
         tcx.effective_visibilities(()).effective_vis(local_id)
     );
-    // is_re_exported(tcx, target_defid, module_defid)
     tcx.effective_visibilities(()).is_directly_public(local_id)
+        || tcx.effective_visibilities(()).is_exported(local_id)
 }
 
 impl<'tcx> ApiDep<'tcx> {

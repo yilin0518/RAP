@@ -113,6 +113,7 @@ impl RegionGraph {
     pub fn add_edge_by_region(&mut self, from: ty::Region<'_>, to: ty::Region<'_>) {
         let from = region_to_rid(from);
         let to = region_to_rid(to);
+        rap_trace!("[region_graph] add edge: {:?} -> {:?}", from, to);
         self.add_edge(from, to);
     }
 
@@ -287,6 +288,9 @@ pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'
                         if let Some(prev_region) = prev {
                             f(prev_region, region);
                         }
+                    }
+                    ty::GenericArgKind::Type(inner_ty) => {
+                        visit_structure_region_with(inner_ty, prev, tcx, f);
                     }
                     _ => {}
                 }

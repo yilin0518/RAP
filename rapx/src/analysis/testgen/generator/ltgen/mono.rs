@@ -1,89 +1,53 @@
-use crate::analysis::testgen::utils;
+use crate::analysis::testgen::utils::{self, fn_sig_with_generic_args};
 use crate::{rap_debug, rap_info, rap_trace, rap_warn};
 use rustc_hir::def_id::DefId;
-use rustc_infer::infer::canonical::ir::InferCtxtLike;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
 use rustc_infer::traits::{select, Obligation, ObligationCause};
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitableExt};
 use rustc_span::DUMMY_SP;
-use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
 use rustc_trait_selection::traits::{FulfillmentContext, ObligationCtxt};
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::io::Write;
 
-use super::context::LtContext;
-
-#[derive(Clone, Debug)]
-pub struct MonoSet<'tcx> {
-    pub value: Vec<Vec<ty::GenericArg<'tcx>>>,
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Mono<'tcx> {
+    pub value: Vec<ty::GenericArg<'tcx>>,
 }
 
-impl<'tcx> MonoSet<'tcx> {
-    pub fn all(args: &[ty::GenericArg<'tcx>]) -> MonoSet<'tcx> {
-        MonoSet {
-            value: vec![Vec::from(args)],
+impl<'tcx> From<&[ty::GenericArg<'tcx>]> for Mono<'tcx> {
+    fn from(args: &[ty::GenericArg<'tcx>]) -> Self {
+        Mono {
+            value: Vec::from(args),
+        }
+    }
+}
+
+impl<'tcx> Mono<'tcx> {
+    fn from_iter(iter: impl Iterator<Item = ty::GenericArg<'tcx>>) -> Self {
+        Mono {
+            value: iter.collect(),
         }
     }
 
-    pub fn count(&self) -> usize {
-        self.value.len()
+    fn has_unbound_var(&self) -> bool {
+        self.value.iter().all(|arg| match arg.kind() {
+            ty::GenericArgKind::Type(ty) => !ty.is_ty_var(),
+            _ => true,
+        })
     }
 
-    pub fn args_at(&self, no: usize) -> &[ty::GenericArg<'tcx>] {
-        &self.value[no]
+    fn get_mut(&mut self, idx: usize) -> &mut ty::GenericArg<'tcx> {
+        &mut self.value[idx]
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.value.is_empty()
-    }
-
-    pub fn empty() -> MonoSet<'tcx> {
-        MonoSet { value: Vec::new() }
-    }
-
-    pub fn add_from_iter(&mut self, iter: impl Iterator<Item = ty::GenericArg<'tcx>>) {
-        let mut value = Vec::new();
-        for arg in iter {
-            value.push(arg);
-        }
-        self.value.push(value);
-    }
-
-    pub fn merge(&mut self, other: &MonoSet<'tcx>, tcx: TyCtxt<'tcx>) -> MonoSet<'tcx> {
-        let mut res = MonoSet::empty();
-
-        for args in self.value.iter() {
-            for other_args in other.value.iter() {
-                let merged = self.merge_args(args, other_args, tcx);
-                rap_trace!("merged: {:?}", merged);
-                if let Some(new_args) = merged {
-                    res.value.push(new_args);
-                }
-            }
-        }
-
-        res
-    }
-
-    fn merge_args(
-        &self,
-        args: &[ty::GenericArg<'tcx>],
-        other_args: &[ty::GenericArg<'tcx>],
-        tcx: TyCtxt<'tcx>,
-    ) -> Option<Vec<ty::GenericArg<'tcx>>> {
-        rap_trace!(
-            "[MonoSet::merge_args] args: {:?} other_args: {:?}",
-            args,
-            other_args
-        );
-        assert!(args.len() == other_args.len());
+    fn merge(&self, other: &Mono<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Mono<'tcx>> {
+        rap_trace!("[Mono::merge] self: {:?} other: {:?}", self, other);
+        assert!(self.value.len() == other.value.len());
         let mut res = Vec::new();
-        for i in 0..args.len() {
-            let arg = args[i];
-            let other_arg = other_args[i];
+        for i in 0..self.value.len() {
+            let arg = self.value[i];
+            let other_arg = other.value[i];
             let new_arg = if let Some(ty) = arg.as_type() {
                 let other_ty = other_arg.expect_ty();
                 if ty.is_ty_var() && other_ty.is_ty_var() {
@@ -102,58 +66,149 @@ impl<'tcx> MonoSet<'tcx> {
             };
             res.push(new_arg);
         }
-        Some(res)
+        Some(Mono { value: res })
+    }
+
+    fn fill_unbound_var(&self, tcx: TyCtxt<'tcx>) -> Vec<Mono<'tcx>> {
+        let candidates = get_candidates(tcx);
+        let mut res = vec![self.clone()];
+
+        for (i, arg) in self.value.iter().enumerate() {
+            if let Some(ty) = arg.as_type() {
+                if ty.is_ty_var() {
+                    let mut last = Vec::new();
+                    std::mem::swap(&mut res, &mut last);
+                    last.into_iter().for_each(|mono| {
+                        for candidate in &candidates {
+                            let mut new_mono = mono.clone();
+                            *new_mono.get_mut(i) = (*candidate).into();
+                            res.push(new_mono);
+                        }
+                    });
+                }
+            }
+        }
+        res
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MonoSet<'tcx> {
+    pub monos: Vec<Mono<'tcx>>,
+}
+
+impl<'tcx> MonoSet<'tcx> {
+    pub fn all(args: &[ty::GenericArg<'tcx>]) -> MonoSet<'tcx> {
+        MonoSet {
+            monos: vec![Mono::from(args)],
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.monos.len()
+    }
+
+    pub fn args_at(&self, no: usize) -> &Mono<'tcx> {
+        &self.monos[no]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.monos.is_empty()
+    }
+
+    pub fn new() -> MonoSet<'tcx> {
+        MonoSet { monos: Vec::new() }
+    }
+
+    pub fn add_from_iter(&mut self, iter: impl Iterator<Item = ty::GenericArg<'tcx>>) {
+        self.monos.push(Mono::from_iter(iter));
+    }
+
+    pub fn merge(&mut self, other: &MonoSet<'tcx>, tcx: TyCtxt<'tcx>) -> MonoSet<'tcx> {
+        let mut res = MonoSet::new();
+
+        for args in self.monos.iter() {
+            for other_args in other.monos.iter() {
+                let merged = args.merge(other_args, tcx);
+                rap_trace!("merged: {:?}", merged);
+                if let Some(new_args) = merged {
+                    res.monos.push(new_args);
+                }
+            }
+        }
+
+        res
     }
 
     fn filter_unbound_solution(mut self) -> Self {
-        self.value.retain(|args| {
-            args.iter().all(|arg| match arg.kind() {
-                ty::GenericArgKind::Type(ty) => !ty.is_ty_var(),
-                _ => true,
-            })
-        });
+        self.monos.retain(|mono| mono.has_unbound_var());
         self
     }
+
+    fn instantiate_unbound(&self, tcx: TyCtxt<'tcx>) -> Self {
+        let mut res = MonoSet::new();
+        for mono in &self.monos {
+            let filled = mono.fill_unbound_var(tcx);
+            res.monos.extend(filled);
+        }
+        res
+    }
+
+    // fn guess_unbound_args(&self, tcx: TyCtxt<'tcx>) -> Self {
+
+    // }
 
     fn filter_by_trait_bound(mut self, fn_did: DefId, tcx: TyCtxt<'tcx>) -> Self {
         let early_fn_sig = tcx.fn_sig(fn_did);
-        self.value.retain(|args| {
-            let args = tcx.mk_args(args);
-            // let fn_sig = early_fn_sig.instantiate(tcx, args);
-            let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
-            let pred = tcx.predicates_of(fn_did);
-            let inst_pred = pred.instantiate(tcx, args);
-            let param_env = tcx.param_env(fn_did);
-            rap_trace!("[trait bound] {fn_did:?} {args:?} {param_env:?} {inst_pred:?}");
-
-            for pred in inst_pred.predicates.iter() {
-                let obligation = Obligation::new(
-                    tcx,
-                    ObligationCause::dummy(),
-                    param_env,
-                    pred.as_predicate(),
-                );
-
-                let res = infcx.evaluate_obligation(&obligation);
-                rap_trace!("{obligation:?}");
-                rap_trace!("{res:?}");
-                match res {
-                    Ok(eva) => {
-                        if !eva.may_apply() {
-                            return false;
-                        }
-                    }
-                    Err(_) => {
-                        rap_trace!("[trait bound] check fail");
-                        return false;
-                    }
-                }
-            }
-            rap_trace!("[trait bound] check succ");
-            true
-        });
+        self.monos
+            .retain(|args| is_args_fit_trait_bound(fn_did, &args.value, tcx));
         self
     }
+
+    // trying to add a new mono solution from an equality contraint (e.g., `Vec<T> == Vec<i32>`)
+    // returns true if the new solution is added successfully, otherwise returns false.
+    // fn add_from_eq_constraint() -> bool {
+
+    // }
+}
+
+fn is_args_fit_trait_bound<'tcx>(
+    fn_did: DefId,
+    args: &[ty::GenericArg<'tcx>],
+    tcx: TyCtxt<'tcx>,
+) -> bool {
+    let args = tcx.mk_args(args);
+    let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
+    let pred = tcx.predicates_of(fn_did);
+    let inst_pred = pred.instantiate(tcx, args);
+    let param_env = tcx.param_env(fn_did);
+    rap_trace!("[trait bound] {fn_did:?} {args:?} {param_env:?} {inst_pred:?}");
+
+    for pred in inst_pred.predicates.iter() {
+        let obligation = Obligation::new(
+            tcx,
+            ObligationCause::dummy(),
+            param_env,
+            pred.as_predicate(),
+        );
+
+        let res = infcx.evaluate_obligation(&obligation);
+        rap_trace!("{obligation:?}");
+        rap_trace!("{res:?}");
+        match res {
+            Ok(eva) => {
+                if !eva.may_apply() {
+                    return false;
+                }
+            }
+            Err(_) => {
+                rap_trace!("[trait bound] check fail");
+                return false;
+            }
+        }
+    }
+    rap_trace!("[trait bound] check succ");
+    true
 }
 
 fn get_mono_set<'tcx>(
@@ -161,15 +216,16 @@ fn get_mono_set<'tcx>(
     available_ty: &HashSet<Ty<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
-    let fn_sig = tcx.fn_sig(fn_did);
     let infcx = tcx
         .infer_ctxt()
         .ignoring_regions()
         .build(ty::TypingMode::PostAnalysis);
     let param_env = tcx.param_env(fn_did);
     let fresh_args = infcx.fresh_args_for_item(DUMMY_SP, fn_did);
-    let fn_sig = fn_sig.instantiate(tcx, fresh_args);
-    let fn_sig = tcx.liberate_late_bound_regions(fn_did, fn_sig);
+
+    // This replace generic types to infer var, e.g. fn(Vec<T>, i32) => fn(Vec<?0>, i32)
+    let fn_sig = fn_sig_with_generic_args(fn_did, fresh_args, tcx);
+
     let generics = tcx.generics_of(fn_did);
     for i in 0..fresh_args.len() {
         rap_trace!(
@@ -185,48 +241,43 @@ fn get_mono_set<'tcx>(
     // let mut ret = MonoSet::all(fresh_args);
     // for input_ty in fn_sig.inputs().iter() {}
 
-    fn_sig
-        .inputs()
-        .iter()
-        .fold(MonoSet::all(&fresh_args), |mut acc, input_ty| {
-            let reachable_set =
-                available_ty
-                    .iter()
-                    .fold(MonoSet::empty(), |mut reachable_set, ty| {
-                        infcx.probe(|_| {
-                            match infcx.at(&dummy_cause, param_env).eq(
-                                DefineOpaqueTypes::Yes,
-                                *input_ty,
-                                *ty,
-                            ) {
-                                Ok(infer_ok) => {
-                                    rap_trace!("{} can eq to {}: {:?}", ty, input_ty, infer_ok);
-                                }
-                                Err(e) => {
-                                    rap_trace!("{} cannot eq to {}: {:?}", ty, input_ty, e);
-                                    return;
-                                }
-                            }
+    let mut s = MonoSet::all(&fresh_args);
 
-                            reachable_set.add_from_iter(fresh_args.iter().map(
-                                |arg| match arg.kind() {
-                                    ty::GenericArgKind::Lifetime(region) => {
-                                        infcx.resolve_vars_if_possible(region).into()
-                                    }
-                                    ty::GenericArgKind::Type(ty) => {
-                                        infcx.resolve_vars_if_possible(ty).into()
-                                    }
-                                    ty::GenericArgKind::Const(ct) => {
-                                        infcx.resolve_vars_if_possible(ct).into()
-                                    }
-                                },
-                            ));
-                        });
-                        reachable_set
-                    });
+    for input_ty in fn_sig.inputs().iter() {
+        if !input_ty.has_infer_types() {
+            continue;
+        }
+        let reachable_set = available_ty
+            .iter()
+            .fold(MonoSet::new(), |mut reachable_set, ty| {
+                infcx.probe(|_| {
+                    match infcx.at(&dummy_cause, param_env).eq(
+                        DefineOpaqueTypes::Yes,
+                        *input_ty,
+                        *ty,
+                    ) {
+                        Ok(infer_ok) => {
+                            rap_trace!("{} can eq to {}: {:?}", ty, input_ty, infer_ok);
+                        }
+                        Err(e) => {
+                            rap_trace!("{} cannot eq to {}: {:?}", ty, input_ty, e);
+                            return;
+                        }
+                    }
 
-            acc.merge(&reachable_set, tcx)
-        })
+                    reachable_set.add_from_iter(fresh_args.iter().map(|arg| match arg.kind() {
+                        ty::GenericArgKind::Lifetime(region) => {
+                            infcx.resolve_vars_if_possible(region).into()
+                        }
+                        ty::GenericArgKind::Type(ty) => infcx.resolve_vars_if_possible(ty).into(),
+                        ty::GenericArgKind::Const(ct) => infcx.resolve_vars_if_possible(ct).into(),
+                    }));
+                });
+                reachable_set
+            });
+        s = s.merge(&reachable_set, tcx)
+    }
+    s
 }
 
 pub fn get_all_concrete_mono_solution<'tcx>(
@@ -240,7 +291,7 @@ pub fn get_all_concrete_mono_solution<'tcx>(
     add_transform_tys(&mut available_ty, tcx);
     rap_debug!("[mono] input => {fn_did:?}: {available_ty:?}");
     let ret = get_mono_set(fn_did, &available_ty, tcx)
-        .filter_unbound_solution()
+        .instantiate_unbound(tcx)
         .filter_by_trait_bound(fn_did, tcx);
     rap_debug!("possible mono solution for {fn_did:?}: {ret:?}");
     ret
@@ -284,3 +335,70 @@ pub fn add_prelude_tys<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt<'
         available_ty.insert(*ty);
     });
 }
+
+pub fn eliminate_infer_var<'tcx>(
+    fn_did: DefId,
+    args: &[ty::GenericArg<'tcx>],
+    tcx: TyCtxt<'tcx>,
+) -> Vec<ty::GenericArg<'tcx>> {
+    let mut res = Vec::new();
+    let identity = ty::GenericArgs::identity_for_item(tcx, fn_did);
+    for (i, arg) in args.iter().enumerate() {
+        if let Some(ty) = arg.as_type() {
+            if ty.is_ty_var() {
+                res.push(identity[i]);
+            } else {
+                res.push(*arg);
+            }
+        } else {
+            res.push(*arg);
+        }
+    }
+    res
+}
+
+pub fn get_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<Ty<'tcx>> {
+    // for (trait_id, impls) in tcx.all_local_trait_impls(()).iter(){
+
+    // }
+    vec![
+        tcx.types.bool,
+        tcx.types.char,
+        tcx.types.u8,
+        tcx.types.i8,
+        tcx.types.i32,
+        tcx.types.u32,
+        tcx.types.i64,
+        tcx.types.u64,
+        tcx.types.f32,
+        tcx.types.f64,
+    ]
+}
+
+// pub fn determine_unbound_args<'tcx>(
+//     fn_did: DefId,
+//     args: &[ty::GenericArg<'tcx>],
+//     tcx: TyCtxt<'tcx>,
+// ) {
+//     let args = eliminate_infer_var(fn_did, args, tcx);
+//     let fn_sig = utils::fn_sig_with_generic_args(fn_did, &args, tcx);
+
+//     let preds = tcx.predicates_of(fn_did);
+//     let preds = preds.instantiate(tcx, tcx.mk_args(&args));
+
+//     // init infer env
+//     let param_env = tcx.param_env(fn_did);
+//     let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
+
+//     let candidates = get_candidates(tcx);
+
+//     for pred in preds.predicates.iter() {
+//         pred.as_predicate();
+//     }
+
+//     // let impls = tcx.trait_impls_of()
+
+//     // let fcx = FulfillmentCtxt::new(&infcx);
+//     // let tcx.trait_impls_of(key)
+//     // infcx.instantiate_binder_with_fresh_vars(span, lbrct, value)
+// }

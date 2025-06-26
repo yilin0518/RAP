@@ -1,12 +1,11 @@
-use crate::analysis::testgen::utils::effective_path_str;
 use crate::rap_debug;
 
 use super::super::context::{Context, Stmt, StmtKind, Var};
 use super::input::InputGen;
 use super::{SynOption, Synthesizer};
-use rustc_hir::definitions::{DefPath, DefPathData};
+use rustc_hir::def::Namespace;
+use rustc_middle::ty::print::{FmtPrinter, Printer};
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_span::Symbol;
 
 fn debug_state() -> bool {
     false
@@ -37,9 +36,8 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
 
                 format!(
                     "{}({})",
-                    /* cx.tcx()
-                    .def_path_str_with_args(call.fn_did(), tcx.mk_args_from_iter(args)), */
-                    effective_path_str(call.fn_did(), tcx.mk_args_from_iter(args), tcx),
+                    cx.tcx()
+                        .def_path_str_with_args(call.fn_did(), tcx.mk_args_from_iter(args)),
                     call.args
                         .iter()
                         .map(|arg| arg.to_string())
@@ -69,12 +67,12 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         format!("{}", var)
     }
 
-    fn ty_str<'tcx>(&self, ty: Ty<'tcx>) -> String {
+    fn ty_str<'tcx>(&self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> String {
         if debug_state() {
             return format!("{:?}", ty);
         }
-
-        format!("{}", ty)
+        FmtPrinter::print_string(tcx, Namespace::TypeNS, |fmt| fmt.print_type(ty)).unwrap()
+        // tcx.def_path_str(ty.key_as_def_id().unwrap())
     }
 
     fn stmt_str<'tcx>(&mut self, stmt: Stmt<'tcx>, cx: &impl Context<'tcx>) -> String {
@@ -86,11 +84,14 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                 "let {}{}: {} = {};",
                 cx.var_mutability(var).prefix_str(),
                 self.var_str(var),
-                self.ty_str(if !debug_state() {
-                    cx.tcx().erase_regions(var_ty)
-                } else {
-                    var_ty
-                }),
+                self.ty_str(
+                    if !debug_state() {
+                        cx.tcx().erase_regions(var_ty)
+                    } else {
+                        var_ty
+                    },
+                    cx.tcx()
+                ),
                 stmt_str
             )
         } else {

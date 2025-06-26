@@ -1,5 +1,6 @@
 pub use crate::analysis::core::api_dep::is_api_public;
 use crate::analysis::core::api_dep::{ApiDepGraph, DepNode};
+use crate::rap_info;
 use rustc_hir::{def::Namespace, def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter, Printer};
@@ -280,12 +281,19 @@ pub fn effective_path_str<'tcx>(
     args: &'tcx [ty::GenericArg<'tcx>],
     tcx: TyCtxt<'tcx>,
 ) -> String {
-    let ns = Namespace::TypeNS;
-    FmtPrinter::print_string(tcx, ns, |cx| {
-        if !cx.force_print_trimmed_def_path(def_id)? {
-            cx.print_def_path(def_id, args)?;
-        }
-        Ok(())
-    })
-    .unwrap()
+    let res =
+        FmtPrinter::print_string(tcx, Namespace::TypeNS, |cx| cx.print_def_path(def_id, args))
+            .unwrap();
+    rap_info!("Effective path for {:?} is: {}", def_id, res);
+
+    res
+
+    // let ns = Namespace::TypeNS;
+    // FmtPrinter::print_string(tcx, ns, |cx| {
+    //     if !cx.try_print_visible_def_path(def_id)? {
+    //         cx.print_def_path(def_id, args)?;
+    //     }
+    //     Ok(())
+    // })
+    // .unwrap()
 }

@@ -211,9 +211,9 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             let idx = self.rng.borrow_mut().random_range(0..monos.count());
             let args = monos.args_at(idx);
             rap_debug!("choosed mono args: {args:?}");
-            api_call.generic_args = tcx.mk_args(args);
+            api_call.generic_args = tcx.mk_args(&args.value);
             // update api_graph
-            if self.api_graph.borrow_mut().add_api(fn_did, args) {
+            if self.api_graph.borrow_mut().add_api(fn_did, &args.value) {
                 self.api_graph.borrow_mut().update_transform_edges();
             }
         }
@@ -322,7 +322,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             //     break;
             // }
             rap_info!(
-                "complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{} ",
+                "complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{}",
                 cx.complexity(),
                 cx.dropped_count(),
                 cx.num_covered_api(),
@@ -343,7 +343,6 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         // cx.region_graph().dump(&mut std::io::stdout()).unwrap();
         cx.region_graph().dump(&mut file).unwrap();
 
-        // let mut file  = std::
         self.api_graph.borrow().dump_to_dot("api_graph.dot", tcx);
         cx
     }

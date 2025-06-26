@@ -36,7 +36,7 @@ impl InputGen for SillyInputGen {
                 format!("({})", fields.join(", "))
             }
             TyKind::Adt(adt_def, generic_arg) => {
-                let name = utils::effective_path_str(adt_def.did(), &[], tcx);
+                let name = tcx.def_path_str_with_args(adt_def.did(), &[]);
                 if adt_def.is_struct() {
                     // generate input for each field
                     let mut fields = Vec::new();

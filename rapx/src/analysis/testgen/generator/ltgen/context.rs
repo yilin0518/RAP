@@ -66,8 +66,6 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
                             .add_edges_by_patterns(patterns, folder.rids());
                     },
                 );
-
-                // automatically inject drop stmts
             }
             StmtKind::Ref(inner_var, _) => {}
             StmtKind::Deref(inner_var) => {
@@ -105,6 +103,8 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
         self.var_ty.insert(next_var, ty);
         self.var_rid.insert(next_var, rid);
         self.available.insert(next_var);
+
+        rap_debug!("[mk_var] var: {}, type: {:?}", next_var, ty);
 
         // add structural constraint between 'var and 'a where carry by the type of var
         visit_structure_region_with(

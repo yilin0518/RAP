@@ -1,12 +1,16 @@
-use super::graph::*;
-use crate::analysis::core::alias::default::types::*;
-use crate::analysis::core::alias::{AAFact, AAResult};
-use crate::analysis::utils::intrinsic_id::*;
-use crate::rap_debug;
+use crate::{
+    analysis::{
+        core::alias::{default::graph::*, AAFact, AAResult},
+        utils::intrinsic_id::*,
+    },
+    rap_debug,
+};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{Operand, Place, ProjectionElem, TerminatorKind};
-use rustc_middle::ty;
+use rustc_middle::{
+    mir::{Operand, Place, ProjectionElem, TerminatorKind},
+    ty,
+};
 use std::collections::HashSet;
 
 impl<'tcx> MopGraph<'tcx> {
@@ -104,7 +108,7 @@ impl<'tcx> MopGraph<'tcx> {
 
                         let mut right_set = Vec::new();
                         for rv in &merge_vec {
-                            if lv != *rv && self.values[lv].is_ptr() {
+                            if lv != *rv {
                                 right_set.push(*rv);
                             }
                         }
@@ -135,7 +139,7 @@ impl<'tcx> MopGraph<'tcx> {
                 /*
                  * Objective: 2 = 1.0; 0 = 2.0; => 0 = 1.0.0
                  */
-                ProjectionElem::Field(field, ty) => {
+                ProjectionElem::Field(field, _ty) => {
                     if is_right && self.values[proj_id].index != proj_id {
                         proj_id = self.values[proj_id].index;
                         local = self.values[proj_id].local;
@@ -145,7 +149,6 @@ impl<'tcx> MopGraph<'tcx> {
                         self.values[proj_id].fields.entry(field_idx)
                     {
                         let mut node = ValueNode::new(new_id, local);
-                        node.kind = kind(ty);
                         node.field_id = field_idx;
                         e.insert(node.index);
                         self.alias_set.push(self.values.len());
@@ -161,18 +164,18 @@ impl<'tcx> MopGraph<'tcx> {
 
     //assign alias for a variable.
     pub fn merge_alias(&mut self, lv: usize, rv: usize, depth: usize) {
-        rap_debug!("alias set now: {:?}", self.alias_set);
+        rap_debug!("Alias set now: {:?}", self.alias_set);
         // println!("A:{:?} V:{:?}", self.alias_set, self.values.len());
         self.union_merge(lv, rv);
         // println!("Li:{} Ri:{} L:{:?} R:{:?} A:{:?} V:{:?}", self.values[lv].index, self.values[rv].index, self.values[lv].alias ,self.values[rv].alias, self.alias_set, self.values.len());
         rap_debug!(
-            "update the alias set for lv:{} rv:{} set:{:?}",
+            "Update the alias set for lv:{} rv:{} set:{:?}",
             lv,
             rv,
             self.alias_set
         );
 
-        let max_field_depth = match std::env::var_os("MOP") {
+        let max_field_depth = match std::env::var_os("ALIAS") {
             Some(val) if val == "0" => 10,
             Some(val) if val == "1" => 20,
             Some(val) if val == "2" => 30,
@@ -187,7 +190,6 @@ impl<'tcx> MopGraph<'tcx> {
         for field in self.values[rv].fields.clone().into_iter() {
             if !self.values[lv].fields.contains_key(&field.0) {
                 let mut node = ValueNode::new(self.values.len(), self.values[lv].local);
-                node.kind = self.values[field.1].kind;
                 node.field_id = field.0;
                 self.values[lv].fields.insert(field.0, node.index);
                 self.alias_set.push(self.values.len());
@@ -212,7 +214,6 @@ impl<'tcx> MopGraph<'tcx> {
         for index in ret_alias.lhs_fields().iter() {
             if !self.values[lv].fields.contains_key(index) {
                 let mut node = ValueNode::new(self.values.len(), left_init);
-                node.kind = TyKind::RawPtr;
                 node.field_id = *index;
                 self.values[lv].fields.insert(*index, node.index);
                 self.alias_set.push(self.values.len());
@@ -226,7 +227,6 @@ impl<'tcx> MopGraph<'tcx> {
             }
             if !self.values[rv].fields.contains_key(index) {
                 let mut node = ValueNode::new(self.values.len(), right_init);
-                node.kind = TyKind::RawPtr;
                 node.field_id = *index;
                 self.values[rv].fields.insert(*index, node.index);
                 self.alias_set.push(self.values.len());

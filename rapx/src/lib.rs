@@ -21,24 +21,26 @@ extern crate rustc_span;
 extern crate rustc_target;
 extern crate stable_mir;
 
-use analysis::core::alias::default::DefaultAlias;
-use analysis::core::api_dep::ApiDep;
-use analysis::core::call_graph::CallGraph;
-use analysis::core::dataflow::DataFlow;
-use analysis::core::heap_item::TypeAnalysis;
-use analysis::core::range_analysis::{DefaultRange, SSATrans};
-use analysis::opt::Opt;
-use analysis::rcanary::rCanary;
-use analysis::safedrop::SafeDrop;
-use analysis::senryx::{CheckLevel, SenryxCheck};
-use analysis::unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck};
-use analysis::utils::show_mir::ShowMir;
-use analysis::Analysis;
+use analysis::{
+    core::{
+        alias::default::DefaultAlias,
+        api_dep::ApiDep,
+        call_graph::CallGraph,
+        dataflow::DataFlow,
+        heap_item::TypeAnalysis,
+        range_analysis::{DefaultRange, SSATrans},
+    },
+    opt::Opt,
+    rcanary::rCanary,
+    safedrop::SafeDrop,
+    senryx::{CheckLevel, SenryxCheck},
+    unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck},
+    utils::show_mir::ShowMir,
+    Analysis,
+};
 use rustc_driver::{Callbacks, Compilation};
-use rustc_interface::interface::Compiler;
-use rustc_interface::Config;
-use rustc_middle::ty::TyCtxt;
-use rustc_middle::util::Providers;
+use rustc_interface::{interface::Compiler, Config};
+use rustc_middle::{ty::TyCtxt, util::Providers};
 use rustc_session::search_paths::PathKind;
 use std::path::PathBuf;
 use std::{env, sync::Arc};
@@ -126,16 +128,16 @@ impl RapCallback {
         self.alias = true;
         match arg.as_str() {
             "-alias" => {
-                env::set_var("MOP", "1");
+                env::set_var("ALIAS", "1");
             }
             "-alias0" => {
-                env::set_var("MOP", "0");
+                env::set_var("ALIAS", "0");
             }
             "-alias1" => {
-                env::set_var("MOP", "1");
+                env::set_var("ALIAS", "1");
             }
             "-alias2" => {
-                env::set_var("MOP", "2");
+                env::set_var("ALIAS", "2");
             }
             _ => {}
         }

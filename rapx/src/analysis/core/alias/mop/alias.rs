@@ -186,7 +186,7 @@ impl<'tcx> MopGraph<'tcx> {
 
     //assign alias for a variable.
     pub fn merge_alias(&mut self, lv: usize, rv: usize, depth: usize) {
-        rap_debug!("alias set now: {:?}", self.alias_set);
+        rap_debug!("Alias set before merge: {:?}", self.alias_set);
         // println!("A:{:?} V:{:?}", self.alias_set, self.values.len());
         self.union_merge(lv, rv);
         // println!("Li:{} Ri:{} L:{:?} R:{:?} A:{:?} V:{:?}", self.values[lv].index, self.values[rv].index, self.values[lv].alias ,self.values[rv].alias, self.alias_set, self.values.len());

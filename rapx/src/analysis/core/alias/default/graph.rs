@@ -1,18 +1,14 @@
-use crate::analysis::core::alias::default::types::*;
-use crate::analysis::core::alias::AAResult;
-use crate::rap_debug;
-use crate::utils::source::*;
+use crate::{analysis::core::alias::AAResult, rap_debug, utils::source::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
-use rustc_middle::mir::{
-    BasicBlock, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,
-    UnwindAction,
+use rustc_middle::{
+    mir::{
+        BasicBlock, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,
+        UnwindAction,
+    },
+    ty::TyCtxt,
 };
-use rustc_middle::ty::TyCtxt;
-use rustc_span::def_id::DefId;
-use rustc_span::Span;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::vec::Vec;
+use rustc_span::{def_id::DefId, Span};
+use std::{cell::RefCell, cmp::min, vec::Vec};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AssignType {
@@ -93,7 +89,6 @@ impl<'tcx> BlockNode<'tcx> {
 pub struct ValueNode {
     pub index: usize, // node index
     pub local: usize, // location?
-    pub kind: TyKind,
     pub father: usize,
     pub field_id: usize, // the field id of its father node.
     pub fields: FxHashMap<usize, usize>,
@@ -106,25 +101,8 @@ impl ValueNode {
             local,
             father: local,
             field_id: usize::MAX,
-            kind: TyKind::Adt,
             fields: FxHashMap::default(),
         }
-    }
-
-    pub fn is_tuple(&self) -> bool {
-        self.kind == TyKind::Tuple
-    }
-
-    pub fn is_ptr(&self) -> bool {
-        self.kind == TyKind::RawPtr || self.kind == TyKind::Ref
-    }
-
-    pub fn is_ref(&self) -> bool {
-        self.kind == TyKind::Ref
-    }
-
-    pub fn is_corner_case(&self) -> bool {
-        self.kind == TyKind::CornerCase
     }
 }
 
@@ -168,9 +146,8 @@ impl<'tcx> MopGraph<'tcx> {
         let arg_size = body.arg_count;
         let mut values = Vec::<ValueNode>::new();
         let mut alias = Vec::<usize>::new();
-        for (local, local_decl) in locals.iter_enumerated() {
-            let mut node = ValueNode::new(local.as_usize(), local.as_usize());
-            node.kind = kind(local_decl.ty);
+        for (local, _local_decl) in locals.iter_enumerated() {
+            let node = ValueNode::new(local.as_usize(), local.as_usize());
             alias.push(values.len());
             values.push(node);
         }

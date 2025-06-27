@@ -1,17 +1,12 @@
-use super::folder::*;
 use super::pattern::EdgePatterns;
 use crate::analysis::testgen::context::Var;
 use crate::analysis::testgen::generator::ltgen::pattern::PatternNode;
-use crate::analysis::testgen::utils;
 use crate::{rap_debug, rap_trace};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::NodeIndex;
-use rustc_hir::def_id::DefId;
 use rustc_infer::infer::region_constraints::Constraint;
-use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
-use rustc_infer::traits::ObligationCause;
-use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypeFoldable};
-use std::collections::{HashMap, VecDeque};
+use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::io::Write;
 

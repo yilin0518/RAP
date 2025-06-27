@@ -1,4 +1,3 @@
-use crate::analysis::opt::Opt;
 use crate::rap_info;
 use std::fs::{self, File};
 use std::io::{self, Write};

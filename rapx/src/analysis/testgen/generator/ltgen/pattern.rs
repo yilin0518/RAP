@@ -9,7 +9,7 @@ use rustc_infer::{
     infer::{region_constraints::Constraint, TyCtxtInferExt as _},
     traits::ObligationCause,
 };
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable as _};
+use rustc_middle::ty::{self, TyCtxt, TypeFoldable as _};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

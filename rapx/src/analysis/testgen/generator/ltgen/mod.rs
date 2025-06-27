@@ -8,18 +8,18 @@ mod safety;
 use crate::analysis::core::alias::{FnRetAlias, RetAlias};
 use crate::analysis::core::api_dep::ApiDepGraph;
 use crate::analysis::testgen::api_dep::graph::TransformKind;
-use crate::analysis::testgen::context::{ApiCall, Context, Stmt, StmtKind, Var};
-use crate::analysis::testgen::utils::{self, get_all_pub_apis};
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::analysis::testgen::context::{ApiCall, Context, Var};
+use crate::analysis::testgen::utils::{self};
+use crate::{rap_debug, rap_info};
 use context::LtContext;
-use pattern::{EdgePatterns, PatternProvider};
+use pattern::PatternProvider;
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{self, GenericArgs, Ty, TyCtxt, TyKind};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
 

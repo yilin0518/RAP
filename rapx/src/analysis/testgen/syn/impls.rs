@@ -3,8 +3,6 @@ use crate::rap_debug;
 use super::super::context::{Context, Stmt, StmtKind, Var};
 use super::input::InputGen;
 use super::{SynOption, Synthesizer};
-use rustc_hir::def::Namespace;
-use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
 fn debug_state() -> bool {

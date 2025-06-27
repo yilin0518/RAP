@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
-use rustc_span::sym::TyKind;
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 
 use crate::{analysis::testgen::utils::visit_ty_while, rap_trace};
 

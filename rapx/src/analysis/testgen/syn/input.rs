@@ -1,4 +1,3 @@
-use crate::analysis::testgen::utils;
 use rustc_abi::FIRST_VARIANT;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 pub trait InputGen {

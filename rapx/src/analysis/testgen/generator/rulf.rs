@@ -14,7 +14,7 @@ use petgraph::Direction;
 use rand::prelude::IndexedRandom;
 use rand::Rng;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, AdtDef, FieldDef, FnSig, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::analysis::testgen::context::Var;

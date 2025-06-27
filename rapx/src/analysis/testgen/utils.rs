@@ -3,7 +3,7 @@ use crate::analysis::core::api_dep::{ApiDepGraph, DepNode};
 use crate::rap_info;
 use rustc_hir::{def::Namespace, def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
-use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter, Printer};
+use rustc_middle::ty::print::{FmtPrinter, Printer};
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::VecDeque;

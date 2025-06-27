@@ -2,19 +2,8 @@ mod stmt;
 
 use super::utils::{self, is_fuzzable_ty};
 
-use crate::rap_debug;
-use crate::rustc_infer::infer::TyCtxtInferExt;
-use rustc_hir::def_id::DefId;
-use rustc_infer::traits::{Obligation, ObligationCause};
-use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TyKind};
-use rustc_span::{Span, DUMMY_SP};
-use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt;
-use rustc_type_ir::RegionKind::ReErased;
-use std::{
-    collections::{HashMap, HashSet},
-    env::var,
-    rc::Rc,
-};
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use std::collections::{HashMap, HashSet};
 pub use stmt::{ApiCall, Stmt, StmtKind, Var, DUMMY_INPUT_VAR};
 
 pub trait HoldTyCtxt<'tcx> {

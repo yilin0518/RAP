@@ -3,19 +3,15 @@ mod generator;
 mod syn;
 mod utils;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::analysis::core::api_dep::ApiDep;
 use crate::analysis::core::{alias, api_dep};
 use crate::{rap_debug, rap_info};
 use context::{Context, ContextBase};
-use generator::ltgen::context::LtContext;
 use generator::ltgen::LtGenBuilder;
-use generator::rulf;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 use rustc_session::config::CrateType;
-use stable_mir::local_crate;
 use syn::input::SillyInputGen;
 use syn::project::{CargoProjectBuilder, RsProjectOption};
 use syn::Synthesizer;

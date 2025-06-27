@@ -1,18 +1,17 @@
 use super::folder::extract_rids;
 use super::lifetime::{RegionGraph, Rid};
 use super::pattern::PatternProvider;
-use super::utils;
 use super::{destruct_ret_alias, FnAliasMap};
-use crate::analysis::testgen::context::{ApiCall, Context, HoldTyCtxt};
+use crate::analysis::testgen::context::{Context, HoldTyCtxt};
 use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
 use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
 use crate::analysis::testgen::generator::ltgen::lifetime::{
     visit_structure_region_with, RegionNode,
 };
 use crate::analysis::testgen::generator::ltgen::safety;
-use crate::{rap_debug, rap_info, rap_trace, rap_warn};
+use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, GenericArg, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitableExt};
+use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct LtContext<'tcx, 'a> {

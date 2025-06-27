@@ -4,11 +4,12 @@ use super::super::context::{Context, Stmt, StmtKind, Var};
 use super::input::InputGen;
 use super::{SynOption, Synthesizer};
 use rustc_hir::def::Namespace;
-use rustc_middle::ty::print::{FmtPrinter, Printer};
+use rustc_middle::ty::print::{FmtPrinter, PrettyPrinter};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
 fn debug_state() -> bool {
     false
+    // true
 }
 
 pub struct FuzzDriverSynImpl<I: InputGen> {
@@ -71,8 +72,12 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         if debug_state() {
             return format!("{:?}", ty);
         }
-        FmtPrinter::print_string(tcx, Namespace::TypeNS, |fmt| fmt.print_type(ty)).unwrap()
-        // tcx.def_path_str(ty.key_as_def_id().unwrap())
+        format!("{}", ty)
+        // format!(
+        //     "{}",
+        //     FmtPrinter::print_string(tcx, Namespace::TypeNS, |fmt| fmt.pretty_print_type(ty))
+        //         .unwrap()
+        // )
     }
 
     fn stmt_str<'tcx>(&mut self, stmt: Stmt<'tcx>, cx: &impl Context<'tcx>) -> String {

@@ -68,6 +68,7 @@ impl InputGen for SillyInputGen {
                 panic!("Unsupported ADT: {:?}", ty)
             }
             TyKind::Slice(inner_ty) => {
+                
                 let len = 3; // Fixed length for simplicity
                 let element = self.gen(*inner_ty, tcx).to_string();
                 format!("[{}; {}]", element, len)

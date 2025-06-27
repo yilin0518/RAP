@@ -1,9 +1,12 @@
 use crate::analysis::testgen::utils::{self, fn_sig_with_generic_args};
 use crate::{rap_debug, rap_info, rap_trace, rap_warn};
 use rustc_hir::def_id::DefId;
-use rustc_infer::infer::TyCtxtInferExt;
+use rustc_hir::LangItem;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
+use rustc_infer::infer::{InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::{select, Obligation, ObligationCause};
+use rustc_middle::infer;
+use rustc_middle::query::queries::trait_def;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeFoldable, TypeVisitableExt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
@@ -15,25 +18,28 @@ pub struct Mono<'tcx> {
     pub value: Vec<ty::GenericArg<'tcx>>,
 }
 
-impl<'tcx> From<&[ty::GenericArg<'tcx>]> for Mono<'tcx> {
-    fn from(args: &[ty::GenericArg<'tcx>]) -> Self {
+impl<'tcx> FromIterator<ty::GenericArg<'tcx>> for Mono<'tcx> {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = ty::GenericArg<'tcx>>,
+    {
         Mono {
-            value: Vec::from(args),
+            value: iter.into_iter().collect(),
         }
     }
 }
 
 impl<'tcx> Mono<'tcx> {
-    fn from_iter(iter: impl Iterator<Item = ty::GenericArg<'tcx>>) -> Self {
+    pub fn new(identity: &[ty::GenericArg<'tcx>]) -> Self {
         Mono {
-            value: iter.collect(),
+            value: Vec::from(identity),
         }
     }
 
-    fn has_unbound_var(&self) -> bool {
-        self.value.iter().all(|arg| match arg.kind() {
-            ty::GenericArgKind::Type(ty) => !ty.is_ty_var(),
-            _ => true,
+    fn has_infer_types(&self) -> bool {
+        self.value.iter().any(|arg| match arg.kind() {
+            ty::GenericArgKind::Type(ty) => ty.has_infer_types(),
+            _ => false,
         })
     }
 
@@ -98,9 +104,9 @@ pub struct MonoSet<'tcx> {
 }
 
 impl<'tcx> MonoSet<'tcx> {
-    pub fn all(args: &[ty::GenericArg<'tcx>]) -> MonoSet<'tcx> {
+    pub fn all(identity: &[ty::GenericArg<'tcx>]) -> MonoSet<'tcx> {
         MonoSet {
-            monos: vec![Mono::from(args)],
+            monos: vec![Mono::new(identity)],
         }
     }
 
@@ -120,28 +126,28 @@ impl<'tcx> MonoSet<'tcx> {
         MonoSet { monos: Vec::new() }
     }
 
-    pub fn add_from_iter(&mut self, iter: impl Iterator<Item = ty::GenericArg<'tcx>>) {
-        self.monos.push(Mono::from_iter(iter));
+    pub fn insert(&mut self, mono: Mono<'tcx>) {
+        self.monos.push(mono);
     }
 
     pub fn merge(&mut self, other: &MonoSet<'tcx>, tcx: TyCtxt<'tcx>) -> MonoSet<'tcx> {
+        rap_trace!("[MonoSet::merge] self: {:?} other: {:?}", self, other);
         let mut res = MonoSet::new();
 
         for args in self.monos.iter() {
             for other_args in other.monos.iter() {
                 let merged = args.merge(other_args, tcx);
-                rap_trace!("merged: {:?}", merged);
-                if let Some(new_args) = merged {
-                    res.monos.push(new_args);
+                if let Some(mono) = merged {
+                    res.insert(mono);
                 }
             }
         }
-
+        rap_trace!("[MonoSet::merge] result: {:?}", res);
         res
     }
 
     fn filter_unbound_solution(mut self) -> Self {
-        self.monos.retain(|mono| mono.has_unbound_var());
+        self.monos.retain(|mono| mono.has_infer_types());
         self
     }
 
@@ -154,9 +160,13 @@ impl<'tcx> MonoSet<'tcx> {
         res
     }
 
-    // fn guess_unbound_args(&self, tcx: TyCtxt<'tcx>) -> Self {
-
-    // }
+    fn erase_region_var(&mut self, tcx: TyCtxt<'tcx>) {
+        for mono in &mut self.monos {
+            mono.value
+                .iter_mut()
+                .for_each(|arg| *arg = tcx.erase_regions(*arg))
+        }
+    }
 
     fn filter_by_trait_bound(mut self, fn_did: DefId, tcx: TyCtxt<'tcx>) -> Self {
         let early_fn_sig = tcx.fn_sig(fn_did);
@@ -164,12 +174,46 @@ impl<'tcx> MonoSet<'tcx> {
             .retain(|args| is_args_fit_trait_bound(fn_did, &args.value, tcx));
         self
     }
+}
 
-    // trying to add a new mono solution from an equality contraint (e.g., `Vec<T> == Vec<i32>`)
-    // returns true if the new solution is added successfully, otherwise returns false.
-    // fn add_from_eq_constraint() -> bool {
-
-    // }
+/// try to unfiy lhs = rhs,
+/// e.g.,
+/// try_unify(Vec<T>, Vec<i32>, ...) = Some(i32)
+/// try_unify(Vec<T>, i32, ...) = None
+fn unify_ty<'tcx>(
+    lhs: Ty<'tcx>,
+    rhs: Ty<'tcx>,
+    identity: &[ty::GenericArg<'tcx>],
+    infcx: &InferCtxt<'tcx>,
+    cause: &ObligationCause<'tcx>,
+    param_env: ty::ParamEnv<'tcx>,
+) -> Option<Mono<'tcx>> {
+    infcx.probe(|_| {
+        match infcx
+            .at(cause, param_env)
+            .eq(DefineOpaqueTypes::Yes, lhs, rhs)
+        {
+            Ok(infer_ok) => {
+                rap_debug!("[infer_ok] {} = {} : {:?}", lhs, rhs, infer_ok);
+                let mono = identity
+                    .iter()
+                    .map(|arg| match arg.kind() {
+                        ty::GenericArgKind::Lifetime(region) => {
+                            infcx.resolve_vars_if_possible(region).into()
+                        }
+                        ty::GenericArgKind::Type(ty) => infcx.resolve_vars_if_possible(ty).into(),
+                        ty::GenericArgKind::Const(ct) => infcx.resolve_vars_if_possible(ct).into(),
+                    })
+                    .collect();
+                // infcx.resolve
+                Some(mono)
+            }
+            Err(e) => {
+                rap_trace!("[infer_err] {} = {} : {:?}", lhs, rhs, e);
+                None
+            }
+        }
+    })
 }
 
 fn is_args_fit_trait_bound<'tcx>(
@@ -221,12 +265,13 @@ fn get_mono_set<'tcx>(
         .ignoring_regions()
         .build(ty::TypingMode::PostAnalysis);
     let param_env = tcx.param_env(fn_did);
+    let dummy_cause = ObligationCause::dummy();
     let fresh_args = infcx.fresh_args_for_item(DUMMY_SP, fn_did);
-
     // This replace generic types to infer var, e.g. fn(Vec<T>, i32) => fn(Vec<?0>, i32)
     let fn_sig = fn_sig_with_generic_args(fn_did, fresh_args, tcx);
-
     let generics = tcx.generics_of(fn_did);
+
+    // Print fresh_args for debugging
     for i in 0..fresh_args.len() {
         rap_trace!(
             "arg#{}: {:?} -> {:?}",
@@ -235,13 +280,10 @@ fn get_mono_set<'tcx>(
             fresh_args[i]
         );
     }
-    let dummy_cause = ObligationCause::dummy();
-
-    rap_trace!("param_env: {:?}", param_env);
-    // let mut ret = MonoSet::all(fresh_args);
-    // for input_ty in fn_sig.inputs().iter() {}
 
     let mut s = MonoSet::all(&fresh_args);
+
+    rap_trace!("[solve] initialize s: {:?}", s);
 
     for input_ty in fn_sig.inputs().iter() {
         if !input_ty.has_infer_types() {
@@ -250,34 +292,120 @@ fn get_mono_set<'tcx>(
         let reachable_set = available_ty
             .iter()
             .fold(MonoSet::new(), |mut reachable_set, ty| {
-                infcx.probe(|_| {
-                    match infcx.at(&dummy_cause, param_env).eq(
-                        DefineOpaqueTypes::Yes,
-                        *input_ty,
-                        *ty,
-                    ) {
-                        Ok(infer_ok) => {
-                            rap_trace!("{} can eq to {}: {:?}", ty, input_ty, infer_ok);
-                        }
-                        Err(e) => {
-                            rap_trace!("{} cannot eq to {}: {:?}", ty, input_ty, e);
-                            return;
-                        }
-                    }
-
-                    reachable_set.add_from_iter(fresh_args.iter().map(|arg| match arg.kind() {
-                        ty::GenericArgKind::Lifetime(region) => {
-                            infcx.resolve_vars_if_possible(region).into()
-                        }
-                        ty::GenericArgKind::Type(ty) => infcx.resolve_vars_if_possible(ty).into(),
-                        ty::GenericArgKind::Const(ct) => infcx.resolve_vars_if_possible(ct).into(),
-                    }));
-                });
+                if let Some(mono) =
+                    unify_ty(*input_ty, *ty, &fresh_args, &infcx, &dummy_cause, param_env)
+                {
+                    reachable_set.insert(mono);
+                }
                 reachable_set
             });
         s = s.merge(&reachable_set, tcx)
     }
-    s
+
+    rap_trace!("[solve] after input types: {:?}", s);
+
+    let mut res = MonoSet::new();
+
+    for mono in s.monos {
+        solve_unbound_generic_type(
+            fn_did,
+            mono,
+            &mut res,
+            // &fresh_args,
+            &infcx,
+            &dummy_cause,
+            param_env,
+            tcx,
+        );
+    }
+
+    // erase infer region var
+    res.erase_region_var(tcx);
+
+    res
+}
+
+fn solve_unbound_generic_type<'tcx>(
+    did: DefId,
+    mono: Mono<'tcx>,
+    res: &mut MonoSet<'tcx>,
+    // identity: &[ty::GenericArg<'tcx>],
+    infcx: &InferCtxt<'tcx>,
+    cause: &ObligationCause<'tcx>,
+    param_env: ty::ParamEnv<'tcx>,
+    tcx: TyCtxt<'tcx>,
+) {
+    let args = tcx.mk_args(&mono.value);
+    let preds = tcx.predicates_of(did).instantiate(tcx, args);
+    let mut mset = MonoSet::all(args);
+    for pred in preds.predicates.iter() {
+        if let Some(trait_pred) = pred.as_trait_clause() {
+            rap_trace!("[solve_unbound] pred: {:?}", trait_pred);
+
+            let trait_pred = trait_pred.skip_binder();
+
+            let trait_def_id = trait_pred.trait_ref.def_id;
+            // ignore Sized trait
+            if tcx.is_lang_item(trait_def_id, LangItem::Sized) {
+                continue;
+            }
+
+            let mut p = MonoSet::new();
+            for impl_did in tcx.all_impls(trait_def_id) {
+                let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();
+                if let Some(mono) = unify_trait(
+                    trait_pred.trait_ref,
+                    impl_trait_ref,
+                    args,
+                    &infcx,
+                    &cause,
+                    param_env,
+                    tcx,
+                ) {
+                    p.insert(mono);
+                }
+            }
+            mset = mset.merge(&p, tcx);
+            rap_trace!("[solve_unbound] mset: {:?}", mset);
+        }
+    }
+
+    rap_trace!("[solve_unbound] (final) mset: {:?}", mset);
+    for mono in mset.monos {
+        res.insert(mono);
+    }
+}
+
+/// only handle the case that rhs does not have any infer types
+/// e.g., `<T as Into<U>> == <Foo as Into<Bar>> => Some(T=Foo, U=Bar))`
+fn unify_trait<'tcx>(
+    lhs: ty::TraitRef<'tcx>,
+    rhs: ty::TraitRef<'tcx>,
+    identity: &[ty::GenericArg<'tcx>],
+    infcx: &InferCtxt<'tcx>,
+    cause: &ObligationCause<'tcx>,
+    param_env: ty::ParamEnv<'tcx>,
+    tcx: TyCtxt<'tcx>,
+) -> Option<Mono<'tcx>> {
+    rap_trace!("[unify_trait] lhs: {:?}, rhs: {:?}", lhs, rhs);
+    if lhs.def_id != rhs.def_id {
+        return None;
+    }
+    assert!(lhs.args.len() == rhs.args.len());
+    let mut s = Mono::new(identity);
+    for (lhs_arg, rhs_arg) in lhs.args.iter().zip(rhs.args.iter()) {
+        if let (Some(lhs_ty), Some(rhs_ty)) = (lhs_arg.as_type(), rhs_arg.as_type()) {
+            if rhs_ty.has_infer_types() {
+                // if rhs has infer types, we cannot unify it with lhs
+
+                return None;
+            }
+            let mono = unify_ty(lhs_ty, rhs_ty, identity, infcx, cause, param_env)?;
+            rap_trace!("[unify_trait] unified mono: {:?}", mono);
+            s = s.merge(&mono, tcx)?;
+        }
+    }
+    Some(s)
 }
 
 pub fn get_all_concrete_mono_solution<'tcx>(
@@ -285,14 +413,16 @@ pub fn get_all_concrete_mono_solution<'tcx>(
     mut available_ty: HashSet<Ty<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
-    rap_trace!("enter get_all_concrete_mono_solution for {fn_did:?}");
-
+    // 1. prepare available types
     add_prelude_tys(&mut available_ty, tcx);
     add_transform_tys(&mut available_ty, tcx);
     rap_debug!("[mono] input => {fn_did:?}: {available_ty:?}");
-    let ret = get_mono_set(fn_did, &available_ty, tcx)
-        .instantiate_unbound(tcx)
-        .filter_by_trait_bound(fn_did, tcx);
+
+    // 2. get mono set from available types
+    let ret = get_mono_set(fn_did, &available_ty, tcx);
+
+    // 3. check trait bound
+    let ret = ret.filter_by_trait_bound(fn_did, tcx);
     rap_debug!("possible mono solution for {fn_did:?}: {ret:?}");
     ret
 }

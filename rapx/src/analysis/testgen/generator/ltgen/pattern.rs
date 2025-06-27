@@ -91,6 +91,11 @@ pub fn extract_constraints<'tcx>(
     generic_args: &[ty::GenericArg<'tcx>],
     tcx: TyCtxt<'tcx>,
 ) -> EdgePatterns {
+    rap_trace!(
+        "[extract_constraints] fn_did: {:?}, generic_args: {:?}",
+        fn_did,
+        generic_args
+    );
     let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
     let mut folder = InfcxVarFolder::new(&infcx, tcx);
 

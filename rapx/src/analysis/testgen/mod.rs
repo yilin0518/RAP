@@ -1,21 +1,14 @@
 mod context;
+mod driver;
 mod generator;
 mod syn;
 mod utils;
 
-use std::path::PathBuf;
-
-use crate::analysis::core::{alias, api_dep};
-use crate::{rap_debug, rap_info};
-use context::{Context, ContextBase};
-use generator::ltgen::LtGenBuilder;
-use rustc_hir::def_id::LOCAL_CRATE;
+use crate::analysis::testgen::driver::driver_main;
+use crate::{rap_error, rap_info};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::config::CrateType;
-use syn::input::SillyInputGen;
-use syn::project::{CargoProjectBuilder, RsProjectOption};
-use syn::Synthesizer;
-use syn::{impls::FuzzDriverSynImpl, SynOption};
+
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -31,91 +24,14 @@ impl<'tcx> Testgen<'tcx> {
     }
 
     pub fn start(&self) {
-        let api_dep_graph = api_dep::ApiDep::new(self.tcx()).start(api_dep::Config {
-            pub_only: true,
-            include_generic_api: false,
-        });
-        let mut alias_analysis = alias::mop::MopAlias::new(self.tcx());
-        let alias_map = alias_analysis.start();
-
-        alias_map.iter().for_each(|(k, v)| {
-            if k.is_local() {
-                rap_info!("alias: {:?} -> {}", k, v);
-            }
-        });
-
-        let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
-        let local_crate_type = self.tcx.crate_types()[0];
-
-        if matches!(local_crate_type, CrateType::Executable) {
-            rap_info!("Skip executable target: {}", local_crate_name.as_str());
+        if matches!(self.tcx.crate_types()[0], CrateType::Executable) {
+            rap_info!("Skip executable target");
             return;
         }
 
-        rap_info!(
-            "Generate testcase on {} ({})",
-            local_crate_name.as_str(),
-            local_crate_type
-        );
-
-        rap_info!("alias count = {}", alias_map.len());
-
-        // rulf
-        // let mut cx: ContextBase<'tcx> = ContextBase::new(self.tcx);
-        // let mut rng = rand::rng();
-        // let mut rulf = rulf::Rulf::new();
-        // rulf.rulf_algorithm(self.tcx, &mut api_dep_graph, 3, &mut cx, &mut rng);
-        // let max_coverage = rulf.max_coverage(&mut api_dep_graph, self.tcx);
-        // match max_coverage {
-        //     Some(max) => {
-        //         rap_info!("Max coverage: {:?}", max);
-        //     }
-        //     None => {
-        //         rap_info!("No coverage found");
-        //     }
-        // }
-        // for stmt in cx.stmts(){
-        //     rap_info!("stmt: {:?}", stmt);
-        // }
-
-        // run random program generator
-        let mut lt_gen = LtGenBuilder::new(self.tcx, alias_map, api_dep_graph)
-            .max_complexity(20)
-            .build();
-
-        let cx = lt_gen.gen();
-        rap_debug!("cx.stmt = {:?}", cx.stmts());
-
-        // synthesize rust program
-        let option = SynOption {
-            crate_name: local_crate_name.to_string(),
-        };
-        let mut syn = FuzzDriverSynImpl::new(SillyInputGen, option);
-        let rs_str = syn.syn(cx, self.tcx);
-
-        // let output_path = Path::new("fuzz_driver.rs");
-        // let mut file = File::create(output_path).unwrap();
-        // file.write_all(rs_str.as_bytes()).unwrap();
-        let fuzz_config = RsProjectOption {
-            tested_crate_name: local_crate_name.to_string(),
-            project_path: PathBuf::from(format!("../{}_fuzz_driver", local_crate_name)),
-            verbose: true,
-        };
-        let project_builder = CargoProjectBuilder::new(fuzz_config);
-        let project = match project_builder.build(&rs_str) {
-            Ok(t) => t,
-            Err(e) => {
-                panic!("Failed to generate fuzz driver project: {}", e);
-            }
-        };
-        match project.run() {
-            Ok(_) => {
-                rap_info!("Fuzz driver project run successfully");
-            }
-            Err(e) => {
-                rap_info!("Failed to run fuzz driver project: {}", e);
-            }
+        match driver_main(self.tcx) {
+            Ok(_) => rap_info!("testgen completed successfully"),
+            Err(e) => rap_error!("testgen failed:\n{}", e),
         }
-        rap_debug!("{}", rs_str);
     }
 }

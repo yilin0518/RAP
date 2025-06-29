@@ -42,6 +42,7 @@ if_chain = "1.0"
 num-traits = "0.2.19"
 intervals = "2.1"
 rand = "0.9.0"
+toml = "0.8.23"
 
 [features]
 backtraces = ["snafu/backtraces", "snafu/backtraces-impl-backtrace-crate"]

@@ -416,7 +416,7 @@ pub fn get_all_concrete_mono_solution<'tcx>(
     rap_debug!("[mono] input => {fn_did:?}: {available_ty:?}");
 
     // 2. get mono set from available types
-    let ret = get_mono_set(fn_did, &available_ty, tcx);
+    let ret = get_mono_set(fn_did, &available_ty, tcx).instantiate_unbound(tcx);
 
     // 3. check trait bound
     let ret = ret.filter_by_trait_bound(fn_did, tcx);

@@ -6,8 +6,7 @@ mod pattern;
 mod safety;
 
 use crate::analysis::core::alias::{FnRetAlias, RetAlias};
-use crate::analysis::core::api_dep::ApiDepGraph;
-use crate::analysis::testgen::api_dep::graph::TransformKind;
+use crate::analysis::core::api_dep::{graph::TransformKind, ApiDepGraph};
 use crate::analysis::testgen::context::{ApiCall, Context, Var};
 use crate::analysis::testgen::utils::{self};
 use crate::{rap_debug, rap_info};
@@ -23,21 +22,11 @@ use std::collections::HashSet;
 
 type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
 
-// pub fn initialize_subgraph_map<'tcx>(tcx: TyCtxt<'tcx>) -> RegionSubgraphMap {
-//     let mut map = HashMap::new();
-//     for fn_did in get_all_pub_apis(tcx) {
-//         if utils::fn_requires_monomorphization(fn_did, tcx) {
-//             continue;
-//         }
-//         map.insert(fn_did, lifetime::extract_constraints(fn_did, tcx));
-//     }
-//     map
-// }
-
 pub struct LtGenBuilder<'tcx, 'a, R: Rng> {
     tcx: TyCtxt<'tcx>,
     rng: R,
     max_complexity: usize,
+    max_iteration: usize,
     alias_map: &'a FnAliasMap,
     api_graph: ApiDepGraph<'tcx>,
     population_size: usize,
@@ -53,6 +42,7 @@ impl<'tcx, 'a> LtGenBuilder<'tcx, 'a, ThreadRng> {
             tcx,
             rng: rand::rng(),
             max_complexity: 20,
+            max_iteration: 1000,
             population_size: 100,
             alias_map,
             api_graph: api_graph,
@@ -67,8 +57,14 @@ impl<'tcx, 'a, R: Rng> LtGenBuilder<'tcx, 'a, R> {
             self.alias_map,
             self.rng,
             self.max_complexity,
+            self.max_iteration,
             self.api_graph,
         )
+    }
+
+    pub fn max_iteration(mut self, max_iteration: usize) -> Self {
+        self.max_iteration = max_iteration;
+        self
     }
 
     pub fn max_complexity(mut self, max_complexity: usize) -> Self {
@@ -92,6 +88,7 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
     tcx: TyCtxt<'tcx>,
     rng: RefCell<R>,
     max_complexity: usize,
+    max_iteration: usize,
     alias_map: &'a FnAliasMap,
     pattern_provider: PatternProvider<'tcx>,
     api_graph: RefCell<ApiDepGraph<'tcx>>,
@@ -152,6 +149,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         alias_map: &'a FnAliasMap,
         rng: R,
         max_complexity: usize,
+        max_iteration: usize,
         api_graph: ApiDepGraph<'tcx>,
     ) -> Self {
         LtGen {
@@ -160,6 +158,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             rng: RefCell::new(rng),
             pattern_provider: PatternProvider::new(tcx),
             max_complexity,
+            max_iteration,
             alias_map,
             api_graph: RefCell::new(api_graph),
         }
@@ -298,15 +297,16 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         false
     }
 
+    // pub fn print_brief()
+
     pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
         let tcx = self.tcx();
         let mut cx = LtContext::new(self.tcx, &self.alias_map);
         let (estimated, total) = utils::estimate_max_coverage(self.api_graph.get_mut(), tcx);
         let mut count = 0;
-        let max_iteration = 1000;
         loop {
             count += 1;
-            if count > max_iteration {
+            if count > self.max_iteration {
                 rap_info!("max iteration reached, generation terminate");
                 break;
             }

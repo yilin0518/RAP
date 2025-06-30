@@ -263,8 +263,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         true
     }
 
-    // pub fn add_generics_nodes(&mut self, from: NodeIndex, generics: &ty::Generics<'tcx>) {}
-
+    /// return true if the api is added successfully, false if it already exists.
     pub fn add_api(&mut self, fn_did: DefId, args: &[ty::GenericArg<'tcx>]) -> bool {
         let node = DepNode::api(fn_did, self.tcx.mk_args(args));
         if self.is_node_exist(&node) {
@@ -289,17 +288,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
         true
     }
-
-    // pub fn add_ty_node(&mut self, ty_node: DepNode<'tcx>) {
-    //     let ty = ty_node.as_ty();
-    //     if self.tys.contains(&ty) {
-    //         self.add_possible_transform::<3>(ty, 0);
-    //         for ty in self.tys.iter(){
-    //             self.add_
-    //         }
-    //         self.tys.insert(ty);
-    //     }
-    // }
 
     /// return all transform kind for `ty` that we intersted in.
     pub fn all_transforms(&self, ty: Ty<'tcx>) -> Vec<TransformKind> {

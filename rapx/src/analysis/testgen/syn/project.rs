@@ -89,7 +89,7 @@ impl CargoProjectBuilder {
 pub struct MiriReport {
     pub project_name: String,
     pub project_path: PathBuf,
-    pub retcode: i32,
+    pub retcode: Option<i32>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
@@ -106,8 +106,8 @@ impl MiriReport {
         let mut s = String::new();
         s.push_str(&format!("Project Name: {}\n", self.project_name));
         s.push_str(&format!("Reproduce Line:\n{}\n", self.reproduce_str()));
-        s.push_str(&format!("retcode = {}\n", self.retcode));
-        if self.retcode != 0 {
+        s.push_str(&format!("retcode = {:?}\n", self.retcode));
+        if self.retcode.unwrap_or(0) != 0 {
             s.push_str(&format!(
                 "stdout:{}\n",
                 String::from_utf8_lossy(&self.stdout)
@@ -146,10 +146,7 @@ impl RsProject {
 
         let output = command.output()?;
 
-        let retcode = output.status.code().ok_or(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "miri is interrupted",
-        ))?;
+        let retcode = output.status.code();
 
         Ok(MiriReport {
             project_name: self.option.project_name.clone(),

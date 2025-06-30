@@ -10,5 +10,5 @@ pub struct SynOption {
 }
 
 pub trait Synthesizer<'tcx> {
-    fn syn<C: Context<'tcx>>(&mut self, cx: C, tcx: TyCtxt<'tcx>) -> String;
+    fn syn<C: Context<'tcx>>(&mut self, cx: &C, tcx: TyCtxt<'tcx>) -> String;
 }

@@ -2,16 +2,21 @@ use super::folder::extract_rids;
 use super::lifetime::{RegionGraph, Rid};
 use super::pattern::PatternProvider;
 use super::{destruct_ret_alias, FnAliasMap};
-use crate::analysis::testgen::context::{Context, HoldTyCtxt};
+use crate::analysis::core::alias::{FnRetAlias, RetAlias};
+use crate::analysis::testgen::context::{Context, HoldTyCtxt, UseKind};
 use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
 use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
 use crate::analysis::testgen::generator::ltgen::lifetime::{
     visit_structure_region_with, RegionNode,
 };
 use crate::analysis::testgen::generator::ltgen::safety;
-use crate::{rap_debug, rap_trace};
+use crate::{rap_debug, rap_info, rap_trace};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
+use rustc_hir::LangItem;
+use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypeFoldable, TypingMode};
+use rustc_span::Symbol;
+use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct LtContext<'tcx, 'a> {
@@ -27,6 +32,7 @@ pub struct LtContext<'tcx, 'a> {
     alias_map: &'a FnAliasMap,
     covered_api: HashSet<DefId>,
     droped_cnt: usize,
+    lack_of_alias: Vec<DefId>,
 }
 
 impl<'tcx, 'a> HoldTyCtxt<'tcx> for LtContext<'tcx, 'a> {
@@ -53,7 +59,8 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
                 let mut folder = RidExtractFolder::new(self.tcx());
                 real_fn_sig.fold_with(&mut folder);
 
-                // get pattern
+                rap_info!("apicall: {:?}", apicall);
+
                 self.pat_provider.get_patterns_with(
                     apicall.fn_did(),
                     apicall.generic_args(),
@@ -126,7 +133,10 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
     }
 
     fn type_of(&self, var: Var) -> Ty<'tcx> {
-        *self.var_ty.get(&var).expect("no type for var")
+        *self
+            .var_ty
+            .get(&var)
+            .expect(&format!("no type for var: {}", var))
     }
 }
 
@@ -145,6 +155,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
             alias_map,
             covered_api: HashSet::new(),
             droped_cnt: 0,
+            lack_of_alias: Vec::new(),
         }
     }
 
@@ -239,6 +250,12 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         var
     }
 
+    pub fn add_use_stmt(&mut self, var: Var, use_kind: UseKind) -> Var {
+        let retvar = self.mk_var(self.tcx().types.unit, false);
+        self.add_stmt(Stmt::use_(retvar, var, use_kind));
+        retvar
+    }
+
     fn set_var_unavailable_recursive(&mut self, var: Var) {
         let mut q = VecDeque::from([self.rid_of(var).into()]);
         let mut visited = vec![false; self.region_graph.total_node_count()];
@@ -261,32 +278,68 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         }
     }
 
+    pub fn try_use_all_available_vars(&mut self) {
+        let vars: Vec<Var> = self.available_values().iter().map(|var| *var).collect();
+        let debug_def_id = self
+            .tcx
+            .get_diagnostic_item(rustc_span::sym::Debug)
+            .unwrap();
+        let infcx = self.tcx.infer_ctxt().build(TypingMode::PostAnalysis);
+        let param_env = ParamEnv::empty();
+
+        for var in vars {
+            let ty = self.type_of(var);
+            if ty != self.tcx.types.unit
+                && infcx
+                    .type_implements_trait(debug_def_id, [ty], param_env)
+                    .must_apply_modulo_regions()
+            {
+                self.add_use_stmt(var, UseKind::Debug);
+            }
+        }
+    }
+
     pub fn try_inject_drop(&mut self) -> bool {
         let stmt = self.stmts().last().unwrap();
+
+        if !stmt.kind().is_call() {
+            return false;
+        }
+
+        let fn_did = stmt.api_call().fn_did();
+
+        if !self.alias_map.contains_key(&fn_did) {
+            self.lack_of_alias.push(fn_did);
+            return false;
+        }
+
+        // reborrow stmt here, since we need borrow mutable reference for lack_of_alias
+        let stmt = self.stmts().last().unwrap();
+
         let mut success = false;
-        if stmt.kind().is_call() {
-            if let Some(vec) = self.detect_potential_vulnerability(&stmt) {
-                for (var, rids) in vec {
-                    rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
-                    for rid in rids {
-                        let mut src_rids = Vec::new();
-                        self.region_graph
-                            .for_each_source(rid, &mut |rid| src_rids.push(rid));
-                        let dropped_var: Vec<Var> = src_rids
-                            .into_iter()
-                            .map(|rid| self.region_graph.get_node(rid).as_var())
-                            .collect();
-                        if !dropped_var.is_empty() {
-                            success = true;
-                        }
-                        for var in dropped_var.iter() {
-                            self.add_drop_stmt(*var);
-                        }
-                        rap_debug!("[unsafe] drop var: {:?}", dropped_var);
+
+        if let Some(vec) = self.detect_potential_vulnerability(&stmt) {
+            for (var, rids) in vec {
+                rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
+                for rid in rids {
+                    let mut src_rids = Vec::new();
+                    self.region_graph
+                        .for_each_source(rid, &mut |rid| src_rids.push(rid));
+                    let dropped_var: Vec<Var> = src_rids
+                        .into_iter()
+                        .map(|rid| self.region_graph.get_node(rid).as_var())
+                        .collect();
+                    if !dropped_var.is_empty() {
+                        success = true;
                     }
+                    for var in dropped_var.iter() {
+                        self.add_drop_stmt(*var);
+                    }
+                    rap_debug!("[unsafe] drop var: {:?}", dropped_var);
                 }
             }
         }
+
         success
     }
 

@@ -13,12 +13,20 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use toml;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct LtGenConfig {
     pub max_complexity: usize,
     pub max_iteration: usize,
     pub build_dir: PathBuf,
     pub max_run: usize,
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    #[serde(rename = "override")]
+    pub override_: bool,
+}
+
+fn default_mode() -> String {
+    "nodebug".into()
 }
 
 impl LtGenConfig {
@@ -30,14 +38,31 @@ impl LtGenConfig {
         let config: LtGenConfig = toml::from_str(&contents)?;
         Ok(config)
     }
+    pub fn is_debug_mode(&self) -> bool {
+        self.mode == "debug"
+    }
+    pub fn can_override(&self) -> bool {
+        self.override_
+    }
 }
 
 pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
-    let config = LtGenConfig::load()?;
-
+    let mut config = LtGenConfig::load()?;
     let local_crate_name = tcx.crate_name(LOCAL_CRATE);
-    let build_dir = PathBuf::from(&config.build_dir);
-    let workspace_dir = build_dir.join(local_crate_name.as_str());
+
+    let workspace_dir;
+
+    if config.is_debug_mode() {
+        workspace_dir = std::env::current_dir()?.join(format!("testgen_{}", local_crate_name));
+        config.max_run = 1;
+    } else {
+        workspace_dir = config.build_dir.join(local_crate_name.as_str());
+    }
+
+    if (config.is_debug_mode() || config.can_override()) && fs::exists(&workspace_dir)? {
+        fs::remove_dir_all(&workspace_dir)?;
+    }
+
     fs::create_dir_all(&workspace_dir)?;
 
     let mut run_count = 0;
@@ -49,7 +74,7 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
     let mut alias_analysis = alias::mop::MopAlias::new(tcx);
     let alias_map = alias_analysis.start();
 
-    let mut lt_gen = LtGenBuilder::new(tcx, alias_map, api_dep_graph)
+    let mut ltgen = LtGenBuilder::new(tcx, alias_map, api_dep_graph)
         .max_complexity(config.max_complexity)
         .max_iteration(config.max_iteration)
         .build();
@@ -61,20 +86,23 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         // .append(true)
         .open(workspace_dir.join("miri_report.txt"))?;
 
+    let mut reports = Vec::new();
+
     while config.max_run == 0 || run_count < config.max_run {
         // 1. generate context
-        let cx = lt_gen.gen();
+        let cx = ltgen.gen();
 
         // 2. synthesize Rust program
         let option = SynOption {
             crate_name: local_crate_name.to_string(),
         };
         let mut syn = FuzzDriverSynImpl::new(SillyInputGen, option);
-        let rs_str = syn.syn(cx, tcx);
+        let rs_str = syn.syn(&cx, tcx);
 
         // 3. Build cargo project
         let project_name = format!("{}_case_{}", local_crate_name, run_count);
         let project_path = workspace_dir.join(&project_name);
+        let debug_path = project_path.as_path().join("region_graph.dot");
 
         let fuzz_config = RsProjectOption {
             tested_crate_name: local_crate_name.to_string(),
@@ -87,6 +115,9 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let project_builder = CargoProjectBuilder::new(fuzz_config);
         let project = project_builder.build()?;
         project.create_src_file("main.rs", &rs_str)?;
+        // output debug file
+        let mut file = std::fs::File::create(debug_path)?;
+        cx.region_graph().dump(&mut file).unwrap();
 
         // 4. run miri & save feedback
         let report = project.run_miri()?;
@@ -96,24 +127,44 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         writeln!(&mut report_file, "{}", report.brief())?;
         writeln!(&mut report_file, "{}", delimeter)?;
 
-        // {
-        //     Some(retcode) => {
-        //         rap_info!("miri run completed with return code: {}", retcode);
-        //         if retcode != 0 {
-        //             rap_warn!(
-        //                 "miri return a non-zero code ({retcode}), this may indicate a bug detected"
-        //             );
-        //         }
-        //     }
-        //     None => {
-        //         rap_error!(
-        //             "Faile to run miri for {}: Execution is interrupted",
-        //             project_name
-        //         );
-        //     }
-        // }
+        match report.retcode {
+            Some(retcode) => {
+                rap_info!("miri run completed with return code: {}", retcode);
+                if retcode != 0 {
+                    rap_warn!(
+                        "miri return a non-zero code ({retcode}), this may indicate a bug detected"
+                    );
+                }
+            }
+            None => {
+                rap_error!(
+                    "Faile to run miri for {}: Execution is interrupted",
+                    report.project_name
+                );
+            }
+        }
 
+        reports.push(report);
         run_count += 1;
+    }
+
+    ltgen
+        .api_graph()
+        .borrow()
+        .dump_to_dot(workspace_dir.join("api_graph.dot"), tcx);
+
+    writeln!(&mut report_file, "{}", ltgen.statistic_str())?;
+
+    rap_info!("non-zero returned:");
+    for report in reports {
+        if report.retcode.unwrap_or(-1) == 0 {
+            continue;
+        }
+        rap_warn!(
+            "case = {}, retcode = {:?}",
+            report.project_name,
+            report.retcode
+        );
     }
 
     Ok(())

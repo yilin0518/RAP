@@ -4,7 +4,7 @@ use super::utils::{self, is_fuzzable_ty};
 
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
 use std::collections::{HashMap, HashSet};
-pub use stmt::{ApiCall, Stmt, StmtKind, Var, DUMMY_INPUT_VAR};
+pub use stmt::{ApiCall, Stmt, StmtKind, UseKind, Var, DUMMY_INPUT_VAR};
 
 pub trait HoldTyCtxt<'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx>;
@@ -76,7 +76,10 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
         for idx in 0..fn_sig.inputs().len() {
             let arg = call.args[idx];
             let input_ty = fn_sig.inputs()[idx];
-            self.set_var_unavailable(arg);
+            // if the var is not copy, the ownership of the var is moved into the call
+            if arg != DUMMY_INPUT_VAR && !utils::is_ty_impl_copy(self.type_of(arg), tcx) {
+                self.set_var_unavailable(arg);
+            }
             if arg == DUMMY_INPUT_VAR {
                 let var = self.add_input_stmt(input_ty);
                 call.args[idx] = var;

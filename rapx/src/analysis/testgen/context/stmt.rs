@@ -61,14 +61,20 @@ impl<'tcx> ApiCall<'tcx> {
 // pub type StmtRef<'tcx> = Rc<Stmt<'tcx>>;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum UseKind {
+    Debug, // use by Debug trait
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum StmtKind<'tcx> {
     Input,
     Call(ApiCall<'tcx>),
-    Split(usize, Vec<Var>),        // (a, b) -> a, b
-    Concat(Vec<Var>),              // a, b -> (a, b)
+    // Split(usize, Vec<Var>),        // (a, b) -> a, b
+    // Concat(Vec<Var>),              // a, b -> (a, b)
     Ref(Box<Var>, ty::Mutability), // a -> &(mut) b
     Deref(Box<Var>),               // &a -> a
     Drop(Box<Var>),
+    Use(Var, UseKind),
 }
 
 impl<'tcx> StmtKind<'tcx> {
@@ -119,6 +125,13 @@ impl<'tcx> Stmt<'tcx> {
     pub fn drop_(place: Var, dropped: Var) -> Stmt<'tcx> {
         Stmt {
             kind: StmtKind::Drop(Box::new(dropped)),
+            place,
+        }
+    }
+
+    pub fn use_(place: Var, var: Var, use_kind: UseKind) -> Stmt<'tcx> {
+        Stmt {
+            kind: StmtKind::Use(var, use_kind),
             place,
         }
     }

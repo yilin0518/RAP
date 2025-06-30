@@ -1,3 +1,4 @@
+use crate::analysis::testgen::context::UseKind;
 use crate::rap_debug;
 
 use super::super::context::{Context, Stmt, StmtKind, Var};
@@ -58,6 +59,15 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
             StmtKind::Drop(var) => {
                 format!("drop({})", self.var_str(**var))
             }
+            StmtKind::Use(var, kind) => match kind {
+                UseKind::Debug => {
+                    format!(
+                        "println!(\"{}: {{:?}}\",{})",
+                        self.var_str(*var),
+                        self.var_str(*var)
+                    )
+                }
+            },
             _ => todo!(),
         }
     }
@@ -121,7 +131,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
 }
 
 impl<'tcx, I: InputGen> Synthesizer<'tcx> for FuzzDriverSynImpl<I> {
-    fn syn<C: Context<'tcx>>(&mut self, cx: C, tcx: TyCtxt<'tcx>) -> String {
-        format!("{}\n{}", self.header_str(), self.main_str(&cx))
+    fn syn<C: Context<'tcx>>(&mut self, cx: &C, tcx: TyCtxt<'tcx>) -> String {
+        format!("{}\n{}", self.header_str(), self.main_str(cx))
     }
 }

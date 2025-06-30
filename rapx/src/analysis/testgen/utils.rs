@@ -6,7 +6,7 @@ use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::print::{FmtPrinter, Printer};
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_trait_selection::infer::InferCtxtExt;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 /// return all DefId of all pub APIs
 pub fn get_all_pub_apis(tcx: TyCtxt<'_>) -> Vec<DefId> {
@@ -180,9 +180,12 @@ pub fn ty_check_ptr<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> PtrCheckResult {
 /// only count local api
 pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>) -> (usize, usize) {
     let inner_graph = graph.inner_graph();
+    let mut estimated_cover = HashSet::new();
     let num_total = get_all_pub_apis(tcx).len();
-    let mut num_reachable = 0;
+    // let mut num_reachable = 0;
     let mut reachable = vec![false; inner_graph.node_count()];
+
+    // initalize worklist
     let mut worklist = VecDeque::from_iter(inner_graph.node_indices().filter(|index| {
         match inner_graph[*index] {
             DepNode::Ty(ty) => {
@@ -209,7 +212,7 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
     while let Some(index) = worklist.pop_front() {
         if let DepNode::Api(did, _) = inner_graph[index] {
             if did.is_local() {
-                num_reachable += 1;
+                estimated_cover.insert(did);
             }
         }
 
@@ -249,7 +252,7 @@ pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>)
             }
         }
     }
-    (num_reachable, num_total)
+    (estimated_cover.len(), num_total)
 }
 
 pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(Ty<'tcx>) -> bool) {
@@ -287,13 +290,4 @@ pub fn effective_path_str<'tcx>(
     rap_info!("Effective path for {:?} is: {}", def_id, res);
 
     res
-
-    // let ns = Namespace::TypeNS;
-    // FmtPrinter::print_string(tcx, ns, |cx| {
-    //     if !cx.try_print_visible_def_path(def_id)? {
-    //         cx.print_def_path(def_id, args)?;
-    //     }
-    //     Ok(())
-    // })
-    // .unwrap()
 }

@@ -1,10 +1,16 @@
-use crate::analysis::core::alias::mop::FnMap;
-use crate::analysis::safedrop::SafeDropGraph;
+use crate::analysis::{
+    core::alias_analysis::mop::FnMap,
+    safedrop::SafeDropGraph
+};
 use crate::rap_error;
 use rustc_data_structures::fx::FxHashSet;
-use rustc_middle::mir::Operand::{Constant, Copy, Move};
-use rustc_middle::mir::{Operand, Place, TerminatorKind};
-use rustc_middle::ty::{TyCtxt, TyKind, TypingEnv};
+use rustc_middle::{
+    ty::{TyCtxt, TyKind, TypingEnv},
+    mir::{
+        Place, TerminatorKind,
+        Operand::{self, Constant, Copy, Move}
+    }
+};
 use std::collections::{HashMap, HashSet};
 
 pub const VISIT_LIMIT: usize = 1000;

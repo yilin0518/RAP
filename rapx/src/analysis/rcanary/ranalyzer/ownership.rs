@@ -1,10 +1,12 @@
-use std::collections::HashSet;
-use std::fmt::Debug;
+use std::{
+    collections::HashSet,
+    fmt::Debug,
+};
 use z3::ast;
 
 use rustc_middle::ty::Ty;
 
-use crate::analysis::core::heap::default::TyWithIndex;
+use crate::analysis::core::heap_analysis::default::TyWithIndex;
 
 #[derive(Clone, Debug)]
 pub struct Taint<'tcx> {

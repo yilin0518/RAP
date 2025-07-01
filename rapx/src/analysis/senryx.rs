@@ -24,9 +24,13 @@ use rustc_middle::ty::TyCtxt;
 use std::collections::{HashMap, HashSet};
 use visitor::{BodyVisitor, CheckResult};
 
-use super::core::alias::mop::{FnMap, MopAlias};
-use super::core::alias::AliasAnalysis;
-use super::Analysis;
+use crate::analysis::{
+    Analysis,
+    core::alias_analysis::{
+        AliasAnalysis,
+        mop::{FnMap, MopAlias}
+    }
+};
 
 macro_rules! cond_print {
     ($cond:expr, $($t:tt)*) => {if $cond {rap_warn!($($t)*)} else {rap_info!($($t)*)}};

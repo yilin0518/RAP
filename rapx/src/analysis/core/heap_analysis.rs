@@ -1,7 +1,7 @@
 pub mod default;
 
 use rustc_abi::VariantIdx;
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 
 use std::{
@@ -11,24 +11,46 @@ use std::{
 
 use crate::{rap_info, Analysis};
 
-pub type OwnerUnit = (RawTypeOwner, Vec<bool>);
-pub type AdtOwner = HashMap<DefId, Vec<OwnerUnit>>;
-pub type Unique = HashSet<DefId>;
-pub type OwnershipLayout = Vec<RawTypeOwner>;
-pub type RustBV = Vec<bool>;
-type TyMap<'tcx> = HashMap<Ty<'tcx>, String>;
-type Parameters = HashSet<usize>;
-
-pub trait HeapAnalysis: Analysis {
-    fn get_all_items(&mut self) -> AdtOwner;
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum RawTypeOwner {
+    Unowned = 0,
+    Owned = 1,
+    Unknown = 2,
 }
 
-/// We encapsulate the interface for identifying heap items in a struct named `HeapItem`.
-/// This struct is a zero-sized type (ZST), so creating and using it does not incur any overhead.
-/// These interfaces typically take at least two fixed inputs.
-/// One is the context metadata of `rCanary`, which stores the cache for ADT analysis
-/// (of course, users do not need to know the specific information stored).
-/// The second input is the type that the user needs to process, along with other parameters.
+impl Default for RawTypeOwner {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+impl RawTypeOwner {
+    pub fn is_owned(&self) -> bool {
+        match self {
+            RawTypeOwner::Owned => true,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for RawTypeOwner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = match self {
+            RawTypeOwner::Unowned => "0",
+            RawTypeOwner::Owned => "1",
+            RawTypeOwner::Unknown => "2",
+        };
+        write!(f, "{}", name)
+    }
+}
+
+pub type HAResult = HashMap<DefId, Vec<(RawTypeOwner, Vec<bool>)>>;
+
+pub trait HeapAnalysis: Analysis {
+    fn get_all_items(&mut self) -> HAResult;
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct HeapItem;
 
@@ -54,7 +76,7 @@ impl HeapItem {
     ///  use rap::analysis::core::heap_item::HeapItem;
     ///  let ans = HeapItem::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_adt<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_adt<'tcx>(adt_owner: HAResult, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
@@ -91,7 +113,7 @@ impl HeapItem {
     /// use rap::analysis::core::heap_item::HeapItem;
     /// let ans = HeapItem::is_struct(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_struct<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_struct<'tcx>(adt_owner: HAResult, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_struct() && !adtdef.is_union() {
@@ -131,7 +153,7 @@ impl HeapItem {
     /// use rap::analysis::core::heap_item::HeapItem;
     /// let ans = HeapItem::is_enum(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_enum<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_enum<'tcx>(adt_owner: HAResult, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_enum() {
@@ -174,7 +196,7 @@ impl HeapItem {
     /// let ans = HeapItem::is_enum_vidx(rcanary.rcx, vec.ty, 1);
     /// ```
     pub fn is_enum_vidx<'tcx>(
-        adt_owner: AdtOwner,
+        adt_owner: HAResult,
         ty: Ty<'tcx>,
         idx: usize,
     ) -> Result<bool, &'static str> {
@@ -220,7 +242,7 @@ impl HeapItem {
     /// let ans = HeapItem::is_enum_flattened(rcanary.rcx, vec.ty);
     /// ```
     pub fn is_enum_flattened<'tcx>(
-        adt_owner: AdtOwner,
+        adt_owner: HAResult,
         ty: Ty<'tcx>,
     ) -> Result<Vec<bool>, &'static str> {
         match ty.kind() {
@@ -244,12 +266,6 @@ impl HeapItem {
     }
 }
 
-/// We encapsulate the interface for identifying isolated parameters in a struct named `IsolatedParameter`.
-/// This struct is a zero-sized type (ZST), so creating and using it does not incur any overhead.
-/// These interfaces typically take at least two fixed inputs.
-/// One is the context metadata of `rCanary`, which stores the cache for ADT analysis
-/// (of course, users do not need to know the specific information stored).
-/// The second input is the type that the user needs to process, along with other parameters.
 pub struct IsolatedParameter;
 
 impl IsolatedParameter {
@@ -276,7 +292,7 @@ impl IsolatedParameter {
     ///  use rap::analysis::core::heap_item::IsolatedParameter;
     ///  let ans = IsolatedParameter::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_adt<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_adt<'tcx>(adt_owner: HAResult, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
@@ -314,7 +330,7 @@ impl IsolatedParameter {
     ///  use rap::analysis::core::heap_item::IsolatedParameter;
     ///  let ans = IsolatedParameter::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_struct<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_struct<'tcx>(adt_owner: HAResult, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_struct() && !adtdef.is_union() {
@@ -356,7 +372,7 @@ impl IsolatedParameter {
     ///  use rap::analysis::core::heap_item::IsolatedParameter;
     ///  let ans = IsolatedParameter::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_enum<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_enum<'tcx>(adt_owner: HAResult, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_enum() {
@@ -400,7 +416,7 @@ impl IsolatedParameter {
     ///  let ans = IsolatedParameter::is_enum_vidx(rcanary.rcx, vec.ty, 1);
     /// ```
     pub fn is_enum_vidx<'tcx>(
-        adt_owner: AdtOwner,
+        adt_owner: HAResult,
         ty: Ty<'tcx>,
         idx: usize,
     ) -> Result<bool, &'static str> {
@@ -449,7 +465,7 @@ impl IsolatedParameter {
     ///  let ans = IsolatedParameter::is_enum_flattened(rcanary.rcx, vec.ty);
     /// ```
     pub fn is_enum_flattened<'tcx>(
-        adt_owner: AdtOwner,
+        adt_owner: HAResult,
         ty: Ty<'tcx>,
     ) -> Result<Vec<Vec<bool>>, &'static str> {
         match ty.kind() {
@@ -488,7 +504,7 @@ impl IsolatedParam {
 
 #[derive(Clone)]
 struct IsolatedParamFieldSubst {
-    parameters: Parameters,
+    parameters: HashSet<usize>,
 }
 
 impl<'tcx> IsolatedParamFieldSubst {
@@ -498,11 +514,11 @@ impl<'tcx> IsolatedParamFieldSubst {
         }
     }
 
-    pub fn parameters(&self) -> &Parameters {
+    pub fn parameters(&self) -> &HashSet<usize> {
         &self.parameters
     }
 
-    pub fn parameters_mut(&mut self) -> &mut Parameters {
+    pub fn parameters_mut(&mut self) -> &mut HashSet<usize> {
         &mut self.parameters
     }
 
@@ -515,9 +531,9 @@ impl<'tcx> IsolatedParamFieldSubst {
 struct IsolatedParamPropagation<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,
     record: Vec<bool>,
-    unique: Unique,
+    unique: HashSet<DefId>,
     source_enum: bool,
-    ref_adt_owner: &'a AdtOwner,
+    ref_adt_owner: &'a HAResult,
 }
 
 impl<'tcx, 'a> IsolatedParamPropagation<'tcx, 'a> {
@@ -525,7 +541,7 @@ impl<'tcx, 'a> IsolatedParamPropagation<'tcx, 'a> {
         tcx: TyCtxt<'tcx>,
         record: Vec<bool>,
         source_enum: bool,
-        ref_adt_owner: &'a AdtOwner,
+        ref_adt_owner: &'a HAResult,
     ) -> Self {
         Self {
             tcx,
@@ -540,7 +556,7 @@ impl<'tcx, 'a> IsolatedParamPropagation<'tcx, 'a> {
         &mut self.record
     }
 
-    pub fn unique_mut(&mut self) -> &mut Unique {
+    pub fn unique_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.unique
     }
 
@@ -548,7 +564,7 @@ impl<'tcx, 'a> IsolatedParamPropagation<'tcx, 'a> {
         self.source_enum
     }
 
-    pub fn owner(&self) -> &'a AdtOwner {
+    pub fn owner(&self) -> &'a HAResult {
         self.ref_adt_owner
     }
 }
@@ -557,12 +573,12 @@ impl<'tcx, 'a> IsolatedParamPropagation<'tcx, 'a> {
 struct OwnerPropagation<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,
     ownership: RawTypeOwner,
-    unique: Unique,
-    ref_adt_owner: &'a AdtOwner,
+    unique: HashSet<DefId>,
+    ref_adt_owner: &'a HAResult,
 }
 
 impl<'tcx, 'a> OwnerPropagation<'tcx, 'a> {
-    pub fn new(tcx: TyCtxt<'tcx>, ownership: RawTypeOwner, ref_adt_owner: &'a AdtOwner) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, ownership: RawTypeOwner, ref_adt_owner: &'a HAResult) -> Self {
         Self {
             tcx,
             ownership,
@@ -575,11 +591,11 @@ impl<'tcx, 'a> OwnerPropagation<'tcx, 'a> {
         self.ownership
     }
 
-    pub fn unique_mut(&mut self) -> &mut Unique {
+    pub fn unique_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.unique
     }
 
-    pub fn owner(&self) -> &'a AdtOwner {
+    pub fn owner(&self) -> &'a HAResult {
         self.ref_adt_owner
     }
 }
@@ -587,15 +603,15 @@ impl<'tcx, 'a> OwnerPropagation<'tcx, 'a> {
 #[derive(Clone)]
 pub struct DefaultOwnership<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,
-    unique: Unique,
-    ref_adt_owner: &'a AdtOwner,
+    unique: HashSet<DefId>,
+    ref_adt_owner: &'a HAResult,
     res: RawTypeOwner,
     param: bool,
     ptr: bool,
 }
 
 impl<'tcx, 'a> DefaultOwnership<'tcx, 'a> {
-    pub fn new(tcx: TyCtxt<'tcx>, ref_adt_owner: &'a AdtOwner) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, ref_adt_owner: &'a HAResult) -> Self {
         Self {
             tcx,
             unique: HashSet::new(),
@@ -610,11 +626,11 @@ impl<'tcx, 'a> DefaultOwnership<'tcx, 'a> {
         self.tcx
     }
 
-    pub fn unique(&self) -> &Unique {
+    pub fn unique(&self) -> &HashSet<DefId> {
         &self.unique
     }
 
-    pub fn unique_mut(&mut self) -> &mut Unique {
+    pub fn unique_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.unique
     }
 
@@ -654,7 +670,7 @@ impl<'tcx, 'a> DefaultOwnership<'tcx, 'a> {
         self.ptr == true
     }
 
-    pub fn owner(&self) -> &'a AdtOwner {
+    pub fn owner(&self) -> &'a HAResult {
         self.ref_adt_owner
     }
 }
@@ -662,7 +678,7 @@ impl<'tcx, 'a> DefaultOwnership<'tcx, 'a> {
 #[derive(Clone)]
 pub struct FindPtr<'tcx> {
     tcx: TyCtxt<'tcx>,
-    unique: Unique,
+    unique: HashSet<DefId>,
     ptr: bool,
 }
 
@@ -670,7 +686,7 @@ impl<'tcx> FindPtr<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,
-            unique: Unique::default(),
+            unique: HashSet::<DefId>::default(),
             ptr: false,
         }
     }
@@ -679,11 +695,11 @@ impl<'tcx> FindPtr<'tcx> {
         self.tcx
     }
 
-    pub fn unique(&self) -> &Unique {
+    pub fn unique(&self) -> &HashSet<DefId> {
         &self.unique
     }
 
-    pub fn unique_mut(&mut self) -> &mut Unique {
+    pub fn unique_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.unique
     }
 
@@ -701,11 +717,6 @@ pub fn is_display_verbose() -> bool {
         Some(_) => true,
         _ => false,
     }
-}
-pub fn mir_body(tcx: TyCtxt<'_>, def_id: DefId) -> &rustc_middle::mir::Body<'_> {
-    //let def = ty::InstanceDef::Item(def_id);
-    let def = ty::InstanceKind::Item(def_id);
-    tcx.instance_mir(def)
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default)]
@@ -757,49 +768,11 @@ impl<'tcx> IndexedTy<'tcx> {
     }
 }
 
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum RawTypeOwner {
-    Unowned = 0,
-    Owned = 1,
-    Uninit = 2,
-}
 
-impl Default for RawTypeOwner {
-    fn default() -> Self {
-        Self::Uninit
-    }
-}
-
-impl RawTypeOwner {
-    pub fn is_owned(&self) -> bool {
-        match self {
-            RawTypeOwner::Owned => true,
-            RawTypeOwner::Unowned => false,
-            RawTypeOwner::Uninit => false,
-        }
-    }
-}
-
-impl fmt::Display for RawTypeOwner {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let name = match self {
-            RawTypeOwner::Unowned => "0",
-            RawTypeOwner::Owned => "1",
-            RawTypeOwner::Uninit => "2",
-        };
-        write!(f, "{}", name)
-    }
-}
-
-pub enum TypeOwner<'tcx> {
-    Owned(Ty<'tcx>),
-    Unowned,
-}
 
 #[derive(Clone, Debug)]
 pub struct OwnershipLayoutResult {
-    layout: OwnershipLayout,
+    layout: Vec<RawTypeOwner>,
     param: bool,
     requirement: bool,
     owned: bool,
@@ -815,11 +788,11 @@ impl OwnershipLayoutResult {
         }
     }
 
-    pub fn layout(&self) -> &OwnershipLayout {
+    pub fn layout(&self) -> &Vec<RawTypeOwner> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut OwnershipLayout {
+    pub fn layout_mut(&mut self) -> &mut Vec<RawTypeOwner> {
         &mut self.layout
     }
 

@@ -5,8 +5,8 @@ use rustc_middle::{
         BasicBlock, BasicBlockData, Body, Local, LocalDecl, Operand, TerminatorKind,
     },
     ty::{
-        self, EarlyBinder, GenericArgKind, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable,
-        TypeVisitor,
+        self, EarlyBinder, GenericArgKind, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable, TypeVisitor, 
+        InstanceKind::Item 
     },
 };
 use rustc_span::def_id::DefId;
@@ -17,10 +17,10 @@ use crate::rap_debug;
 
 pub struct DefaultHeapAnalysis<'tcx> {
     tcx: TyCtxt<'tcx>,
-    adt_owner: AdtOwner,
-    fn_set: Unique,
-    ty_map: TyMap<'tcx>,
-    adt_recorder: Unique,
+    adt_owner: HAResult,
+    fn_set: HashSet<DefId>,
+    ty_map: HashMap<Ty<'tcx>, String>,
+    adt_recorder: HashSet<DefId>,
 }
 
 impl<'tcx> Analysis for DefaultHeapAnalysis<'tcx> {
@@ -36,7 +36,7 @@ impl<'tcx> Analysis for DefaultHeapAnalysis<'tcx> {
 }
 
 impl<'tcx> HeapAnalysis for DefaultHeapAnalysis<'tcx> {
-    fn get_all_items(&mut self) -> AdtOwner {
+    fn get_all_items(&mut self) -> HAResult {
         self.adt_owner.clone()
     }
 }
@@ -65,39 +65,39 @@ impl<'tcx> DefaultHeapAnalysis<'tcx> {
         }
     }
 
-    pub fn ty_map(&self) -> &TyMap<'tcx> {
+    pub fn ty_map(&self) -> &HashMap<Ty<'tcx>, String> {
         &self.ty_map
     }
 
-    pub fn ty_map_mut(&mut self) -> &mut TyMap<'tcx> {
+    pub fn ty_map_mut(&mut self) -> &mut HashMap<Ty<'tcx>, String> {
         &mut self.ty_map
     }
 
-    pub fn fn_set(&self) -> &Unique {
+    pub fn fn_set(&self) -> &HashSet<DefId> {
         &self.fn_set
     }
 
-    pub fn fn_set_mut(&mut self) -> &mut Unique {
+    pub fn fn_set_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.fn_set
     }
 
-    pub fn adt_recorder(&self) -> &Unique {
+    pub fn adt_recorder(&self) -> &HashSet<DefId> {
         &self.adt_recorder
     }
 
-    pub fn adt_recorder_mut(&mut self) -> &mut Unique {
+    pub fn adt_recorder_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.adt_recorder
     }
 
-    pub fn adt_owner(&self) -> &AdtOwner {
+    pub fn adt_owner(&self) -> &HAResult {
         &self.adt_owner
     }
 
-    pub fn adt_owner_mut(&mut self) -> &mut AdtOwner {
+    pub fn adt_owner_mut(&mut self) -> &mut HAResult {
         &mut self.adt_owner
     }
 
-    pub fn format_owner_unit(unit: &OwnerUnit) -> String {
+    pub fn format_owner_unit(unit: &(RawTypeOwner, Vec<bool>)) -> String {
         let (owner, flags) = unit;
         let vec_str = flags
             .iter()
@@ -160,7 +160,7 @@ impl<'tcx> DefaultHeapAnalysis<'tcx> {
         for each_mir in mir_keys {
             // Get the defid of current crate and get mir Body through this id
             let def_id = each_mir.to_def_id();
-            let body = mir_body(tcx, def_id);
+            let body = tcx.instance_mir(Item(def_id));
 
             // Insert the defid to hashset if is not existed and visit the body
             if self.fn_set_mut().insert(def_id) {
@@ -400,7 +400,7 @@ impl<'tcx> Visitor<'tcx> for DefaultHeapAnalysis<'tcx> {
                 Operand::Constant(constant) => match constant.ty().kind() {
                     ty::FnDef(def_id, ..) => {
                         if self.tcx.is_mir_available(*def_id) && self.fn_set_mut().insert(*def_id) {
-                            let body = mir_body(self.tcx, *def_id);
+                            let body = self.tcx.instance_mir(Item(*def_id));
                             self.visit_body(body);
                         }
                     }
@@ -773,7 +773,7 @@ impl<'tcx> Encoder {
     pub fn encode(
         tcx: TyCtxt<'tcx>,
         ty: Ty<'tcx>,
-        adt_owner: AdtOwner,
+        adt_owner: HAResult,
         variant: Option<VariantIdx>,
     ) -> OwnershipLayoutResult {
         match ty.kind() {

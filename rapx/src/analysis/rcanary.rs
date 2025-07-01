@@ -1,7 +1,7 @@
 pub mod ranalyzer;
 
 use crate::analysis::{
-    core::heap::{default::DefaultHeapAnalysis, AdtOwner, HeapAnalysis},
+    core::heap_analysis::{default::DefaultHeapAnalysis, HAResult, HeapAnalysis},
     Analysis,
 };
 use ranalyzer::{FlowAnalysis, IcxSliceFroBlock, IntraFlowContext, MirGraph};
@@ -12,12 +12,12 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub struct rCanary<'tcx> {
     tcx: TyCtxt<'tcx>,
-    adt_owner: AdtOwner,
+    adt_owner: HAResult,
     mir_graph: MirGraph,
 }
 
 impl<'tcx> rCanary<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, adt_owner: AdtOwner) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, adt_owner: HAResult) -> Self {
         Self {
             tcx,
             adt_owner: adt_owner,
@@ -38,11 +38,11 @@ impl<'tcx> rCanary<'tcx> {
         self.tcx
     }
 
-    pub fn adt_owner(&self) -> &AdtOwner {
+    pub fn adt_owner(&self) -> &HAResult {
         &self.adt_owner
     }
 
-    pub fn adt_owner_mut(&mut self) -> &mut AdtOwner {
+    pub fn adt_owner_mut(&mut self) -> &mut HAResult {
         &mut self.adt_owner
     }
 

@@ -1,10 +1,12 @@
-use super::graph::*;
-use super::types::*;
-use crate::analysis::core::alias::mop::{FnMap, MopAAFact};
-use crate::rap_error;
-use rustc_middle::mir::{Operand, Place, ProjectionElem, TerminatorKind};
-use rustc_middle::ty;
-use rustc_middle::ty::{TyCtxt, TypingEnv};
+use crate::{
+    rap_error,
+    analysis::core::alias_analysis::mop::{FnMap, MopAAFact},
+};
+use super::{graph::*,types::*};
+use rustc_middle::{
+    ty::{self, TyCtxt, TypingEnv},
+    mir::{Operand, Place, ProjectionElem, TerminatorKind}
+};
 
 impl<'tcx> SafeDropGraph<'tcx> {
     /* alias analysis for a single block */

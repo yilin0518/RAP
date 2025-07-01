@@ -4,18 +4,24 @@ pub mod order;
 pub mod ownership;
 
 use rustc_middle::mir::{Body, Terminator};
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{
+    TyCtxt,
+    InstanceKind::Item,
+};
 use rustc_span::def_id::DefId;
 
-use super::{rCanary, IcxMut, IcxSliceMut, Rcx, RcxMut};
-use crate::analysis::core::heap::{
-    default::TyWithIndex, mir_body, AdtOwner, OwnershipLayout, Unique,
+use crate::analysis::core::heap_analysis::RawTypeOwner;
+use crate::analysis::core::heap_analysis::{
+    default::TyWithIndex, HAResult,
 };
+use super::{rCanary, IcxMut, IcxSliceMut, Rcx, RcxMut};
 use ownership::{IntraVar, Taint};
 
-use std::collections::{HashMap, HashSet};
-use std::env;
-use std::fmt::{Debug, Formatter};
+use std::{
+    env,
+    fmt::{Debug, Formatter},
+    collections::{HashMap, HashSet}
+};
 
 pub type MirGraph = HashMap<DefId, Graph>;
 pub type ToPo = Vec<usize>;
@@ -74,7 +80,7 @@ impl Graph {
 
 pub struct FlowAnalysis<'tcx, 'a> {
     rcx: &'a mut rCanary<'tcx>,
-    fn_set: Unique,
+    fn_set: HashSet<DefId>,
 }
 
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
@@ -85,11 +91,11 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
         }
     }
 
-    pub fn fn_set(&self) -> &Unique {
+    pub fn fn_set(&self) -> &HashSet<DefId> {
         &self.fn_set
     }
 
-    pub fn fn_set_mut(&mut self) -> &mut Unique {
+    pub fn fn_set_mut(&mut self) -> &mut HashSet<DefId> {
         &mut self.fn_set
     }
 
@@ -161,12 +167,12 @@ impl<'tcx> NodeOrder<'tcx> {
 }
 
 struct IntraFlowAnalysis<'tcx, 'ctx, 'a> {
-    rcx: &'a rCanary<'tcx>,
+    pub rcx: &'a rCanary<'tcx>,
     icx: IntraFlowContext<'tcx, 'ctx>,
     icx_slice: IcxSliceFroBlock<'tcx, 'ctx>,
-    did: DefId,
-    body: &'a Body<'tcx>,
-    graph: &'a Graph,
+    pub def_id: DefId,
+    pub body: &'a Body<'tcx>,
+    pub graph: &'a Graph,
     taint_flag: bool,
     taint_source: Vec<Terminator<'tcx>>,
 }
@@ -174,19 +180,19 @@ struct IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
     pub fn new(
         rcx: &'a rCanary<'tcx>,
-        did: DefId,
-        //unique: &'a mut Unique,
+        def_id: DefId,
+        //unique: &'a mut HashSet<DefId>,
     ) -> Self {
-        let body = mir_body(rcx.tcx(), did);
+        let body = rcx.tcx.instance_mir(Item(def_id));
         let v_len = body.local_decls.len();
         let b_len = body.basic_blocks.len();
-        let graph = rcx.mir_graph().get(&did).unwrap();
+        let graph = rcx.mir_graph().get(&def_id).unwrap();
 
         Self {
             rcx,
             icx: IntraFlowContext::new(b_len, v_len),
             icx_slice: IcxSliceFroBlock::new_for_block_0(v_len),
-            did,
+            def_id,
             body,
             graph,
             taint_flag: false,
@@ -194,21 +200,8 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn did(&self) -> DefId {
-        self.did
-    }
-
-    pub fn body(&self) -> &'a Body<'tcx> {
-        self.body
-    }
-
-    pub fn owner(&self) -> &AdtOwner {
-        self.rcx().adt_owner()
-    }
-
-    pub fn graph(&self) -> &Graph {
-        self.graph
+    pub fn owner(&self) -> &HAResult {
+        self.rcx.adt_owner()
     }
 
     pub fn add_taint(&mut self, terminator: Terminator<'tcx>) {
@@ -260,7 +253,7 @@ pub struct IntraFlowContext<'tcx, 'ctx> {
     // the ty in icx is the Rust ownership layout of the pointing instance
     // Note: the ty is not the exact ty of the local
     ty: IOPairForGraph<TyWithIndex<'tcx>>,
-    layout: IOPairForGraph<OwnershipLayout>,
+    layout: IOPairForGraph<Vec<RawTypeOwner>>,
 }
 
 impl<'tcx, 'ctx, 'icx> IntraFlowContext<'tcx, 'ctx> {
@@ -306,11 +299,11 @@ impl<'tcx, 'ctx, 'icx> IntraFlowContext<'tcx, 'ctx> {
         &mut self.ty
     }
 
-    pub fn layout(&self) -> &IOPairForGraph<OwnershipLayout> {
+    pub fn layout(&self) -> &IOPairForGraph<Vec<RawTypeOwner>> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut IOPairForGraph<OwnershipLayout> {
+    pub fn layout_mut(&mut self) -> &mut IOPairForGraph<Vec<RawTypeOwner>> {
         &mut self.layout
     }
 
@@ -419,7 +412,7 @@ pub struct IcxSliceFroBlock<'tcx, 'ctx> {
     // the ty in icx is the Rust ownership layout of the pointing instance
     // Note: the ty is not the exact ty of the local
     ty: Vec<TyWithIndex<'tcx>>,
-    layout: Vec<OwnershipLayout>,
+    layout: Vec<Vec<RawTypeOwner>>,
 }
 
 impl<'tcx, 'ctx> IcxSliceFroBlock<'tcx, 'ctx> {
@@ -485,11 +478,11 @@ impl<'tcx, 'ctx> IcxSliceFroBlock<'tcx, 'ctx> {
         &mut self.ty
     }
 
-    pub fn layout(&self) -> &Vec<OwnershipLayout> {
+    pub fn layout(&self) -> &Vec<Vec<RawTypeOwner>> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut Vec<OwnershipLayout> {
+    pub fn layout_mut(&mut self) -> &mut Vec<Vec<RawTypeOwner>> {
         &mut self.layout
     }
 

@@ -11,11 +11,11 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 
 use crate::analysis::core::{
-    alias::{
+    alias_analysis::{
         mop::{FnMap, MopAlias},
         AliasAnalysis,
     },
-    heap::{default::DefaultHeapAnalysis, AdtOwner, HeapAnalysis},
+    heap_analysis::{default::DefaultHeapAnalysis, HAResult, HeapAnalysis},
 };
 use graph::SafeDropGraph;
 use safedrop::*;
@@ -51,7 +51,7 @@ impl<'tcx> SafeDrop<'tcx> {
     }
 }
 
-pub fn query_safedrop(tcx: TyCtxt, fn_map: &FnMap, def_id: DefId, adt_owner: AdtOwner) {
+pub fn query_safedrop(tcx: TyCtxt, fn_map: &FnMap, def_id: DefId, adt_owner: HAResult) {
     /* filter const mir */
     if let Some(_other) = tcx.hir_body_const_context(def_id.expect_local()) {
         return;

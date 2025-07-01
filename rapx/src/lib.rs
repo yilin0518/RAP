@@ -23,11 +23,11 @@ extern crate stable_mir;
 
 use analysis::{
     core::{
-        alias::default::DefaultAlias,
+        alias_analysis::default::DefaultAlias,
         api_dep::ApiDep,
         call_graph::CallGraph,
         dataflow::DataFlow,
-        heap::{default::DefaultHeapAnalysis, HeapAnalysis},
+        heap_analysis::{default::DefaultHeapAnalysis, HeapAnalysis},
         range_analysis::{DefaultRange, SSATrans},
     },
     opt::Opt,

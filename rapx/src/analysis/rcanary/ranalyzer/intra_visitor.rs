@@ -1,11 +1,11 @@
 use rustc_abi::VariantIdx;
 use rustc_data_structures::graph;
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{
-    AggregateKind, BasicBlock, BasicBlockData, Body, Local, Operand, Place, ProjectionElem, Rvalue,
-    Statement, StatementKind, Terminator, TerminatorKind,
+use rustc_middle::{
+    ty::{self, Ty, TyKind, TypeVisitable, InstanceKind::Item},
+    mir::{AggregateKind, BasicBlock, BasicBlockData, Body, Local, Operand, Place, ProjectionElem, Rvalue,
+    Statement, StatementKind, Terminator, TerminatorKind},
 };
-use rustc_middle::ty::{self, Ty, TyKind, TypeVisitable};
 use rustc_span::{source_map::Spanned, Symbol};
 
 use annotate_snippets::{Level, Renderer, Snippet};
@@ -16,13 +16,14 @@ use super::super::{IcxMut, IcxSliceMut, Rcx, RcxMut};
 use super::is_z3_goal_verbose;
 use super::ownership::IntraVar;
 use super::{FlowAnalysis, IcxSliceFroBlock, IntraFlowAnalysis};
-use crate::analysis::core::heap::{default::*, *};
-use crate::utils::log::{
-    are_spans_in_same_file, relative_pos_range, span_to_filename, span_to_line_number,
-    span_to_source_code,
+use crate::{
+    rap_debug, rap_error, rap_trace, rap_warn,
+    analysis::core::heap_analysis::{default::*, *},
+    utils::{
+        source::get_name,
+        log::{are_spans_in_same_file, relative_pos_range, span_to_filename, span_to_line_number,span_to_source_code},
+    }
 };
-use crate::utils::source::get_name;
-use crate::{rap_debug, rap_error, rap_trace, rap_warn};
 
 type Disc = Option<VariantIdx>;
 type Aggre = Option<usize>;
@@ -43,7 +44,7 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
 
         for each_mir in mir_keys {
             let def_id = each_mir.to_def_id();
-            let body = mir_body(tcx, def_id);
+            let body = tcx.instance_mir(Item(def_id));
             if graph::is_cyclic(&body.basic_blocks) {
                 continue;
             }
@@ -72,7 +73,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         solver: &'ctx z3::Solver<'ctx>,
         body: &'tcx Body<'tcx>,
     ) {
-        let topo: Vec<usize> = self.graph().get_topo().iter().map(|id| *id).collect();
+        let topo: Vec<usize> = self.graph.get_topo().iter().map(|id| *id).collect();
         for bidx in topo {
             let data = &body.basic_blocks[BasicBlock::from(bidx)];
             self.visit_block_data(ctx, goal, solver, data, bidx);
@@ -107,11 +108,11 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
     ) {
         // For node 0 there is no pre node existed!
         if bidx == 0 {
-            let mut icx_slice = IcxSliceFroBlock::new_for_block_0(self.body().local_decls.len());
+            let mut icx_slice = IcxSliceFroBlock::new_for_block_0(self.body.local_decls.len());
 
-            for arg_idx in 0..self.body().arg_count {
+            for arg_idx in 0..self.body.arg_count {
                 let idx = arg_idx + 1;
-                let ty = self.body().local_decls[Local::from_usize(idx)].ty;
+                let ty = self.body.local_decls[Local::from_usize(idx)].ty;
 
                 let ty_with_index = TyWithIndex::new(ty, None);
                 if ty_with_index == TyWithIndex(None) {
@@ -651,7 +652,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             is_ctor = false;
         } else {
             // this branch means that the assignment is the constructor of the lvalue
-            let r_place_ty = rplace.ty(&self.body().local_decls, self.tcx());
+            let r_place_ty = rplace.ty(&self.body.local_decls, self.tcx());
             let ty_with_vidx = TyWithIndex::new(r_place_ty.ty, r_place_ty.variant_index);
             match ty_with_vidx.get_priority() {
                 0 => {
@@ -780,7 +781,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             is_ctor = false;
         } else {
             // this branch means that the assignment is the constructor of the lvalue
-            let r_place_ty = rplace.ty(&self.body().local_decls, self.tcx());
+            let r_place_ty = rplace.ty(&self.body.local_decls, self.tcx());
             let ty_with_vidx = TyWithIndex::new(r_place_ty.ty, r_place_ty.variant_index);
             match ty_with_vidx.get_priority() {
                 0 => {
@@ -876,7 +877,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
         // extract the ty of the rplace, the rplace has projection like _1.0
         // rpj ty is the exact ty of rplace, the first field ty of rplace
-        let rpj_ty = rplace.ty(&self.body().local_decls, self.tcx());
+        let rpj_ty = rplace.ty(&self.body.local_decls, self.tcx());
         let rpj_fields = self.extract_projection(rplace, None);
         if rpj_fields.is_unsupported() {
             // we only support that the field depth is 1 in max
@@ -918,7 +919,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         } else {
             // this branch means that the assignment is the constructor of the lvalue
             // Note : l = r.f => l's len must be 1 if l is a pointer
-            let r_place_ty = rplace.ty(&self.body().local_decls, self.tcx());
+            let r_place_ty = rplace.ty(&self.body.local_decls, self.tcx());
             let ty_with_vidx = TyWithIndex::new(r_place_ty.ty, r_place_ty.variant_index);
             match ty_with_vidx.get_priority() {
                 0 => {
@@ -1044,7 +1045,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
         // extract the ty of the rplace, the rplace has projection like _1.0
         // rpj ty is the exact ty of rplace, the first field ty of rplace
-        let rpj_ty = rplace.ty(&self.body().local_decls, self.tcx());
+        let rpj_ty = rplace.ty(&self.body.local_decls, self.tcx());
         let rpj_fields = self.extract_projection(rplace, None);
         if rpj_fields.is_unsupported() {
             // we only support that the field depth is 1 in max
@@ -1099,7 +1100,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         } else {
             // this branch means that the assignment is the constructor of the lvalue
             // Note : l = r.f => l's len must be 1 if l is a pointer
-            let r_place_ty = rplace.ty(&self.body().local_decls, self.tcx());
+            let r_place_ty = rplace.ty(&self.body.local_decls, self.tcx());
             let ty_with_vidx = TyWithIndex::new(r_place_ty.ty, r_place_ty.variant_index);
             match ty_with_vidx.get_priority() {
                 0 => {
@@ -1200,7 +1201,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             return;
         }
 
-        let l_local_ty = self.body().local_decls[llocal].ty;
+        let l_local_ty = self.body.local_decls[llocal].ty;
         let default_ownership = self.extract_default_ty_layout(l_local_ty, Some(vidx));
         if !default_ownership.get_requirement() || default_ownership.is_empty() {
             return;
@@ -1254,7 +1255,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         }
 
         // extract the ty of the rvalue
-        let l_local_ty = self.body().local_decls[llocal].ty;
+        let l_local_ty = self.body.local_decls[llocal].ty;
         let lpj_fields = self.extract_projection(lplace, aggre);
         if lpj_fields.is_unsupported() {
             // we only support that the field depth is 1 in max
@@ -1321,7 +1322,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             // e.g., y.f= x ,that y.f (l) is non-owning
             l_ori_bv = self.icx_slice_mut().var_mut()[lu].extract();
             let extract_from_field = l_ori_bv.extract(index_needed as u32, index_needed as u32);
-            if lu > self.body().arg_count {
+            if lu > self.body.arg_count {
                 let l_f_zero_const = ast::BV::from_u64(ctx, 0, 1);
                 let constraint_l_f_ori_zero = extract_from_field._safe_eq(&l_f_zero_const).unwrap();
                 goal.assert(&constraint_l_f_ori_zero);
@@ -1444,7 +1445,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         }
 
         // extract the ty of the rvalue
-        let l_local_ty = self.body().local_decls[llocal].ty;
+        let l_local_ty = self.body.local_decls[llocal].ty;
         let lpj_fields = self.extract_projection(lplace, aggre);
         if lpj_fields.is_unsupported() {
             // we only support that the field depth is 1 in max
@@ -1512,7 +1513,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             // add: y.f -> y is not argument e.g., fn(arg1) arg1.1 = 0, cause arg is init as 1
             l_ori_bv = self.icx_slice_mut().var_mut()[lu].extract();
             let extract_from_field = l_ori_bv.extract(index_needed as u32, index_needed as u32);
-            if lu > self.body().arg_count {
+            if lu > self.body.arg_count {
                 let l_f_zero_const = ast::BV::from_u64(ctx, 0, 1);
                 let constraint_l_f_ori_zero = extract_from_field._safe_eq(&l_f_zero_const).unwrap();
                 goal.assert(&constraint_l_f_ori_zero);
@@ -1612,7 +1613,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             return;
         }
 
-        let l_local_ty = self.body().local_decls[llocal].ty;
+        let l_local_ty = self.body.local_decls[llocal].ty;
 
         // extract the ty of the rplace, the rplace has projection like _1.0
         // rpj ty is the exact ty of rplace, the first field ty of rplace
@@ -1680,7 +1681,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             // e.g., y.f= move x.f ,that y.f (l) is non-owning
             l_ori_bv = self.icx_slice_mut().var_mut()[lu].extract();
             let extract_from_field = l_ori_bv.extract(l_index_needed as u32, l_index_needed as u32);
-            if lu > self.body().arg_count {
+            if lu > self.body.arg_count {
                 let l_f_zero_const = ast::BV::from_u64(ctx, 0, 1);
                 let constraint_l_f_ori_zero = extract_from_field._safe_eq(&l_f_zero_const).unwrap();
                 goal.assert(&constraint_l_f_ori_zero);
@@ -1799,11 +1800,11 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             return;
         }
 
-        let l_local_ty = self.body().local_decls[llocal].ty;
+        let l_local_ty = self.body.local_decls[llocal].ty;
 
         // extract the ty of the rplace, the rplace has projection like _1.0
         // rpj ty is the exact ty of rplace, the first field ty of rplace
-        //let rpj_ty = rplace.ty(&self.body().local_decls, self.tcx());
+        //let rpj_ty = rplace.ty(&self.body.local_decls, self.tcx);
         let rpj_fields = self.extract_projection(rplace, None);
         if rpj_fields.is_unsupported() {
             // we only support that the field depth is 1 in max
@@ -1814,7 +1815,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
         // extract the ty of the lplace, the lplace has projection like _1.0
         // lpj ty is the exact ty of lplace, the first field ty of lplace
-        //let lpj_ty = lplace.ty(&self.body().local_decls, self.tcx());
+        //let lpj_ty = lplace.ty(&self.body.local_decls, self.tcx);
         let lpj_fields = self.extract_projection(lplace, aggre);
         if lpj_fields.is_unsupported() {
             // we only support that the field depth is 1 in max
@@ -1870,7 +1871,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             // e.g., y.f= move x.f ,that y.f (l) is non-owning
             l_ori_bv = self.icx_slice_mut().var_mut()[lu].extract();
             let extract_from_field = l_ori_bv.extract(l_index_needed as u32, l_index_needed as u32);
-            if lu > self.body().arg_count {
+            if lu > self.body.arg_count {
                 let l_f_zero_const = ast::BV::from_u64(ctx, 0, 1);
                 let constraint_l_f_ori_zero = extract_from_field._safe_eq(&l_f_zero_const).unwrap();
                 goal.assert(&constraint_l_f_ori_zero);
@@ -1950,14 +1951,14 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             return false;
         }
 
-        let l_place_ty = dest.ty(&self.body().local_decls, self.tcx());
+        let l_place_ty = dest.ty(&self.body.local_decls, self.tcx());
         if !is_place_containing_ptr(&l_place_ty.ty) {
             return false;
         }
 
         match args[0].node {
             Operand::Move(aplace) => {
-                let a_place_ty = aplace.ty(&self.body().local_decls, self.tcx());
+                let a_place_ty = aplace.ty(&self.body.local_decls, self.tcx());
                 let default_layout =
                     self.extract_default_ty_layout(a_place_ty.ty, a_place_ty.variant_index);
                 if default_layout.is_owned() {
@@ -1983,7 +1984,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             return ans;
         }
 
-        let l_place_ty = dest.ty(&self.body().local_decls, self.tcx());
+        let l_place_ty = dest.ty(&self.body.local_decls, self.tcx());
         let default_layout =
             self.extract_default_ty_layout(l_place_ty.ty, l_place_ty.variant_index);
         if !default_layout.get_requirement() || default_layout.is_empty() {
@@ -2032,14 +2033,14 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                 match constant.ty().kind() {
                     ty::FnDef(id, ..) => {
                         //rap_debug!("{:?}", id);
-                        //rap_debug!("{:?}", mir_body(self.tcx(), *id));
+                        //rap_debug!("{:?}", mir_body(self.tcx, *id));
                         match id.index.as_usize() {
                             2171 => {
                                 // this for calling std::mem::drop(TY)
                                 match args[0].node {
                                     Operand::Move(aplace) => {
                                         let a_place_ty =
-                                            dest.ty(&self.body().local_decls, self.tcx());
+                                            dest.ty(&self.body.local_decls, self.tcx());
                                         let a_ty = a_place_ty.ty;
                                         if a_ty.is_adt() {
                                             self.handle_drop(
@@ -2092,7 +2093,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                         continue;
                     }
 
-                    let a_place_ty = aplace.ty(&self.body().local_decls, self.tcx());
+                    let a_place_ty = aplace.ty(&self.body.local_decls, self.tcx());
                     let a_ty = a_place_ty.ty;
                     let is_a_ptr = a_ty.is_any_ptr();
 
@@ -2177,7 +2178,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                         continue;
                     }
 
-                    let a_ty = aplace.ty(&self.body().local_decls, self.tcx()).ty;
+                    let a_ty = aplace.ty(&self.body.local_decls, self.tcx()).ty;
                     let is_a_ptr = a_ty.is_any_ptr();
 
                     let a_ori_bv = self.icx_slice_mut().var_mut()[au].extract();
@@ -2255,8 +2256,8 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
         let l_ori_bv: ast::BV;
 
-        let l_place_ty = dest.ty(&self.body().local_decls, self.tcx());
-        let l_local_ty = self.body().local_decls[llocal].ty;
+        let l_place_ty = dest.ty(&self.body.local_decls, self.tcx());
+        let l_local_ty = self.body.local_decls[llocal].ty;
 
         let mut is_ctor = true;
         match dest.projection.len() {
@@ -2425,7 +2426,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             if len == 0 {
                 continue;
             }
-            if iidx <= self.body().arg_count {
+            if iidx <= self.body.arg_count {
                 continue;
             }
 
@@ -2459,29 +2460,29 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             }
         }
 
-        // rap_debug!("{}", self.body().local_decls.display());
-        // rap_debug!("{}", self.body().basic_blocks.display());
+        // rap_debug!("{}", self.body.local_decls.display());
+        // rap_debug!("{}", self.body.basic_blocks.display());
         // let g = format!("{}", goal);
         // rap_debug!("{}\n", g.color(Color::LightGray).bold());
 
         if result == z3::SatResult::Unsat && self.taint_flag {
-            let fn_name = get_name(self.tcx(), self.did)
+            let fn_name = get_name(self.tcx(), self.def_id)
                 .unwrap_or_else(|| Symbol::intern("no symbol available"));
 
             rap_warn!("Memory Leak detected in function {:}", fn_name);
-            let source = span_to_source_code(self.body().span);
-            let file = span_to_filename(self.body().span);
+            let source = span_to_source_code(self.body.span);
+            let file = span_to_filename(self.body.span);
             let mut snippet = Snippet::source(&source)
-                .line_start(span_to_line_number(self.body().span))
+                .line_start(span_to_line_number(self.body.span))
                 .origin(&file)
                 .fold(false);
 
             for source in self.taint_source.iter() {
-                if are_spans_in_same_file(self.body().span, source.source_info.span) {
+                if are_spans_in_same_file(self.body.span, source.source_info.span) {
                     snippet = snippet.annotation(
                         Level::Warning
                             .span(relative_pos_range(
-                                self.body().span,
+                                self.body.span,
                                 source.source_info.span,
                             ))
                             .label("Memory Leak Candidates."),
@@ -2733,7 +2734,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         &mut self,
         ty: Ty<'tcx>,
         variant: Option<VariantIdx>,
-    ) -> RustBV {
+    ) -> Vec<bool> {
         let mut res = Vec::new();
         match ty.kind() {
             TyKind::Array(..) => {
@@ -2799,7 +2800,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             // Therefore, we do not need to record the ty of such field, instead, the projection
             // records the ty of the place, it is correct, because for local constructor, we do
             // not use the type information of the filed, but only need the index to init them one by one.
-            let ty = place.ty(&self.body().local_decls, self.tcx());
+            let ty = place.ty(&self.body.local_decls, self.tcx());
             prj.pf_vec.push((aggre.unwrap(), ty.ty));
             return prj;
         }
@@ -2924,11 +2925,11 @@ fn has_projection(place: &Place) -> bool {
     };
 }
 
-fn ownership_layout_to_rustbv(layout: &OwnershipLayout) -> RustBV {
+fn ownership_layout_to_rustbv(layout: &Vec<RawTypeOwner>) -> Vec<bool> {
     let mut v = Vec::default();
     for item in layout.iter() {
         match item {
-            RawTypeOwner::Uninit => rap_error!("item of raw type owner is uninit"),
+            RawTypeOwner::Unknown => rap_error!("item of raw type owner is uninit"),
             RawTypeOwner::Unowned => v.push(false),
             RawTypeOwner::Owned => v.push(true),
         }
@@ -2936,11 +2937,11 @@ fn ownership_layout_to_rustbv(layout: &OwnershipLayout) -> RustBV {
     v
 }
 
-fn reverse_ownership_layout_to_rustbv(layout: &OwnershipLayout) -> RustBV {
+fn reverse_ownership_layout_to_rustbv(layout: &Vec<RawTypeOwner>) -> Vec<bool> {
     let mut v = Vec::default();
     for item in layout.iter() {
         match item {
-            RawTypeOwner::Uninit => rap_error!("item of raw type owner is uninit"),
+            RawTypeOwner::Unknown => rap_error!("item of raw type owner is uninit"),
             RawTypeOwner::Unowned => v.push(true),
             RawTypeOwner::Owned => v.push(false),
         }
@@ -2948,7 +2949,7 @@ fn reverse_ownership_layout_to_rustbv(layout: &OwnershipLayout) -> RustBV {
     v
 }
 
-fn rustbv_merge(a: &RustBV, b: &RustBV) -> RustBV {
+fn rustbv_merge(a: &Vec<bool>, b: &Vec<bool>) -> Vec<bool> {
     assert_eq!(a.len(), b.len());
     let mut bv = Vec::new();
     for idx in 0..a.len() {
@@ -2960,7 +2961,7 @@ fn rustbv_merge(a: &RustBV, b: &RustBV) -> RustBV {
 // Create an unsigned integer from bit bit-vector.
 // The bit-vector has n bits
 // the i'th bit (counting from 0 to n-1) is 1 if ans div 2^i mod 2 is 1.
-fn rustbv_to_int(bv: &RustBV) -> u64 {
+fn rustbv_to_int(bv: &Vec<bool>) -> u64 {
     let mut ans = 0;
     let mut base = 1;
     for tf in bv.iter() {

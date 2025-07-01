@@ -8,10 +8,9 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
 use super::{rCanary, IcxMut, IcxSliceMut, Rcx, RcxMut};
-use crate::analysis::core::heap_item::{
-    mir_body, type_visitor::TyWithIndex, AdtOwner, OwnershipLayout, Unique,
+use crate::analysis::core::heap::{
+    default::TyWithIndex, mir_body, AdtOwner, OwnershipLayout, Unique,
 };
-use crate::Elapsed;
 use ownership::{IntraVar, Taint};
 
 use std::collections::{HashMap, HashSet};
@@ -110,8 +109,6 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
         // note that the inter procedural part is inside in this function but cod in module inter_visitor
         self.intra_run();
 
-        // rap_info!("@@@@@@@@@@@@@Build Analysis:{:?}", self.rcx().get_time_build());
-        // rap_info!("@@@@@@@@@@@@@Solve Analysis:{:?}", self.rcx().get_time_solve());
     }
 }
 
@@ -170,7 +167,6 @@ struct IntraFlowAnalysis<'tcx, 'ctx, 'a> {
     did: DefId,
     body: &'a Body<'tcx>,
     graph: &'a Graph,
-    elasped: Elapsed,
     taint_flag: bool,
     taint_source: Vec<Terminator<'tcx>>,
 }
@@ -193,7 +189,6 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             did,
             body,
             graph,
-            elasped: (0, 0),
             taint_flag: false,
             taint_source: Vec::default(),
         }
@@ -214,14 +209,6 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
     pub fn graph(&self) -> &Graph {
         self.graph
-    }
-
-    pub fn get_time_build(&self) -> i64 {
-        self.elasped.0
-    }
-
-    pub fn get_time_solve(&self) -> i64 {
-        self.elasped.1
     }
 
     pub fn add_taint(&mut self, terminator: Terminator<'tcx>) {

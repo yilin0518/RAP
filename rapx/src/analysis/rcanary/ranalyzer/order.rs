@@ -31,9 +31,6 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
                 .mir_graph_mut()
                 .insert(def_id, path.graph_mut().clone());
         }
-
-        //self.rcx_mut().add_time_build(sw.elapsed_ms());
-        //sw.stop();
     }
 }
 

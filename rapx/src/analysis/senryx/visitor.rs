@@ -27,7 +27,7 @@ use super::generic_check::GenericChecker;
 use super::inter_record::InterAnalysisRecord;
 use super::matcher::UnsafeApi;
 use super::matcher::{get_arg_place, parse_unsafe_api};
-use crate::analysis::core::heap_item::AdtOwner;
+use crate::analysis::core::heap::AdtOwner;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::{

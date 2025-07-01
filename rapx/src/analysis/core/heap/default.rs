@@ -1,20 +1,45 @@
 use rustc_abi::VariantIdx;
-use rustc_middle::mir::visit::{TyContext, Visitor};
-use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, Local, LocalDecl, Operand, TerminatorKind,
-};
-use rustc_middle::ty::EarlyBinder;
-use rustc_middle::ty::{
-    self, GenericArgKind, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable, TypeVisitor,
+use rustc_middle::{
+    mir::{
+        visit::{TyContext, Visitor},
+        BasicBlock, BasicBlockData, Body, Local, LocalDecl, Operand, TerminatorKind,
+    },
+    ty::{
+        self, EarlyBinder, GenericArgKind, Ty, TyCtxt, TyKind, TypeSuperVisitable, TypeVisitable,
+        TypeVisitor,
+    },
 };
 use rustc_span::def_id::DefId;
-
-use std::collections::HashMap;
-use std::ops::ControlFlow;
+use std::{collections::HashMap, ops::ControlFlow};
 
 use super::*;
-use crate::analysis::rcanary::RcxMut;
 use crate::rap_debug;
+
+pub struct DefaultHeapAnalysis<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    adt_owner: AdtOwner,
+    fn_set: Unique,
+    ty_map: TyMap<'tcx>,
+    adt_recorder: Unique,
+}
+
+impl<'tcx> Analysis for DefaultHeapAnalysis<'tcx> {
+    fn name(&self) -> &'static str {
+        "Default heap analysis."
+    }
+    fn run(&mut self) {
+        self.start();
+    }
+    fn reset(&mut self) {
+        todo!();
+    }
+}
+
+impl<'tcx> HeapAnalysis for DefaultHeapAnalysis<'tcx> {
+    fn get_all_items(&mut self) -> AdtOwner {
+        self.adt_owner.clone()
+    }
+}
 
 // This function is aiming at resolving problems due to 'TyContext' not implementing 'Clone' trait,
 // thus we call function 'copy_ty_context' to simulate 'self.clone()'.
@@ -29,11 +54,72 @@ pub(crate) fn copy_ty_context(tc: &TyContext) -> TyContext {
     }
 }
 
-impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
-    // The 'visitor' method is our main pass of the constructor part in type analysis,
-    // it will perform several important procedural to determine whether an adt definition (adt-def)
-    // will occupy at least one heap allocation, reflecting holding heap-ownership in RAP system.
-    //
+impl<'tcx> DefaultHeapAnalysis<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+        Self {
+            tcx,
+            adt_owner: HashMap::default(),
+            fn_set: HashSet::new(),
+            ty_map: HashMap::new(),
+            adt_recorder: HashSet::new(),
+        }
+    }
+
+    pub fn ty_map(&self) -> &TyMap<'tcx> {
+        &self.ty_map
+    }
+
+    pub fn ty_map_mut(&mut self) -> &mut TyMap<'tcx> {
+        &mut self.ty_map
+    }
+
+    pub fn fn_set(&self) -> &Unique {
+        &self.fn_set
+    }
+
+    pub fn fn_set_mut(&mut self) -> &mut Unique {
+        &mut self.fn_set
+    }
+
+    pub fn adt_recorder(&self) -> &Unique {
+        &self.adt_recorder
+    }
+
+    pub fn adt_recorder_mut(&mut self) -> &mut Unique {
+        &mut self.adt_recorder
+    }
+
+    pub fn adt_owner(&self) -> &AdtOwner {
+        &self.adt_owner
+    }
+
+    pub fn adt_owner_mut(&mut self) -> &mut AdtOwner {
+        &mut self.adt_owner
+    }
+
+    pub fn format_owner_unit(unit: &OwnerUnit) -> String {
+        let (owner, flags) = unit;
+        let vec_str = flags
+            .iter()
+            .map(|&b| if b { "1" } else { "0" })
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("({}, [{}])", owner, vec_str)
+    }
+
+    pub fn output(&mut self) {
+        for elem in self.adt_owner() {
+            let name = format!("{:?}", EarlyBinder::skip_binder(self.tcx.type_of(*elem.0)));
+            let owning = elem
+                .1
+                .iter()
+                .map(Self::format_owner_unit)
+                .collect::<Vec<_>>()
+                .join(", ");
+            rap_info!("{} {}", name, owning);
+        }
+    }
+
     // From the top-down method of our approach, this 'visitor' is the set of several sub-phases
     // which means it contains multiple sub-visitors to make whole method 'self.visitor()' work.
     //
@@ -43,7 +129,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
     //     pt2 Array: [bool;N] indicates whether each generic parameter will have a raw param
     //
     // Those 2 parts can accelerate heap-ownership inference in the data-flow analysis.
-    pub fn visitor(&mut self) {
+    pub fn start(&mut self) {
         #[inline(always)]
         fn start_channel<M>(mut method: M, v_did: &Vec<DefId>)
         where
@@ -55,11 +141,11 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
         }
 
         #[inline(always)]
-        fn show_owner(ref_type_analysis: &mut TypeAnalysis) {
+        fn show_owner(ref_type_analysis: &mut DefaultHeapAnalysis) {
             for elem in ref_type_analysis.adt_owner() {
                 let name = format!(
                     "{:?}",
-                    EarlyBinder::skip_binder(ref_type_analysis.tcx().type_of(*elem.0))
+                    EarlyBinder::skip_binder(ref_type_analysis.tcx.type_of(*elem.0))
                 );
                 let owning = format!("{:?}", elem.1);
                 rap_debug!("ADT analysis: {} {}", name, owning);
@@ -68,7 +154,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
 
         // Get the Global TyCtxt from rustc
         // Grasp all mir Keys defined in current crate
-        let tcx = self.tcx();
+        let tcx = self.tcx;
         let mir_keys = tcx.mir_keys(());
 
         for each_mir in mir_keys {
@@ -113,7 +199,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
     #[inline(always)]
     fn extract_raw_generic(&mut self, did: DefId) {
         // Get the definition and subset reference from adt did
-        let ty = EarlyBinder::skip_binder(self.tcx().type_of(did));
+        let ty = EarlyBinder::skip_binder(self.tcx.type_of(did));
         let (adt_def, substs) = match ty.kind() {
             TyKind::Adt(adt_def, substs) => (adt_def, substs),
             _ => unreachable!(),
@@ -125,7 +211,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
             let mut raw_generic = IsolatedParam::new(substs.len());
 
             for field in &variant.fields {
-                let field_ty = field.ty(self.tcx(), substs);
+                let field_ty = field.ty(self.tcx, substs);
                 let _ = field_ty.visit_with(&mut raw_generic);
             }
             v_res.push((RawTypeOwner::Unowned, raw_generic.record_mut().clone()));
@@ -136,7 +222,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
 
     // Extract all params in the adt types like param 'T' and then propagate from the bottom to top.
     // This procedural is the successor of `extract_raw_generic`, and the main idea of RawGenericPropagation
-    // is to propagate params from bottom adt to the top as well as updating TypeAnalysis Context.
+    // is to propagate params from bottom adt to the top as well as updating Analysis Context.
     //
     // Note that it will thorough consider mono-morphization existed in adt-def.
     // That means the type 'Vec<T>', 'Vec<Vec<T>>' and 'Vec<i32>' are totally different!!!!
@@ -165,7 +251,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
     #[inline(always)]
     fn extract_raw_generic_prop(&mut self, did: DefId) {
         // Get the definition and subset reference from adt did
-        let ty = EarlyBinder::skip_binder(self.tcx().type_of(did));
+        let ty = EarlyBinder::skip_binder(self.tcx.type_of(did));
         let (adt_def, substs) = match ty.kind() {
             TyKind::Adt(adt_def, substs) => (adt_def, substs),
             _ => unreachable!(),
@@ -179,14 +265,14 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
             let res = v_res[variant_index as usize].clone();
 
             let mut raw_generic_prop = IsolatedParamPropagation::new(
-                self.tcx(),
+                self.tcx,
                 res.1.clone(),
                 source_enum,
                 self.adt_owner(),
             );
 
             for field in &variant.fields {
-                let field_ty = field.ty(self.tcx(), substs);
+                let field_ty = field.ty(self.tcx, substs);
                 let _ = field_ty.visit_with(&mut raw_generic_prop);
             }
             v_res[variant_index as usize] =
@@ -201,7 +287,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
     #[inline(always)]
     fn extract_phantom_unit(&mut self, did: DefId) {
         // Get ty from defid and the ty is made up with generic type
-        let ty = EarlyBinder::skip_binder(self.tcx().type_of(did));
+        let ty = EarlyBinder::skip_binder(self.tcx.type_of(did));
         let (adt_def, substs) = match ty.kind() {
             TyKind::Adt(adt_def, substs) => (adt_def, substs),
             _ => unreachable!(),
@@ -217,7 +303,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
             let mut res = self.adt_owner_mut().get_mut(&did).unwrap()[0].clone();
             // Extract all fields in one given struct
             for field in adt_def.all_fields() {
-                let field_ty = field.ty(self.tcx(), substs);
+                let field_ty = field.ty(self.tcx, substs);
                 match field_ty.kind() {
                     // Filter the field which is also a struct due to PhantomData<T> is struct
                     TyKind::Adt(field_adt_def, field_substs) => {
@@ -235,8 +321,8 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
                                                 // pointer to store T
                                                 let mut has_ptr = false;
                                                 for field in adt_def.all_fields() {
-                                                    let field_ty = field.ty(self.tcx(), substs);
-                                                    let mut find_ptr = FindPtr::new(self.tcx());
+                                                    let field_ty = field.ty(self.tcx, substs);
+                                                    let mut find_ptr = FindPtr::new(self.tcx);
                                                     let _ = field_ty.visit_with(&mut find_ptr);
                                                     if find_ptr.has_ptr() {
                                                         has_ptr = true;
@@ -272,7 +358,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
     #[inline(always)]
     fn extract_owner_prop(&mut self, did: DefId) {
         // Get the definition and subset reference from adt did
-        let ty = EarlyBinder::skip_binder(self.tcx().type_of(did));
+        let ty = EarlyBinder::skip_binder(self.tcx.type_of(did));
         let (adt_def, substs) = match ty.kind() {
             TyKind::Adt(adt_def, substs) => (adt_def, substs),
             _ => unreachable!(),
@@ -283,10 +369,10 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
         for (variant_index, variant) in adt_def.variants().iter().enumerate() {
             let res = v_res[variant_index as usize].clone();
 
-            let mut owner_prop = OwnerPropagation::new(self.tcx(), res.0, self.adt_owner());
+            let mut owner_prop = OwnerPropagation::new(self.tcx, res.0, self.adt_owner());
 
             for field in &variant.fields {
-                let field_ty = field.ty(self.tcx(), substs);
+                let field_ty = field.ty(self.tcx, substs);
                 let _ = field_ty.visit_with(&mut owner_prop);
             }
             v_res[variant_index as usize].0 = owner_prop.ownership();
@@ -296,7 +382,7 @@ impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
     }
 }
 
-impl<'tcx, 'a> Visitor<'tcx> for TypeAnalysis<'tcx, 'a> {
+impl<'tcx> Visitor<'tcx> for DefaultHeapAnalysis<'tcx> {
     fn visit_body(&mut self, body: &Body<'tcx>) {
         for (local, local_decl) in body.local_decls.iter().enumerate() {
             self.visit_local_decl(Local::from(local), local_decl);
@@ -313,9 +399,8 @@ impl<'tcx, 'a> Visitor<'tcx> for TypeAnalysis<'tcx, 'a> {
             TerminatorKind::Call { func, .. } => match func {
                 Operand::Constant(constant) => match constant.ty().kind() {
                     ty::FnDef(def_id, ..) => {
-                        if self.tcx().is_mir_available(*def_id) && self.fn_set_mut().insert(*def_id)
-                        {
-                            let body = mir_body(self.tcx(), *def_id);
+                        if self.tcx.is_mir_available(*def_id) && self.fn_set_mut().insert(*def_id) {
+                            let body = mir_body(self.tcx, *def_id);
                             self.visit_body(body);
                         }
                     }
@@ -337,7 +422,7 @@ impl<'tcx, 'a> Visitor<'tcx> for TypeAnalysis<'tcx, 'a> {
                 self.adt_recorder_mut().insert(adtdef.did());
 
                 for field in adtdef.all_fields() {
-                    self.visit_ty(field.ty(self.tcx(), substs), copy_ty_context(&ty_context))
+                    self.visit_ty(field.ty(self.tcx, substs), copy_ty_context(&ty_context))
                 }
 
                 for ty in substs.types() {
@@ -468,7 +553,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for IsolatedParamPropagation<'tcx, 'a> 
                 }
 
                 for field in adtdef.all_fields() {
-                    let field_ty = field.ty(self.tcx(), substs);
+                    let field_ty = field.ty(self.tcx, substs);
                     let _ = field_ty.visit_with(self);
                 }
 
@@ -516,7 +601,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for OwnerPropagation<'tcx, 'a> {
                 };
 
                 for field in adtdef.all_fields() {
-                    let field_ty = field.ty(self.tcx(), substs);
+                    let field_ty = field.ty(self.tcx, substs);
                     let _ = field_ty.visit_with(self);
                 }
 
@@ -543,7 +628,7 @@ impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for FindPtr<'tcx> {
                     }
 
                     for field in adtdef.all_fields() {
-                        let field_ty = field.ty(self.tcx(), substs);
+                        let field_ty = field.ty(self.tcx, substs);
                         let _ = field_ty.visit_with(self);
                     }
                     self.unique_mut().remove(&adtdef.did());
@@ -677,6 +762,97 @@ impl<'tcx> TyWithIndex<'tcx> {
                 true => 2,
                 false => 1,
             },
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Encoder;
+
+impl<'tcx> Encoder {
+    pub fn encode(
+        tcx: TyCtxt<'tcx>,
+        ty: Ty<'tcx>,
+        adt_owner: AdtOwner,
+        variant: Option<VariantIdx>,
+    ) -> OwnershipLayoutResult {
+        match ty.kind() {
+            TyKind::Array(..) => {
+                let mut res = OwnershipLayoutResult::new();
+                let mut default_ownership = DefaultOwnership::new(tcx, &adt_owner);
+
+                let _ = ty.visit_with(&mut default_ownership);
+                res.update_from_default_ownership_visitor(&mut default_ownership);
+
+                res
+            }
+            TyKind::Tuple(tuple_ty_list) => {
+                let mut res = OwnershipLayoutResult::new();
+
+                for tuple_ty in tuple_ty_list.iter() {
+                    let mut default_ownership = DefaultOwnership::new(tcx, &adt_owner);
+
+                    let _ = tuple_ty.visit_with(&mut default_ownership);
+                    res.update_from_default_ownership_visitor(&mut default_ownership);
+                }
+
+                res
+            }
+            TyKind::Adt(adtdef, substs) => {
+                // check the ty is or is not an enum and the variant of this enum is or is not given
+                if adtdef.is_enum() && variant.is_none() {
+                    return OwnershipLayoutResult::new();
+                }
+
+                let mut res = OwnershipLayoutResult::new();
+
+                // check the ty if it is a struct or union
+                if adtdef.is_struct() || adtdef.is_union() {
+                    for field in adtdef.all_fields() {
+                        let field_ty = field.ty(tcx, substs);
+
+                        let mut default_ownership = DefaultOwnership::new(tcx, &adt_owner);
+
+                        let _ = field_ty.visit_with(&mut default_ownership);
+                        res.update_from_default_ownership_visitor(&mut default_ownership);
+                    }
+                }
+                // check the ty which is an enum with a exact variant idx
+                else if adtdef.is_enum() {
+                    let vidx = variant.unwrap();
+
+                    for field in &adtdef.variants()[vidx].fields {
+                        let field_ty = field.ty(tcx, substs);
+
+                        let mut default_ownership = DefaultOwnership::new(tcx, &adt_owner);
+
+                        let _ = field_ty.visit_with(&mut default_ownership);
+                        res.update_from_default_ownership_visitor(&mut default_ownership);
+                    }
+                }
+                res
+            }
+            TyKind::Param(..) => {
+                let mut res = OwnershipLayoutResult::new();
+                res.set_requirement(true);
+                res.set_param(true);
+                res.set_owned(true);
+                res.layout_mut().push(RawTypeOwner::Owned);
+                res
+            }
+            TyKind::RawPtr(..) => {
+                let mut res = OwnershipLayoutResult::new();
+                res.set_requirement(true);
+                res.layout_mut().push(RawTypeOwner::Unowned);
+                res
+            }
+            TyKind::Ref(..) => {
+                let mut res = OwnershipLayoutResult::new();
+                res.set_requirement(true);
+                res.layout_mut().push(RawTypeOwner::Unowned);
+                res
+            }
+            _ => OwnershipLayoutResult::new(),
         }
     }
 }

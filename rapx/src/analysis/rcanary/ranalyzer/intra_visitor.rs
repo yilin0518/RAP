@@ -6,8 +6,7 @@ use rustc_middle::mir::{
     Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::{self, Ty, TyKind, TypeVisitable};
-use rustc_span::source_map::Spanned;
-use rustc_span::Symbol;
+use rustc_span::{source_map::Spanned, Symbol};
 
 use annotate_snippets::{Level, Renderer, Snippet};
 use std::ops::Add;
@@ -17,9 +16,7 @@ use super::super::{IcxMut, IcxSliceMut, Rcx, RcxMut};
 use super::is_z3_goal_verbose;
 use super::ownership::IntraVar;
 use super::{FlowAnalysis, IcxSliceFroBlock, IntraFlowAnalysis};
-use crate::analysis::core::heap_item::ownership::*;
-use crate::analysis::core::heap_item::type_visitor::*;
-use crate::analysis::core::heap_item::*;
+use crate::analysis::core::heap::{default::*, *};
 use crate::utils::log::{
     are_spans_in_same_file, relative_pos_range, span_to_filename, span_to_line_number,
     span_to_source_code,
@@ -63,12 +60,6 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
 
             let mut intra_visitor = IntraFlowAnalysis::new(self.rcx, def_id);
             intra_visitor.visit_body(&ctx, &goal, &solver, body);
-
-            let sec_build = intra_visitor.get_time_build();
-            let sec_solve = intra_visitor.get_time_solve();
-
-            self.rcx_mut().add_time_build(sec_build);
-            self.rcx_mut().add_time_solve(sec_solve);
         }
     }
 }

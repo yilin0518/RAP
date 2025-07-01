@@ -1,6 +1,6 @@
 use super::super::RcxMut;
 use super::FlowAnalysis;
-use crate::analysis::core::heap_item::mir_body;
+use crate::analysis::core::heap::mir_body;
 use rustc_data_structures::graph;
 
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {

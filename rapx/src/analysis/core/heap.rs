@@ -1,215 +1,26 @@
-pub mod ownership;
-pub mod type_visitor;
+pub mod default;
 
 use rustc_abi::VariantIdx;
-use rustc_middle::ty::EarlyBinder;
-use rustc_middle::ty::TypeVisitable;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 
-use std::collections::{HashMap, HashSet};
-use std::env;
+use std::{
+    collections::{HashMap, HashSet},
+    env, fmt,
+};
 
-//use stopwatch::Stopwatch;
-use crate::analysis::core::heap_item::ownership::OwnershipLayoutResult;
-use crate::analysis::rcanary::{rCanary, RcxMut};
-use crate::rap_info;
-use ownership::RawTypeOwner;
+use crate::{rap_info, Analysis};
 
-type TyMap<'tcx> = HashMap<Ty<'tcx>, String>;
 pub type OwnerUnit = (RawTypeOwner, Vec<bool>);
 pub type AdtOwner = HashMap<DefId, Vec<OwnerUnit>>;
-type Parameters = HashSet<usize>;
 pub type Unique = HashSet<DefId>;
 pub type OwnershipLayout = Vec<RawTypeOwner>;
 pub type RustBV = Vec<bool>;
+type TyMap<'tcx> = HashMap<Ty<'tcx>, String>;
+type Parameters = HashSet<usize>;
 
-// Type Analysis is the first step and it will perform a simple-inter-procedural analysis
-// for current crate and collect types after monomorphism as well as extracting 'adt-def'.
-// The struct TypeAnalysis implements mir::Visitor to simulate as the type collector.
-// Note: the type in this phase is Ty::ty rather of Hir::ty.
-pub struct TypeAnalysis<'tcx, 'a> {
-    rcx: &'a mut rCanary<'tcx>,
-    fn_set: Unique,
-    ty_map: TyMap<'tcx>,
-    adt_recorder: Unique,
-}
-
-impl<'tcx, 'a> TypeAnalysis<'tcx, 'a> {
-    pub fn new(rcx: &'a mut rCanary<'tcx>) -> Self {
-        Self {
-            rcx,
-            fn_set: HashSet::new(),
-            ty_map: HashMap::new(),
-            adt_recorder: HashSet::new(),
-        }
-    }
-
-    pub fn ty_map(&self) -> &TyMap<'tcx> {
-        &self.ty_map
-    }
-
-    pub fn ty_map_mut(&mut self) -> &mut TyMap<'tcx> {
-        &mut self.ty_map
-    }
-
-    pub fn fn_set(&self) -> &Unique {
-        &self.fn_set
-    }
-
-    pub fn fn_set_mut(&mut self) -> &mut Unique {
-        &mut self.fn_set
-    }
-
-    pub fn adt_recorder(&self) -> &Unique {
-        &self.adt_recorder
-    }
-
-    pub fn adt_recorder_mut(&mut self) -> &mut Unique {
-        &mut self.adt_recorder
-    }
-
-    pub fn adt_owner(&self) -> &AdtOwner {
-        self.rcx().adt_owner()
-    }
-
-    pub fn adt_owner_mut(&mut self) -> &mut AdtOwner {
-        self.rcx_mut().adt_owner_mut()
-    }
-
-    // The main phase and the starter function of Type Collector.
-    // RAP will construct an instance of struct TypeCollector and call self.start to make analysis starting.
-    pub fn start(&mut self) {
-        //let mut sw = Stopwatch::start_new();
-
-        // Get the analysis result from rap phase llvm
-        // self.connect();
-        // Get related adt types through visiting mir local
-        self.visitor();
-
-        //rap_info!("AdtDef Sum:{:?}", self.adt_owner().len());
-        //rap_info!("Tymap Sum:{:?}", self.ty_map().len());
-        //rap_info!("@@@@@@@@@@@@@Type Analysis:{:?}", sw.elapsed_ms());
-        //sw.stop();
-    }
-
-    pub fn format_owner_unit(unit: &OwnerUnit) -> String {
-        let (owner, flags) = unit;
-        let vec_str = flags
-            .iter()
-            .map(|&b| if b { "1" } else { "0" })
-            .collect::<Vec<_>>()
-            .join(",");
-        format!("({}, [{}])", owner, vec_str)
-    }
-
-    pub fn output(&mut self) {
-        for elem in self.adt_owner() {
-            let name = format!(
-                "{:?}",
-                EarlyBinder::skip_binder(self.rcx.tcx().type_of(*elem.0))
-            );
-            let owning = elem
-                .1
-                .iter()
-                .map(Self::format_owner_unit)
-                .collect::<Vec<_>>()
-                .join(", ");
-            rap_info!("{} {}", name, owning);
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Encoder;
-
-impl<'tcx> Encoder {
-    pub fn encode(
-        rcx: &rCanary<'tcx>,
-        ty: Ty<'tcx>,
-        variant: Option<VariantIdx>,
-    ) -> OwnershipLayoutResult {
-        match ty.kind() {
-            TyKind::Array(..) => {
-                let mut res = OwnershipLayoutResult::new();
-                let mut default_ownership = DefaultOwnership::new(rcx.tcx(), rcx.adt_owner());
-
-                let _ = ty.visit_with(&mut default_ownership);
-                res.update_from_default_ownership_visitor(&mut default_ownership);
-
-                res
-            }
-            TyKind::Tuple(tuple_ty_list) => {
-                let mut res = OwnershipLayoutResult::new();
-
-                for tuple_ty in tuple_ty_list.iter() {
-                    let mut default_ownership = DefaultOwnership::new(rcx.tcx(), rcx.adt_owner());
-
-                    let _ = tuple_ty.visit_with(&mut default_ownership);
-                    res.update_from_default_ownership_visitor(&mut default_ownership);
-                }
-
-                res
-            }
-            TyKind::Adt(adtdef, substs) => {
-                // check the ty is or is not an enum and the variant of this enum is or is not given
-                if adtdef.is_enum() && variant.is_none() {
-                    return OwnershipLayoutResult::new();
-                }
-
-                let mut res = OwnershipLayoutResult::new();
-
-                // check the ty if it is a struct or union
-                if adtdef.is_struct() || adtdef.is_union() {
-                    for field in adtdef.all_fields() {
-                        let field_ty = field.ty(rcx.tcx(), substs);
-
-                        let mut default_ownership =
-                            DefaultOwnership::new(rcx.tcx(), rcx.adt_owner());
-
-                        let _ = field_ty.visit_with(&mut default_ownership);
-                        res.update_from_default_ownership_visitor(&mut default_ownership);
-                    }
-                }
-                // check the ty which is an enum with a exact variant idx
-                else if adtdef.is_enum() {
-                    let vidx = variant.unwrap();
-
-                    for field in &adtdef.variants()[vidx].fields {
-                        let field_ty = field.ty(rcx.tcx(), substs);
-
-                        let mut default_ownership =
-                            DefaultOwnership::new(rcx.tcx(), rcx.adt_owner());
-
-                        let _ = field_ty.visit_with(&mut default_ownership);
-                        res.update_from_default_ownership_visitor(&mut default_ownership);
-                    }
-                }
-                res
-            }
-            TyKind::Param(..) => {
-                let mut res = OwnershipLayoutResult::new();
-                res.set_requirement(true);
-                res.set_param(true);
-                res.set_owned(true);
-                res.layout_mut().push(RawTypeOwner::Owned);
-                res
-            }
-            TyKind::RawPtr(..) => {
-                let mut res = OwnershipLayoutResult::new();
-                res.set_requirement(true);
-                res.layout_mut().push(RawTypeOwner::Unowned);
-                res
-            }
-            TyKind::Ref(..) => {
-                let mut res = OwnershipLayoutResult::new();
-                res.set_requirement(true);
-                res.layout_mut().push(RawTypeOwner::Unowned);
-                res
-            }
-            _ => OwnershipLayoutResult::new(),
-        }
-    }
+pub trait HeapAnalysis: Analysis {
+    fn get_all_items(&mut self) -> AdtOwner;
 }
 
 /// We encapsulate the interface for identifying heap items in a struct named `HeapItem`.
@@ -243,10 +54,10 @@ impl HeapItem {
     ///  use rap::analysis::core::heap_item::HeapItem;
     ///  let ans = HeapItem::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_adt<'tcx>(rcx: &rCanary<'tcx>, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_adt<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 for i in ans.iter() {
                     if i.0 == RawTypeOwner::Owned {
                         return Ok(true);
@@ -280,13 +91,13 @@ impl HeapItem {
     /// use rap::analysis::core::heap_item::HeapItem;
     /// let ans = HeapItem::is_struct(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_struct<'tcx>(rcx: &rCanary<'tcx>, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_struct<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_struct() && !adtdef.is_union() {
                     return Err("The input is not a struct");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 if ans[0].0 == RawTypeOwner::Owned {
                     return Ok(true);
                 }
@@ -320,13 +131,13 @@ impl HeapItem {
     /// use rap::analysis::core::heap_item::HeapItem;
     /// let ans = HeapItem::is_enum(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_enum<'tcx>(rcx: &rCanary<'tcx>, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_enum<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_enum() {
                     return Err("The input is not an enum");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 for i in ans.iter() {
                     if i.0 == RawTypeOwner::Owned {
                         return Ok(true);
@@ -363,7 +174,7 @@ impl HeapItem {
     /// let ans = HeapItem::is_enum_vidx(rcanary.rcx, vec.ty, 1);
     /// ```
     pub fn is_enum_vidx<'tcx>(
-        rcx: &rCanary<'tcx>,
+        adt_owner: AdtOwner,
         ty: Ty<'tcx>,
         idx: usize,
     ) -> Result<bool, &'static str> {
@@ -372,7 +183,7 @@ impl HeapItem {
                 if !adtdef.is_enum() {
                     return Err("The input is not an enum");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 if idx > ans.len() {
                     return Err("The index is not a valid variance");
                 }
@@ -409,7 +220,7 @@ impl HeapItem {
     /// let ans = HeapItem::is_enum_flattened(rcanary.rcx, vec.ty);
     /// ```
     pub fn is_enum_flattened<'tcx>(
-        rcx: &rCanary<'tcx>,
+        adt_owner: AdtOwner,
         ty: Ty<'tcx>,
     ) -> Result<Vec<bool>, &'static str> {
         match ty.kind() {
@@ -417,7 +228,7 @@ impl HeapItem {
                 if !adtdef.is_enum() {
                     return Err("The input is not an enum");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 let mut v = Vec::with_capacity(ans.len());
                 for i in ans.iter() {
                     if i.0 == RawTypeOwner::Owned {
@@ -465,10 +276,10 @@ impl IsolatedParameter {
     ///  use rap::analysis::core::heap_item::IsolatedParameter;
     ///  let ans = IsolatedParameter::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_adt<'tcx>(rcx: &rCanary<'tcx>, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_adt<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 for i in ans.iter() {
                     if i.1.iter().any(|&x| x == true) {
                         return Ok(true);
@@ -503,13 +314,13 @@ impl IsolatedParameter {
     ///  use rap::analysis::core::heap_item::IsolatedParameter;
     ///  let ans = IsolatedParameter::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_struct<'tcx>(rcx: &rCanary<'tcx>, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_struct<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_struct() && !adtdef.is_union() {
                     return Err("The input is not a struct");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 if ans[0].1.iter().any(|&x| x == true) {
                     return Ok(true);
                 }
@@ -545,13 +356,13 @@ impl IsolatedParameter {
     ///  use rap::analysis::core::heap_item::IsolatedParameter;
     ///  let ans = IsolatedParameter::is_adt(rcanary.rcx, vec.ty);
     /// ```
-    pub fn is_enum<'tcx>(rcx: &rCanary<'tcx>, ty: Ty<'tcx>) -> Result<bool, &'static str> {
+    pub fn is_enum<'tcx>(adt_owner: AdtOwner, ty: Ty<'tcx>) -> Result<bool, &'static str> {
         match ty.kind() {
             TyKind::Adt(adtdef, ..) => {
                 if !adtdef.is_enum() {
                     return Err("The input is not an enum");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 for i in ans.iter() {
                     if i.1.iter().any(|&x| x == true) {
                         return Ok(true);
@@ -589,7 +400,7 @@ impl IsolatedParameter {
     ///  let ans = IsolatedParameter::is_enum_vidx(rcanary.rcx, vec.ty, 1);
     /// ```
     pub fn is_enum_vidx<'tcx>(
-        rcx: &rCanary<'tcx>,
+        adt_owner: AdtOwner,
         ty: Ty<'tcx>,
         idx: usize,
     ) -> Result<bool, &'static str> {
@@ -598,7 +409,7 @@ impl IsolatedParameter {
                 if !adtdef.is_enum() {
                     return Err("The input is not an enum");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 if idx > ans.len() {
                     return Err("The index is not a valid variance");
                 }
@@ -638,7 +449,7 @@ impl IsolatedParameter {
     ///  let ans = IsolatedParameter::is_enum_flattened(rcanary.rcx, vec.ty);
     /// ```
     pub fn is_enum_flattened<'tcx>(
-        rcx: &rCanary<'tcx>,
+        adt_owner: AdtOwner,
         ty: Ty<'tcx>,
     ) -> Result<Vec<Vec<bool>>, &'static str> {
         match ty.kind() {
@@ -646,7 +457,7 @@ impl IsolatedParameter {
                 if !adtdef.is_enum() {
                     return Err("The input is not an enum");
                 }
-                let ans = rcx.adt_owner().get(&adtdef.0 .0.did).unwrap();
+                let ans = adt_owner.get(&adtdef.0 .0.did).unwrap();
                 let mut v: Vec<Vec<bool>> = Vec::default();
                 for i in ans.iter() {
                     v.push(i.1.clone());
@@ -655,23 +466,6 @@ impl IsolatedParameter {
             }
             _ => Err("The input is not an ADT"),
         }
-    }
-}
-
-impl<'tcx, 'o, 'a> RcxMut<'tcx, 'o, 'a> for TypeAnalysis<'tcx, 'a> {
-    #[inline(always)]
-    fn rcx(&'o self) -> &'o rCanary<'tcx> {
-        self.rcx
-    }
-
-    #[inline(always)]
-    fn rcx_mut(&'o mut self) -> &'o mut rCanary<'tcx> {
-        &mut self.rcx
-    }
-
-    #[inline(always)]
-    fn tcx(&'o self) -> TyCtxt<'tcx> {
-        self.rcx().tcx()
     }
 }
 
@@ -742,10 +536,6 @@ impl<'tcx, 'a> IsolatedParamPropagation<'tcx, 'a> {
         }
     }
 
-    pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
-    }
-
     pub fn record_mut(&mut self) -> &mut Vec<bool> {
         &mut self.record
     }
@@ -779,10 +569,6 @@ impl<'tcx, 'a> OwnerPropagation<'tcx, 'a> {
             unique: HashSet::new(),
             ref_adt_owner,
         }
-    }
-
-    pub fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
     }
 
     pub fn ownership(&self) -> RawTypeOwner {
@@ -968,5 +754,125 @@ impl<'tcx> IndexedTy<'tcx> {
                 false => 1,
             },
         }
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum RawTypeOwner {
+    Unowned = 0,
+    Owned = 1,
+    Uninit = 2,
+}
+
+impl Default for RawTypeOwner {
+    fn default() -> Self {
+        Self::Uninit
+    }
+}
+
+impl RawTypeOwner {
+    pub fn is_owned(&self) -> bool {
+        match self {
+            RawTypeOwner::Owned => true,
+            RawTypeOwner::Unowned => false,
+            RawTypeOwner::Uninit => false,
+        }
+    }
+}
+
+impl fmt::Display for RawTypeOwner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = match self {
+            RawTypeOwner::Unowned => "0",
+            RawTypeOwner::Owned => "1",
+            RawTypeOwner::Uninit => "2",
+        };
+        write!(f, "{}", name)
+    }
+}
+
+pub enum TypeOwner<'tcx> {
+    Owned(Ty<'tcx>),
+    Unowned,
+}
+
+#[derive(Clone, Debug)]
+pub struct OwnershipLayoutResult {
+    layout: OwnershipLayout,
+    param: bool,
+    requirement: bool,
+    owned: bool,
+}
+
+impl OwnershipLayoutResult {
+    pub fn new() -> Self {
+        Self {
+            layout: Vec::new(),
+            param: false,
+            requirement: false,
+            owned: false,
+        }
+    }
+
+    pub fn layout(&self) -> &OwnershipLayout {
+        &self.layout
+    }
+
+    pub fn layout_mut(&mut self) -> &mut OwnershipLayout {
+        &mut self.layout
+    }
+
+    pub fn get_param(&self) -> bool {
+        self.param
+    }
+
+    pub fn set_param(&mut self, p: bool) {
+        self.param = p;
+    }
+
+    pub fn is_param_true(&self) -> bool {
+        self.param == true
+    }
+
+    pub fn get_requirement(&self) -> bool {
+        self.requirement
+    }
+
+    pub fn set_requirement(&mut self, r: bool) {
+        self.requirement = r;
+    }
+
+    pub fn is_requirement_true(&self) -> bool {
+        self.requirement == true
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.layout.is_empty()
+    }
+
+    pub fn is_owned(&self) -> bool {
+        self.owned == true
+    }
+
+    pub fn set_owned(&mut self, o: bool) {
+        self.owned = o;
+    }
+
+    pub fn update_from_default_ownership_visitor<'tcx, 'a>(
+        &mut self,
+        default_ownership: &mut DefaultOwnership<'tcx, 'a>,
+    ) {
+        if default_ownership.is_owning_true() || default_ownership.is_ptr_true() {
+            self.set_requirement(true);
+        }
+
+        if default_ownership.is_owning_true() {
+            self.set_owned(true);
+        }
+
+        self.layout_mut().push(default_ownership.get_res());
+
+        self.set_param(default_ownership.get_param());
     }
 }

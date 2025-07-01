@@ -1,6 +1,6 @@
 use super::bug_records::*;
 use super::types::*;
-use crate::analysis::core::heap_item::AdtOwner;
+use crate::analysis::core::heap::AdtOwner;
 use crate::analysis::utils::intrinsic_id::*;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{

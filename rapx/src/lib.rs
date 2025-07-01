@@ -27,7 +27,7 @@ use analysis::{
         api_dep::ApiDep,
         call_graph::CallGraph,
         dataflow::DataFlow,
-        heap_item::TypeAnalysis,
+        heap::{default::DefaultHeapAnalysis, HeapAnalysis},
         range_analysis::{DefaultRange, SSATrans},
     },
     opt::Opt,
@@ -273,7 +273,10 @@ pub enum RapPhase {
 
 pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     let _rcanary: Option<rCanary> = if callback.is_rcanary_enabled() {
-        let mut rcx = rCanary::new(tcx);
+        let mut heap = DefaultHeapAnalysis::new(tcx);
+        heap.run();
+        let adt_owner = heap.get_all_items();
+        let mut rcx = rCanary::new(tcx, adt_owner);
         rcx.start();
         Some(rcx)
     } else {
@@ -290,11 +293,9 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_heap_item_enabled() {
-        let rcx_boxed = Box::new(rCanary::new(tcx));
-        let rcx = Box::leak(rcx_boxed);
-        let mut type_analysis = TypeAnalysis::new(rcx);
-        type_analysis.start();
-        type_analysis.output();
+        let mut heap_analysis = DefaultHeapAnalysis::new(tcx);
+        heap_analysis.run();
+        heap_analysis.output();
     }
 
     let x = callback.is_unsafety_isolation_enabled();

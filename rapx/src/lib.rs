@@ -27,7 +27,7 @@ use analysis::{
         api_dep::ApiDep,
         call_graph::CallGraph,
         dataflow::DataFlow,
-        heap_analysis::{default::DefaultHeapAnalysis, HeapAnalysis},
+        ownedheap_analysis::{default::DefaultOwnedHeapAnalysis, OwnedHeapAnalysis},
         range_analysis::{DefaultRange, SSATrans},
     },
     opt::Opt,
@@ -64,7 +64,7 @@ pub struct RapCallback {
     show_mir: bool,
     dataflow: usize,
     opt: usize,
-    heap_item: bool,
+    ownedheap: bool,
     ssa: bool,
     range: bool,
 }
@@ -84,7 +84,7 @@ impl Default for RapCallback {
             show_mir: false,
             dataflow: 0,
             opt: usize::MAX,
-            heap_item: false,
+            ownedheap: false,
             ssa: false,
             range: false,
         }
@@ -242,12 +242,12 @@ impl RapCallback {
         self.opt
     }
 
-    pub fn enable_heap_item(&mut self) {
-        self.heap_item = true;
+    pub fn enable_ownedheap(&mut self) {
+        self.ownedheap = true;
     }
 
-    pub fn is_heap_item_enabled(self) -> bool {
-        self.heap_item
+    pub fn is_ownedheap_enabled(self) -> bool {
+        self.ownedheap
     }
     pub fn enable_ssa_transform(&mut self) {
         self.ssa = true;
@@ -273,7 +273,7 @@ pub enum RapPhase {
 
 pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     let _rcanary: Option<rCanary> = if callback.is_rcanary_enabled() {
-        let mut heap = DefaultHeapAnalysis::new(tcx);
+        let mut heap = DefaultOwnedHeapAnalysis::new(tcx);
         heap.run();
         let adt_owner = heap.get_all_items();
         let mut rcx = rCanary::new(tcx, adt_owner);
@@ -292,10 +292,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         SafeDrop::new(tcx).start();
     }
 
-    if callback.is_heap_item_enabled() {
-        let mut heap_analysis = DefaultHeapAnalysis::new(tcx);
-        heap_analysis.run();
-        heap_analysis.output();
+    if callback.is_ownedheap_enabled() {
+        let mut ownedheap_analysis = DefaultOwnedHeapAnalysis::new(tcx);
+        ownedheap_analysis.run();
+        ownedheap_analysis.output();
     }
 
     let x = callback.is_unsafety_isolation_enabled();

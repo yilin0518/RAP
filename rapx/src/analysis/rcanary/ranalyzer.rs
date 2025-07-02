@@ -8,8 +8,8 @@ use rustc_middle::ty::{InstanceKind::Item, TyCtxt};
 use rustc_span::def_id::DefId;
 
 use super::{rCanary, IcxMut, IcxSliceMut, Rcx, RcxMut};
-use crate::analysis::core::heap_analysis::HeapInfo;
-use crate::analysis::core::heap_analysis::{default::TyWithIndex, HAResult};
+use crate::analysis::core::ownedheap_analysis::OwnedHeap;
+use crate::analysis::core::ownedheap_analysis::{default::TyWithIndex, OHAResult};
 use ownership::{IntraVar, Taint};
 
 use std::{
@@ -194,7 +194,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         }
     }
 
-    pub fn owner(&self) -> &HAResult {
+    pub fn owner(&self) -> &OHAResult {
         self.rcx.adt_owner()
     }
 
@@ -247,7 +247,7 @@ pub struct IntraFlowContext<'tcx, 'ctx> {
     // the ty in icx is the Rust ownership layout of the pointing instance
     // Note: the ty is not the exact ty of the local
     ty: IOPairForGraph<TyWithIndex<'tcx>>,
-    layout: IOPairForGraph<Vec<HeapInfo>>,
+    layout: IOPairForGraph<Vec<OwnedHeap>>,
 }
 
 impl<'tcx, 'ctx, 'icx> IntraFlowContext<'tcx, 'ctx> {
@@ -293,11 +293,11 @@ impl<'tcx, 'ctx, 'icx> IntraFlowContext<'tcx, 'ctx> {
         &mut self.ty
     }
 
-    pub fn layout(&self) -> &IOPairForGraph<Vec<HeapInfo>> {
+    pub fn layout(&self) -> &IOPairForGraph<Vec<OwnedHeap>> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut IOPairForGraph<Vec<HeapInfo>> {
+    pub fn layout_mut(&mut self) -> &mut IOPairForGraph<Vec<OwnedHeap>> {
         &mut self.layout
     }
 
@@ -406,7 +406,7 @@ pub struct IcxSliceFroBlock<'tcx, 'ctx> {
     // the ty in icx is the Rust ownership layout of the pointing instance
     // Note: the ty is not the exact ty of the local
     ty: Vec<TyWithIndex<'tcx>>,
-    layout: Vec<Vec<HeapInfo>>,
+    layout: Vec<Vec<OwnedHeap>>,
 }
 
 impl<'tcx, 'ctx> IcxSliceFroBlock<'tcx, 'ctx> {
@@ -472,11 +472,11 @@ impl<'tcx, 'ctx> IcxSliceFroBlock<'tcx, 'ctx> {
         &mut self.ty
     }
 
-    pub fn layout(&self) -> &Vec<Vec<HeapInfo>> {
+    pub fn layout(&self) -> &Vec<Vec<OwnedHeap>> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut Vec<Vec<HeapInfo>> {
+    pub fn layout_mut(&mut self) -> &mut Vec<Vec<OwnedHeap>> {
         &mut self.layout
     }
 

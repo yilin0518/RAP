@@ -1,6 +1,6 @@
 use super::bug_records::*;
 use super::types::*;
-use crate::analysis::{core::heap_analysis::HAResult, utils::intrinsic_id::*};
+use crate::analysis::{core::ownedheap_analysis::OHAResult, utils::intrinsic_id::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{
     BasicBlock, Body, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,
@@ -166,7 +166,7 @@ pub struct SafeDropGraph<'tcx> {
     pub alias_set: Vec<usize>,
     pub dead_record: Vec<bool>,
     // analysis of heap item
-    pub adt_owner: HAResult,
+    pub adt_owner: OHAResult,
     pub child_scc: FxHashMap<
         usize,
         (
@@ -184,7 +184,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         body: &Body<'tcx>,
         tcx: TyCtxt<'tcx>,
         def_id: DefId,
-        adt_owner: HAResult,
+        adt_owner: OHAResult,
     ) -> SafeDropGraph<'tcx> {
         // handle variables
         let locals = &body.local_decls;

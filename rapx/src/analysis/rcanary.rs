@@ -1,7 +1,7 @@
 pub mod ranalyzer;
 
 use crate::analysis::{
-    core::heap_analysis::{default::DefaultHeapAnalysis, HAResult, HeapAnalysis},
+    core::ownedheap_analysis::{default::DefaultOwnedHeapAnalysis, OHAResult, OwnedHeapAnalysis},
     Analysis,
 };
 use ranalyzer::{FlowAnalysis, IcxSliceFroBlock, IntraFlowContext, MirGraph};
@@ -12,12 +12,12 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub struct rCanary<'tcx> {
     tcx: TyCtxt<'tcx>,
-    adt_owner: HAResult,
+    adt_owner: OHAResult,
     mir_graph: MirGraph,
 }
 
 impl<'tcx> rCanary<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, adt_owner: HAResult) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, adt_owner: OHAResult) -> Self {
         Self {
             tcx,
             adt_owner: adt_owner,
@@ -26,7 +26,7 @@ impl<'tcx> rCanary<'tcx> {
     }
 
     pub fn start(&mut self) {
-        let mut heap = DefaultHeapAnalysis::new(self.tcx);
+        let mut heap = DefaultOwnedHeapAnalysis::new(self.tcx);
         heap.run();
         let adt_owner = heap.get_all_items();
         let rcx_boxed = Box::new(rCanary::new(self.tcx, adt_owner));
@@ -38,11 +38,11 @@ impl<'tcx> rCanary<'tcx> {
         self.tcx
     }
 
-    pub fn adt_owner(&self) -> &HAResult {
+    pub fn adt_owner(&self) -> &OHAResult {
         &self.adt_owner
     }
 
-    pub fn adt_owner_mut(&mut self) -> &mut HAResult {
+    pub fn adt_owner_mut(&mut self) -> &mut OHAResult {
         &mut self.adt_owner
     }
 

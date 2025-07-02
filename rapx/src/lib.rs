@@ -293,9 +293,9 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_ownedheap_enabled() {
-        let mut ownedheap_analysis = DefaultOwnedHeapAnalysis::new(tcx);
-        ownedheap_analysis.run();
-        ownedheap_analysis.output();
+        let mut analysis = DefaultOwnedHeapAnalysis::new(tcx);
+        analysis.run();
+        analysis.output();
     }
 
     let x = callback.is_unsafety_isolation_enabled();

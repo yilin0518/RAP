@@ -1,15 +1,12 @@
-use crate::analysis::{
-    core::alias_analysis::mop::FnMap,
-    safedrop::SafeDropGraph
-};
+use crate::analysis::{core::alias_analysis::mop::FnMap, safedrop::SafeDropGraph};
 use crate::rap_error;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::{
-    ty::{TyCtxt, TyKind, TypingEnv},
     mir::{
+        Operand::{self, Constant, Copy, Move},
         Place, TerminatorKind,
-        Operand::{self, Constant, Copy, Move}
-    }
+    },
+    ty::{TyCtxt, TyKind, TypingEnv},
 };
 use std::collections::{HashMap, HashSet};
 
@@ -70,7 +67,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         Some(vdx) => vdx.index(),
                         None => 0,
                     };
-                    if owenr_unit[idx].0.is_owned() || owenr_unit[idx].1.contains(&true) {
+                    if owenr_unit[idx].0.is_onheap() || owenr_unit[idx].1.contains(&true) {
                         true
                     } else {
                         false

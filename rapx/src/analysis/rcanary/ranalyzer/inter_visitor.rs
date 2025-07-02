@@ -1,7 +1,7 @@
 use super::super::RcxMut;
 use super::FlowAnalysis;
 use rustc_data_structures::graph;
-use rustc_middle::ty::InstanceKind::Item; 
+use rustc_middle::ty::InstanceKind::Item;
 
 impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
     pub fn inter_run(&mut self) {

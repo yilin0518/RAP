@@ -1,11 +1,11 @@
+use super::{graph::*, types::*};
 use crate::{
-    rap_error,
     analysis::core::alias_analysis::mop::{FnMap, MopAAFact},
+    rap_error,
 };
-use super::{graph::*,types::*};
 use rustc_middle::{
+    mir::{Operand, Place, ProjectionElem, TerminatorKind},
     ty::{self, TyCtxt, TypingEnv},
-    mir::{Operand, Place, ProjectionElem, TerminatorKind}
 };
 
 impl<'tcx> SafeDropGraph<'tcx> {

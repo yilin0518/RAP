@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    fmt::Debug,
-};
+use std::{collections::HashSet, fmt::Debug};
 use z3::ast;
 
 use rustc_middle::ty::Ty;

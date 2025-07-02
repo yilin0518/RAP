@@ -25,11 +25,11 @@ use std::collections::{HashMap, HashSet};
 use visitor::{BodyVisitor, CheckResult};
 
 use crate::analysis::{
-    Analysis,
     core::alias_analysis::{
+        mop::{FnMap, MopAlias},
         AliasAnalysis,
-        mop::{FnMap, MopAlias}
-    }
+    },
+    Analysis,
 };
 
 macro_rules! cond_print {

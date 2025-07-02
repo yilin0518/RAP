@@ -1,8 +1,4 @@
-use crate::{
-    analysis::core::alias_analysis::AAResult, 
-    rap_debug, 
-    utils::source::*
-};
+use crate::{analysis::core::alias_analysis::AAResult, rap_debug, utils::source::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
     mir::{

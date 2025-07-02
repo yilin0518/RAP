@@ -1,19 +1,18 @@
 use crate::{
+    analysis::core::alias_analysis::mop::{types::*, MopAAResult},
     rap_debug,
     utils::source::*,
-    analysis::core::alias_analysis::mop::{MopAAResult, types::*}
 };
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
+    mir::{
+        BasicBlock, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,
+        UnwindAction,
+    },
     ty::{TyCtxt, TypingEnv},
-    mir::{BasicBlock, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind, UnwindAction}
 };
-use rustc_span::{Span, def_id::DefId};
-use std::{
-    cell::RefCell,
-    cmp::min,
-    vec::Vec
-};
+use rustc_span::{def_id::DefId, Span};
+use std::{cell::RefCell, cmp::min, vec::Vec};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AssignType {

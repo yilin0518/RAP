@@ -4,23 +4,18 @@ pub mod order;
 pub mod ownership;
 
 use rustc_middle::mir::{Body, Terminator};
-use rustc_middle::ty::{
-    TyCtxt,
-    InstanceKind::Item,
-};
+use rustc_middle::ty::{InstanceKind::Item, TyCtxt};
 use rustc_span::def_id::DefId;
 
-use crate::analysis::core::heap_analysis::RawTypeOwner;
-use crate::analysis::core::heap_analysis::{
-    default::TyWithIndex, HAResult,
-};
 use super::{rCanary, IcxMut, IcxSliceMut, Rcx, RcxMut};
+use crate::analysis::core::heap_analysis::HeapInfo;
+use crate::analysis::core::heap_analysis::{default::TyWithIndex, HAResult};
 use ownership::{IntraVar, Taint};
 
 use std::{
+    collections::{HashMap, HashSet},
     env,
     fmt::{Debug, Formatter},
-    collections::{HashMap, HashSet}
 };
 
 pub type MirGraph = HashMap<DefId, Graph>;
@@ -114,7 +109,6 @@ impl<'tcx, 'a> FlowAnalysis<'tcx, 'a> {
         // this phase will generate the Intra procedural visitor for us to visit the block
         // note that the inter procedural part is inside in this function but cod in module inter_visitor
         self.intra_run();
-
     }
 }
 
@@ -253,7 +247,7 @@ pub struct IntraFlowContext<'tcx, 'ctx> {
     // the ty in icx is the Rust ownership layout of the pointing instance
     // Note: the ty is not the exact ty of the local
     ty: IOPairForGraph<TyWithIndex<'tcx>>,
-    layout: IOPairForGraph<Vec<RawTypeOwner>>,
+    layout: IOPairForGraph<Vec<HeapInfo>>,
 }
 
 impl<'tcx, 'ctx, 'icx> IntraFlowContext<'tcx, 'ctx> {
@@ -299,11 +293,11 @@ impl<'tcx, 'ctx, 'icx> IntraFlowContext<'tcx, 'ctx> {
         &mut self.ty
     }
 
-    pub fn layout(&self) -> &IOPairForGraph<Vec<RawTypeOwner>> {
+    pub fn layout(&self) -> &IOPairForGraph<Vec<HeapInfo>> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut IOPairForGraph<Vec<RawTypeOwner>> {
+    pub fn layout_mut(&mut self) -> &mut IOPairForGraph<Vec<HeapInfo>> {
         &mut self.layout
     }
 
@@ -412,7 +406,7 @@ pub struct IcxSliceFroBlock<'tcx, 'ctx> {
     // the ty in icx is the Rust ownership layout of the pointing instance
     // Note: the ty is not the exact ty of the local
     ty: Vec<TyWithIndex<'tcx>>,
-    layout: Vec<Vec<RawTypeOwner>>,
+    layout: Vec<Vec<HeapInfo>>,
 }
 
 impl<'tcx, 'ctx> IcxSliceFroBlock<'tcx, 'ctx> {
@@ -478,11 +472,11 @@ impl<'tcx, 'ctx> IcxSliceFroBlock<'tcx, 'ctx> {
         &mut self.ty
     }
 
-    pub fn layout(&self) -> &Vec<Vec<RawTypeOwner>> {
+    pub fn layout(&self) -> &Vec<Vec<HeapInfo>> {
         &self.layout
     }
 
-    pub fn layout_mut(&mut self) -> &mut Vec<Vec<RawTypeOwner>> {
+    pub fn layout_mut(&mut self) -> &mut Vec<Vec<HeapInfo>> {
         &mut self.layout
     }
 

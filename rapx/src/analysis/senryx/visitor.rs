@@ -1,21 +1,21 @@
 use crate::{
-    rap_warn,
     analysis::{
-        core::{
-            alias_analysis::mop::FnMap,
-            heap_analysis::HAResult,
-        },
+        core::{alias_analysis::mop::FnMap, heap_analysis::HAResult},
         safedrop::graph::SafeDropGraph,
         utils::{
-            fn_info::{display_hashmap, get_all_std_unsafe_callees_block_id, get_callees, get_cleaned_def_path_name, is_ptr, is_ref},
-            show_mir::display_mir
-        }
-    }
+            fn_info::{
+                display_hashmap, get_all_std_unsafe_callees_block_id, get_callees,
+                get_cleaned_def_path_name, is_ptr, is_ref,
+            },
+            show_mir::display_mir,
+        },
+    },
+    rap_warn,
 };
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    hash::Hash
+    hash::Hash,
 };
 
 use super::contracts::abstract_state::{
@@ -30,14 +30,13 @@ use super::matcher::UnsafeApi;
 use super::matcher::{get_arg_place, parse_unsafe_api};
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
-    ty::{self, TyCtxt, PseudoCanonicalInput, GenericArgKind, Ty, TyKind},
-    mir::{self, Local, ProjectionElem, AggregateKind, BasicBlock, BasicBlockData, BinOp, CastKind, Operand, Place, Rvalue,
-        Statement, StatementKind, Terminator, TerminatorKind},
+    mir::{
+        self, AggregateKind, BasicBlock, BasicBlockData, BinOp, CastKind, Local, Operand, Place,
+        ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    },
+    ty::{self, GenericArgKind, PseudoCanonicalInput, Ty, TyCtxt, TyKind},
 };
-use rustc_span::{
-    Span,
-    source_map::Spanned
-};
+use rustc_span::{source_map::Spanned, Span};
 
 //TODO: modify contracts vec to contract-bool pairs (we can also use path index to record path info)
 pub struct CheckResult {

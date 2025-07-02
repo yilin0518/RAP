@@ -1,7 +1,4 @@
-use rustc_middle::{
-    mir::TerminatorKind,
-    ty::InstanceKind::Item,
-};
+use rustc_middle::{mir::TerminatorKind, ty::InstanceKind::Item};
 
 use std::collections::BinaryHeap;
 //use stopwatch::Stopwatch;

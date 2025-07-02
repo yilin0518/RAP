@@ -1,24 +1,14 @@
 use super::bug_records::*;
 use super::types::*;
-use crate::analysis::{
-    core::heap_analysis::HAResult,
-    utils::intrinsic_id::*
-};
+use crate::analysis::{core::heap_analysis::HAResult, utils::intrinsic_id::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{
     BasicBlock, Body, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,
     UnwindAction,
 };
 use rustc_middle::ty::{self, TyCtxt, TypingEnv};
-use rustc_span::{
-    Span,
-    def_id::DefId
-};
-use std::{
-    cell::RefCell,
-    cmp::min,
-    vec::Vec
-};
+use rustc_span::{def_id::DefId, Span};
+use std::{cell::RefCell, cmp::min, vec::Vec};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AssignType {

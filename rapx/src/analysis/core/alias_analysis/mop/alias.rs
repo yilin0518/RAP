@@ -1,16 +1,16 @@
 use super::graph::*;
 use super::types::*;
 use crate::{
-    rap_debug,
     analysis::{
         core::alias_analysis::mop::{FnMap, MopAAFact},
-        utils::intrinsic_id::*
-    }
+        utils::intrinsic_id::*,
+    },
+    rap_debug,
 };
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
+    mir::{Operand, Place, ProjectionElem, TerminatorKind},
     ty,
-    mir::{Operand, Place, ProjectionElem, TerminatorKind}
 };
 use std::collections::HashSet;
 

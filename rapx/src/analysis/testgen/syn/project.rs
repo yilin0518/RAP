@@ -94,11 +94,34 @@ pub struct MiriReport {
     pub stderr: Vec<u8>,
 }
 
+pub fn miri_env_vars() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("MIRIFLAGS", "-Zmiri-ignore-leaks"),
+        ("RUSTFLAGS", "-Awarnings"),
+        ("RUST_BACKTRACE", "1"),
+    ]
+}
+
+pub fn miri_env_vars_str() -> String {
+    miri_env_vars()
+        .iter()
+        .fold(String::new(), |s, (k, v)| {
+            if v.contains(" ") {
+                format!("{s} {k}=\"{v}\"")
+            } else {
+                format!("{s} {k}={v}")
+            }
+        })
+        .trim()
+        .to_owned()
+}
+
 impl MiriReport {
     pub fn reproduce_str(&self) -> String {
         format!(
-            "cd {} && MIRIFLAGS=-Zmiri-ignore-leaks RUSTFLAGS=\"-A warnings\" cargo miri run",
-            self.project_path.display()
+            "cd {} && {} cargo miri run",
+            self.project_path.display(),
+            miri_env_vars_str()
         )
     }
 
@@ -133,13 +156,12 @@ impl RsProject {
         // let project_path = self.option.project_path.to_owned();
         let project_path = self.option.project_path.as_path();
         rap_info!("Running fuzz driver project at: {}", project_path.display());
-
+        let vars = miri_env_vars();
         let mut command = Command::new("cargo");
         command
             .arg("miri")
             .arg("run")
-            .env("MIRIFLAGS", "-Zmiri-ignore-leaks")
-            .env("RUSTFLAGS", "-A warnings")
+            .envs(vars.to_owned())
             .current_dir(&project_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

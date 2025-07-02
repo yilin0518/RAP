@@ -92,6 +92,10 @@ pub fn region_to_rid(region: ty::Region<'_>) -> Rid {
 }
 
 impl RegionGraph {
+    pub fn is_static(&self, rid: Rid) -> bool {
+        self.static_rid == rid
+    }
+
     pub fn inner(&self) -> &petgraph::Graph<RegionNode, ()> {
         &self.inner
     }
@@ -210,7 +214,6 @@ impl RegionGraph {
 
     pub fn for_each_source(&self, rid: Rid, f: &mut impl FnMut(Rid)) {
         let mut visited = vec![false; self.total_node_count()];
-        // let mut sources = Vec::new();
         let mut q = VecDeque::new();
         q.push_back(rid.into());
         visited[rid.index()] = true;
@@ -225,10 +228,8 @@ impl RegionGraph {
             }
             if outgoing_cnt == 0 {
                 f(node.into());
-                // sources.push(node.into());
             }
         }
-        // sources
     }
 }
 
@@ -318,7 +319,3 @@ impl<'tcx, 'a> ty::TypeFolder<TyCtxt<'tcx>> for FreeVarFolder<'tcx, 'a> {
         }
     }
 }
-
-// pub fn extract_region_vid(region: ty::Region<'_>) {
-//     region.as_var()
-// }

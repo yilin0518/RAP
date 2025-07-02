@@ -1,5 +1,5 @@
 use crate::analysis::testgen::utils::{self, fn_sig_with_generic_args};
-use crate::{rap_debug, rap_trace};
+use crate::{rap_debug, rap_info, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
@@ -219,6 +219,12 @@ fn is_args_fit_trait_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
 ) -> bool {
     let args = tcx.mk_args(args);
+    rap_info!(
+        "fn: {:?} args: {:?} identity: {:?}",
+        fn_did,
+        args,
+        ty::GenericArgs::identity_for_item(tcx, fn_did)
+    );
     let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
     let pred = tcx.predicates_of(fn_did);
     let inst_pred = pred.instantiate(tcx, args);

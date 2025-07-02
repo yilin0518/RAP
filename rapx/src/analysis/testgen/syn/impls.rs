@@ -6,11 +6,6 @@ use super::input::InputGen;
 use super::{SynOption, Synthesizer};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
-fn debug_state() -> bool {
-    false
-    // true
-}
-
 pub struct FuzzDriverSynImpl<I: InputGen> {
     input_gen: I,
     option: SynOption,
@@ -68,7 +63,6 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                     )
                 }
             },
-            _ => todo!(),
         }
     }
 
@@ -77,9 +71,6 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
     }
 
     fn ty_str<'tcx>(&self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> String {
-        if debug_state() {
-            return format!("{:?}", ty);
-        }
         format!("{}", ty)
         // format!(
         //     "{}",
@@ -94,17 +85,10 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         let stmt_str = self.stmt_kind_str(&stmt, cx);
         if !var_ty.is_unit() || (var_ty.is_unit() && var.is_input()) {
             format!(
-                "let {}{}: {} = {};",
+                "let {}{} = {};",
                 cx.var_mutability(var).prefix_str(),
                 self.var_str(var),
-                self.ty_str(
-                    if !debug_state() {
-                        cx.tcx().erase_regions(var_ty)
-                    } else {
-                        var_ty
-                    },
-                    cx.tcx()
-                ),
+                // self.ty_str(var_ty, cx.tcx()),
                 stmt_str
             )
         } else {

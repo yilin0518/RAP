@@ -87,6 +87,8 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         .open(workspace_dir.join("miri_report.txt"))?;
 
     let mut reports = Vec::new();
+    let package_name = std::env::var("CARGO_PKG_NAME")?;
+    let package_dir = std::env::var("CARGO_MANIFEST_DIR")?;
 
     while config.max_run == 0 || run_count < config.max_run {
         // 1. generate context
@@ -105,8 +107,8 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let debug_path = project_path.as_path().join("region_graph.dot");
 
         let fuzz_config = RsProjectOption {
-            tested_crate_name: local_crate_name.to_string(),
-            tested_crate_path: std::env::current_dir()?,
+            tested_crate_name: (&package_name).into(),
+            tested_crate_path: (&package_dir).into(),
             project_name,
             project_path,
             verbose: true,

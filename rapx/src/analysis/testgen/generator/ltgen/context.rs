@@ -161,6 +161,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         &self.region_graph
     }
 
+    /// This function returns a vector that indicates the var inside is lack of binding with rid
     pub fn detect_potential_vulnerability(
         &self,
         stmt: &Stmt<'tcx>,
@@ -321,8 +322,11 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                 rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
                 for rid in rids {
                     let mut src_rids = Vec::new();
-                    self.region_graph
-                        .for_each_source(rid, &mut |rid| src_rids.push(rid));
+                    self.region_graph.for_each_source(rid, &mut |rid| {
+                        if !self.region_graph.is_static(rid) {
+                            src_rids.push(rid)
+                        }
+                    });
                     let dropped_var: Vec<Var> = src_rids
                         .into_iter()
                         .map(|rid| self.region_graph.get_node(rid).as_var())

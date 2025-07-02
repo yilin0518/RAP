@@ -134,13 +134,13 @@ pub trait Context<'tcx>: HoldTyCtxt<'tcx> {
             return false;
         }
 
-        let output_ty = self.type_of(var);
-        let is_mut_ref =
-            output_ty.is_ref() && matches!(output_ty.ref_mutability(), Some(ty::Mutability::Mut));
+        // let output_ty = self.type_of(var);
+        // let is_mut_ref =
+        //     output_ty.is_ref() && matches!(output_ty.ref_mutability(), Some(ty::Mutability::Mut));
 
-        if !is_mut_ref && utils::is_ty_impl_copy(output_ty, tcx) {
-            return false;
-        }
+        // if !is_mut_ref && utils::is_ty_impl_copy(output_ty, tcx) {
+        //     return false;
+        // }
 
         self.set_var_unavailable_unchecked(var);
         true

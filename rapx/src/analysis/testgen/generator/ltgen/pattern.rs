@@ -79,7 +79,7 @@ impl<'tcx> PatternProvider<'tcx> {
             f(self
                 .map
                 .entry(fn_did)
-                .or_insert_with(|| extract_constraints(fn_did, &[], tcx)))
+                .or_insert_with(|| extract_constraints(fn_did, args, tcx)))
         } else {
             f(&extract_constraints(fn_did, args, tcx))
         }

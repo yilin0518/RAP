@@ -59,8 +59,6 @@ impl<'tcx, 'a> Context<'tcx> for LtContext<'tcx, 'a> {
                 let mut folder = RidExtractFolder::new(self.tcx());
                 real_fn_sig.fold_with(&mut folder);
 
-                rap_info!("apicall: {:?}", apicall);
-
                 self.pat_provider.get_patterns_with(
                     apicall.fn_did(),
                     apicall.generic_args(),

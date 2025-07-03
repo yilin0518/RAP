@@ -3,6 +3,9 @@ RAPx is a static Rust analysis platform developed by researchers at [Artisan-Lab
 
 The project is still under heavy development. 
 
+## Features
+# ![logo](https://raw.githubusercontent.com/Artisan-Lab/RAPx/main/rapx_feature.png)
+
 ## Quick Start
 
 Install `nightly-2025-06-02` on which rapx is compiled with. This just needs to do once on your machine. If the toolchain exists,

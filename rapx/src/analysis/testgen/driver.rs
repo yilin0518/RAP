@@ -4,13 +4,13 @@ use crate::analysis::testgen::syn::impls::FuzzDriverSynImpl;
 use crate::analysis::testgen::syn::input::SillyInputGen;
 use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption};
 use crate::analysis::testgen::syn::{SynOption, Synthesizer};
-use crate::{analysis, rap_debug, rap_error, rap_info, rap_warn};
+use crate::{rap_error, rap_info, rap_warn};
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use toml;
 
 #[derive(Deserialize, Debug)]

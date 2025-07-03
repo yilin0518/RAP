@@ -2,7 +2,6 @@ use super::folder::extract_rids;
 use super::lifetime::{RegionGraph, Rid};
 use super::pattern::PatternProvider;
 use super::{destruct_ret_alias, FnAliasMap};
-use crate::analysis::core::alias::{FnRetAlias, RetAlias};
 use crate::analysis::testgen::context::{Context, HoldTyCtxt, UseKind};
 use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
 use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
@@ -10,12 +9,10 @@ use crate::analysis::testgen::generator::ltgen::lifetime::{
     visit_structure_region_with, RegionNode,
 };
 use crate::analysis::testgen::generator::ltgen::safety;
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
-use rustc_hir::LangItem;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypeFoldable, TypingMode};
-use rustc_span::Symbol;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::{HashMap, HashSet, VecDeque};
 

@@ -12,7 +12,6 @@ use crate::analysis::testgen::utils::{self};
 use crate::{rap_debug, rap_info};
 use context::LtContext;
 use itertools::Itertools;
-use pattern::PatternProvider;
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;

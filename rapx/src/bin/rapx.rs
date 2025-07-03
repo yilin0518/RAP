@@ -4,6 +4,7 @@ extern crate rustc_driver;
 extern crate rustc_session;
 
 use rapx::{rap_info, rap_trace, utils::log::init_log, RapCallback, RAP_DEFAULT_ARGS};
+use regex::Regex;
 use rustc_session::config::ErrorOutputType;
 use rustc_session::EarlyDiagCtxt;
 use std::env;
@@ -24,7 +25,15 @@ fn main() {
     // Parse the arguments from env.
     let mut args = vec![];
     let mut compiler = RapCallback::default();
+    let re_test_crate = Regex::new(r"-test-crate=(\S*)").unwrap();
+
     for arg in env::args() {
+        if let Some((full, [test_crate_name])) =
+            re_test_crate.captures(&arg).map(|caps| caps.extract())
+        {
+            compiler.set_test_crate(test_crate_name.to_owned());
+            continue;
+        }
         match arg.as_str() {
             "-F" | "-F0" | "-F1" | "-F2" | "-uaf" => compiler.enable_safedrop(arg),
             "-M" | "-mleak" => compiler.enable_rcanary(),

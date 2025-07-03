@@ -47,14 +47,13 @@ use rustc_session::search_paths::PathKind;
 use std::path::PathBuf;
 use std::{env, sync::Arc};
 
-
 // Insert rustc arguments at the beginning of the argument list that RAP wants to be
 // set per default, for maximal validation power.
 pub static RAP_DEFAULT_ARGS: &[&str] = &["-Zalways-encode-mir", "-Zmir-opt-level=0"];
 
 pub type Elapsed = (i64, i64);
 
-#[derive(Debug, Copy, Clone, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct RapCallback {
     rcanary: bool,
     safedrop: bool,
@@ -71,6 +70,7 @@ pub struct RapCallback {
     heap_item: bool,
     ssa: bool,
     range: bool,
+    test_crate: Option<String>,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -92,6 +92,7 @@ impl Default for RapCallback {
             heap_item: false,
             ssa: false,
             range: false,
+            test_crate: None,
         }
     }
 }
@@ -114,7 +115,7 @@ impl Callbacks for RapCallback {
 
     fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         rap_trace!("Execute after_analysis() of compiler callbacks");
-        start_analyzer(tcx, *self);
+        start_analyzer(tcx, self.clone());
         rap_trace!("analysis done");
         Compilation::Continue
     }
@@ -177,6 +178,10 @@ impl RapCallback {
             }
             _ => {}
         }
+    }
+
+    pub fn set_test_crate(&mut self, name: String) {
+        self.test_crate = Some(name);
     }
 
     pub fn is_safedrop_enabled(&self) -> bool {
@@ -243,7 +248,7 @@ impl RapCallback {
         self.dataflow = x;
     }
 
-    pub fn is_dataflow_enabled(self) -> usize {
+    pub fn is_dataflow_enabled(&self) -> usize {
         self.dataflow
     }
 
@@ -251,7 +256,7 @@ impl RapCallback {
         self.opt = x;
     }
 
-    pub fn is_opt_enabled(self) -> usize {
+    pub fn is_opt_enabled(&self) -> usize {
         self.opt
     }
 
@@ -259,19 +264,19 @@ impl RapCallback {
         self.heap_item = true;
     }
 
-    pub fn is_heap_item_enabled(self) -> bool {
+    pub fn is_heap_item_enabled(&self) -> bool {
         self.heap_item
     }
     pub fn enable_ssa_transform(&mut self) {
         self.ssa = true;
     }
-    pub fn is_ssa_transform_enabled(self) -> bool {
+    pub fn is_ssa_transform_enabled(&self) -> bool {
         self.ssa
     }
     pub fn enable_range_analysis(&mut self) {
         self.range = true;
     }
-    pub fn is_range_analysis_enabled(self) -> bool {
+    pub fn is_range_analysis_enabled(&self) -> bool {
         self.range
     }
 }
@@ -340,7 +345,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_testgen_enabled() {
-        Testgen::new(tcx).start();
+        Testgen::new(tcx).start(callback.test_crate.as_ref().map(|x| x.as_ref()));
     }
 
     match callback.is_dataflow_enabled() {

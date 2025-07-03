@@ -191,7 +191,7 @@ fn unify_ty<'tcx>(
             .eq(DefineOpaqueTypes::Yes, lhs, rhs)
         {
             Ok(infer_ok) => {
-                rap_debug!("[infer_ok] {} = {} : {:?}", lhs, rhs, infer_ok);
+                rap_trace!("[infer_ok] {} = {} : {:?}", lhs, rhs, infer_ok);
                 let mono = identity
                     .iter()
                     .map(|arg| match arg.kind() {

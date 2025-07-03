@@ -1,5 +1,5 @@
 # ![logo](https://raw.githubusercontent.com/Artisan-Lab/RAPx/main/rapx_logo.png)
-RAPx is a static Rust analysis platform developed by researchers at [Artisan-Lab](https://hxuhack.github.io), Fudan University. The project aims to provide a foundation for Rust programmers to develop or use advanced static analysis features beyond those offered by the rustc compiler. 
+RAPx (Rust Analysis Platform with Extensions) is an advanced static analysis platform for Rust, developed by researchers at [Artisan-Lab](https://hxuhack.github.io), Fudan University. It provides an extensible framework for building and integrating powerful analysis capabilities that go beyond those available in the standard rustc compiler, empowering developers to reason about safety, robustness, and performance at a deeper level.
 
 ## Features
 # ![logo](https://raw.githubusercontent.com/Artisan-Lab/RAPx/main/rapx_feature.png)

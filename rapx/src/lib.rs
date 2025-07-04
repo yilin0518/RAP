@@ -25,7 +25,7 @@ use analysis::{
     core::{
         alias_analysis::default::DefaultAlias,
         api_dep::ApiDep,
-        call_graph::CallGraph,
+        callgraph::default::DefaultCallGraphAnalysis,
         dataflow::DataFlow,
         ownedheap_analysis::{default::DefaultOwnedHeapAnalysis, OwnedHeapAnalysis},
         range_analysis::DefaultRange,
@@ -333,7 +333,8 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_callgraph_enabled() {
-        CallGraph::new(tcx).start();
+        let mut analysis = DefaultCallGraphAnalysis::new(tcx);
+        analysis.start();
     }
 
     match callback.is_opt_enabled() {

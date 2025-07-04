@@ -1,9 +1,79 @@
-use rustc_hir::def_id::DefId;
-use rustc_middle::mir;
+use rustc_hir::{
+    def_id::DefId,
+    def::DefKind
+};
+use rustc_middle::{
+    mir::{self, Body}, 
+    ty::TyCtxt
+};
 use std::collections::HashSet;
 use std::{collections::HashMap, hash::Hash};
 
-use crate::rap_info;
+use crate::{rap_info, Analysis};
+use super::visitor::CallGraphVisitor;
+
+pub struct DefaultCallGraphAnalysis<'tcx> {
+    pub tcx: TyCtxt<'tcx>,
+    pub graph: CallGraphInfo<'tcx>,
+}
+
+impl<'tcx> Analysis for DefaultCallGraphAnalysis<'tcx> {
+    fn name(&self) -> &'static str {
+        "Default call graph analysis algorithm."
+    }
+
+    fn run(&mut self) {
+        let mut analysis = DefaultCallGraphAnalysis::new(self.tcx);
+        analysis.start();
+    }
+
+    fn reset(&mut self) {
+        todo!();
+    }
+}
+
+impl<'tcx> DefaultCallGraphAnalysis<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+        Self {
+            tcx: tcx,
+            graph: CallGraphInfo::new(),
+        }
+    }
+
+    pub fn start(&mut self) {
+        for local_def_id in self.tcx.iter_local_def_id() {
+            if self.tcx.hir_maybe_body_owned_by(local_def_id).is_some() {
+                let def_id = local_def_id.to_def_id();
+                if self.tcx.is_mir_available(def_id) {
+                    let def_kind = self.tcx.def_kind(def_id);
+                    let body: &Body = match def_kind {
+                        DefKind::Const | DefKind::Static { .. } => {
+                            // Compile Time Function Evaluation
+                            &self.tcx.mir_for_ctfe(def_id)
+                        }
+                        _ => &self.tcx.optimized_mir(def_id),
+                    };
+                    let mut call_graph_visitor =
+                        CallGraphVisitor::new(self.tcx, def_id.into(), body, &mut self.graph);
+                    call_graph_visitor.visit();
+                }
+            }
+        }
+        // for &def_id in self.tcx.mir_keys(()).iter() {
+        //     if self.tcx.is_mir_available(def_id) {
+        //         let body = &self.tcx.optimized_mir(def_id);
+        //         let mut call_graph_visitor =
+        //             CallGraphVisitor::new(self.tcx, def_id.into(), body, &mut self.graph);
+        //         call_graph_visitor.visit();
+        //     }
+        // }
+        self.graph.print_call_graph();
+    }
+
+    pub fn get_callee_def_path(&self, def_path: String) -> Option<HashSet<String>> {
+        self.graph.get_callees_path(&def_path)
+    }
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Node {
@@ -103,6 +173,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
 
         callers_map
     }
+
     pub fn print_call_graph(&self) {
         rap_info!("CallGraph Analysis:");
         for (caller_id, callees) in &self.function_calls {
@@ -124,6 +195,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
             }
         }
     }
+
     pub fn get_reverse_post_order(&self) -> Vec<DefId> {
         let mut visited = HashSet::new();
         let mut post_order_ids = Vec::new(); // Will store the post-order traversal of `usize` IDs

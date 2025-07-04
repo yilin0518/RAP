@@ -7,6 +7,7 @@ use std::{default, fmt};
 use bounds::Bound;
 use intervals::*;
 use num_traits::{Bounded, Num, Zero};
+use rustc_middle::mir::{BinOp, UnOp};
 use z3::ast::Int;
 // use std::ops::Range;
 use std::ops::{Add, Mul, Sub};
@@ -330,7 +331,7 @@ where
 pub struct Meet;
 
 impl Meet {
-    pub fn widen<'tcx, T: IntervalArithmetic + fmt::Debug>(
+    pub fn widen<'tcx, T: IntervalArithmetic + ConstConvert + fmt::Debug>(
         op: &mut BasicOpKind<'tcx, T>,
         constant_vector: &[T],
         vars: &mut VarNodes<'tcx, T>,
@@ -389,7 +390,7 @@ impl Meet {
 
         old_interval != new_sink_interval
     }
-    pub fn narrow<'tcx, T: IntervalArithmetic + Clone + PartialOrd + std::fmt::Debug>(
+    pub fn narrow<'tcx, T: IntervalArithmetic + ConstConvert + fmt::Debug>(
         op: &mut BasicOpKind<'tcx, T>,
         vars: &mut VarNodes<'tcx, T>,
     ) -> bool {

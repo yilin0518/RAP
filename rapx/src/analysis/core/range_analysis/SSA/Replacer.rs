@@ -532,12 +532,15 @@ impl<'tcx> Replacer<'tcx> {
             TerminatorKind::Call {
                 args, destination, ..
             } => {
-                // for operand in args {
-                //     self.replace_operand(operand);
-                // }
-                // if let Some((place, _)) = destination {
-                //     self.rename_def(place);
-                // }
+                for op in args.iter_mut() {
+                    match &mut op.node {
+                        Operand::Copy(place) | Operand::Move(place) => {
+                            self.replace_place(place, &bb);
+                        }
+                        Operand::Constant(const_operand) => {}
+                    }
+                }
+                self.rename_local_def(destination, &bb, true);
             }
             TerminatorKind::Assert { cond, .. } => {
                 self.replace_operand(cond, &bb);
@@ -601,19 +604,23 @@ impl<'tcx> Replacer<'tcx> {
         let Place {
             local: old_local,
             projection: _,
-        } = place;
-
-        let new_local = Local::from_u32(self.ssatransformer.local_index);
+        } = place.clone();
+        let old_place = place.clone();
+        if old_local.as_u32() == 0 {
+            return;
+        }
+        let new_local = Local::from_usize(self.ssatransformer.local_index);
         self.ssatransformer.local_index += 1;
+        let new_place: Place<'_> = Place::from(new_local);
+        *place = new_place.clone();
 
         let _old_local = old_local.clone();
         self.ssatransformer
             .ssa_locals_map
-            .entry(*old_local)
+            .entry(old_place)
             .or_insert_with(HashSet::new)
-            .insert(new_local.clone());
+            .insert(new_place);
 
-        *place = Place::from(new_local);
         self.ssatransformer
             .local_defination_block
             .insert(new_local.clone(), bb.clone());
@@ -641,30 +648,38 @@ impl<'tcx> Replacer<'tcx> {
         let Place {
             local: old_local,
             projection: _,
-        } = place;
-        //find the original local defination assign statement
-        if self.ssatransformer.skipped.contains(&old_local.as_u32()) && not_phi {
-            self.ssatransformer.skipped.remove(&old_local.as_u32());
+        } = place.clone();
+        let old_place = place.clone();
+        if self.ssatransformer.skipped.contains(&old_local.as_usize()) && not_phi {
+            self.ssatransformer.skipped.remove(&old_local.as_usize());
             self.ssatransformer
                 .reaching_def
-                .insert(*old_local, Some(*old_local));
+                .insert(old_local, Some(old_local));
             self.ssatransformer
-                .locals_map
-                .entry(*old_local)
+                .places_map
+                .entry(old_place)
                 .or_insert_with(HashSet::new)
-                .insert(*old_local);
+                .insert(old_place);
             return;
         }
-        let new_local = Local::from_u32(self.ssatransformer.local_index);
+        let new_local = Local::from_usize(self.ssatransformer.local_index);
+        let new_place: Place<'_> = Place::from(new_local);
+
+        *place = new_place.clone();
+
+        //find the original local defination assign statement
+        if old_local.as_u32() == 0 {
+            return;
+        }
+
         self.ssatransformer.local_index += 1;
         self.ssatransformer
-            .locals_map
-            .entry(*old_local)
+            .places_map
+            .entry(old_place)
             .or_insert_with(HashSet::new)
-            .insert(new_local);
+            .insert(new_place);
 
         let _old_local = old_local.clone();
-        *place = Place::from(new_local);
         self.ssatransformer
             .local_defination_block
             .insert(new_local.clone(), bb.clone());

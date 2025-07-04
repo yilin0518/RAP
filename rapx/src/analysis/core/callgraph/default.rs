@@ -1,29 +1,26 @@
-use rustc_hir::{
-    def_id::DefId,
-    def::DefKind
-};
+use rustc_hir::{def::DefKind, def_id::DefId};
 use rustc_middle::{
-    mir::{self, Body}, 
-    ty::TyCtxt
+    mir::{self, Body},
+    ty::TyCtxt,
 };
 use std::collections::HashSet;
 use std::{collections::HashMap, hash::Hash};
 
-use crate::{rap_info, Analysis};
 use super::visitor::CallGraphVisitor;
+use crate::{rap_info, Analysis};
 
-pub struct DefaultCallGraphAnalysis<'tcx> {
+pub struct CallGraphAnalyzer<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub graph: CallGraphInfo<'tcx>,
 }
 
-impl<'tcx> Analysis for DefaultCallGraphAnalysis<'tcx> {
+impl<'tcx> Analysis for CallGraphAnalyzer<'tcx> {
     fn name(&self) -> &'static str {
         "Default call graph analysis algorithm."
     }
 
     fn run(&mut self) {
-        let mut analysis = DefaultCallGraphAnalysis::new(self.tcx);
+        let mut analysis = CallGraphAnalyzer::new(self.tcx);
         analysis.start();
     }
 
@@ -32,7 +29,15 @@ impl<'tcx> Analysis for DefaultCallGraphAnalysis<'tcx> {
     }
 }
 
-impl<'tcx> DefaultCallGraphAnalysis<'tcx> {
+/*
+impl CallGraphAnalysis for CallGraphAnalyzer {
+    fn get_callgraph(&mut self) -> CallGraph{
+        todo!()
+    }
+}
+*/
+
+impl<'tcx> CallGraphAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx: tcx,

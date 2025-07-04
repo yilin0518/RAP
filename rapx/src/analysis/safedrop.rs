@@ -12,10 +12,10 @@ use rustc_middle::ty::TyCtxt;
 
 use crate::analysis::core::{
     alias_analysis::{
-        mop::{FnMap, MopAlias},
+        mop::{FnMap, MopAliasAnalyzer},
         AliasAnalysis,
     },
-    ownedheap_analysis::{default::DefaultOwnedHeapAnalysis, OHAResult, OwnedHeapAnalysis},
+    ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResult, OwnedHeapAnalysis},
 };
 use graph::SafeDropGraph;
 use safedrop::*;
@@ -31,11 +31,11 @@ impl<'tcx> SafeDrop<'tcx> {
         Self { tcx }
     }
     pub fn start(&self) {
-        let mut mop = MopAlias::new(self.tcx);
+        let mut mop = MopAliasAnalyzer::new(self.tcx);
         mop.run();
         let fn_map = mop.get_all_fn_alias();
 
-        let mut heap = DefaultOwnedHeapAnalysis::new(self.tcx);
+        let mut heap = OwnedHeapAnalyzer::new(self.tcx);
         heap.run();
         let adt_owner = heap.get_all_items();
 

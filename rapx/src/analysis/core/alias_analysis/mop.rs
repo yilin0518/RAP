@@ -146,12 +146,12 @@ impl Into<AAResult> for MopAAResult {
 //struct to cache the results for analyzed functions.
 pub type FnMap = FxHashMap<DefId, MopAAResult>;
 
-pub struct MopAlias<'tcx> {
+pub struct MopAliasAnalyzer<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub fn_map: FxHashMap<DefId, MopAAResult>,
 }
 
-impl<'tcx> Analysis for MopAlias<'tcx> {
+impl<'tcx> Analysis for MopAliasAnalyzer<'tcx> {
     fn name(&self) -> &'static str {
         "Alias Analysis (MoP)"
     }
@@ -178,7 +178,7 @@ impl<'tcx> Analysis for MopAlias<'tcx> {
     }
 }
 
-impl<'tcx, T> AliasAnalysis<T> for MopAlias<'tcx>
+impl<'tcx, T> AliasAnalysis<T> for MopAliasAnalyzer<'tcx>
 where
     T: From<MopAAResult> + Clone,
 {
@@ -198,7 +198,7 @@ where
     }
 }
 
-impl<'tcx> MopAlias<'tcx> {
+impl<'tcx> MopAliasAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,

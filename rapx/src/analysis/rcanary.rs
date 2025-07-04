@@ -1,7 +1,7 @@
 pub mod ranalyzer;
 
 use crate::analysis::{
-    core::ownedheap_analysis::{default::DefaultOwnedHeapAnalysis, OHAResult, OwnedHeapAnalysis},
+    core::ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResult, OwnedHeapAnalysis},
     Analysis,
 };
 use ranalyzer::{FlowAnalysis, IcxSliceFroBlock, IntraFlowContext, MirGraph};
@@ -26,7 +26,7 @@ impl<'tcx> rCanary<'tcx> {
     }
 
     pub fn start(&mut self) {
-        let mut heap = DefaultOwnedHeapAnalysis::new(self.tcx);
+        let mut heap = OwnedHeapAnalyzer::new(self.tcx);
         heap.run();
         let adt_owner = heap.get_all_items();
         let rcx_boxed = Box::new(rCanary::new(self.tcx, adt_owner));

@@ -21,12 +21,12 @@ use std::{collections::HashSet, convert::From};
 
 pub const VISIT_LIMIT: usize = 1000;
 
-pub struct DefaultAlias<'tcx> {
+pub struct AliasAnalyzer<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub fn_map: FxHashMap<DefId, AAResult>,
 }
 
-impl<'tcx> Analysis for DefaultAlias<'tcx> {
+impl<'tcx> Analysis for AliasAnalyzer<'tcx> {
     fn name(&self) -> &'static str {
         "Default alias analysis algorithm."
     }
@@ -53,7 +53,7 @@ impl<'tcx> Analysis for DefaultAlias<'tcx> {
     }
 }
 
-impl<'tcx, T> AliasAnalysis<T> for DefaultAlias<'tcx>
+impl<'tcx, T> AliasAnalysis<T> for AliasAnalyzer<'tcx>
 where
     T: From<AAResult> + Clone,
 {
@@ -73,7 +73,7 @@ where
     }
 }
 
-impl<'tcx> DefaultAlias<'tcx> {
+impl<'tcx> AliasAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,

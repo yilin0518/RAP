@@ -1,6 +1,6 @@
 use crate::{
     analysis::{
-        core::{alias_analysis::mop::FnMap, ownedheap_analysis::OHAResult},
+        core::{alias_analysis::AAResult, ownedheap_analysis::OHAResult},
         safedrop::graph::SafeDropGraph,
         utils::{
             fn_info::{
@@ -28,6 +28,7 @@ use super::generic_check::GenericChecker;
 use super::inter_record::InterAnalysisRecord;
 use super::matcher::UnsafeApi;
 use super::matcher::{get_arg_place, parse_unsafe_api};
+use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{
@@ -139,7 +140,10 @@ impl<'tcx> BodyVisitor<'tcx> {
         self.chains.init_self_with_inter(inter_result);
     }
 
-    pub fn path_forward_check(&mut self, fn_map: &FnMap) -> InterResultNode<'tcx> {
+    pub fn path_forward_check(
+        &mut self,
+        fn_map: &FxHashMap<DefId, AAResult>,
+    ) -> InterResultNode<'tcx> {
         let tmp_chain = self.chains.clone();
         let mut inter_return_value =
             InterResultNode::construct_from_var_node(self.chains.clone(), 0);
@@ -206,7 +210,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         block: &BasicBlockData<'tcx>,
         path_index: usize,
         bb_index: usize,
-        fn_map: &FnMap,
+        fn_map: &FxHashMap<DefId, AAResult>,
     ) {
         for statement in block.statements.iter() {
             self.path_analyze_statement(statement, path_index);
@@ -242,7 +246,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         terminator: &Terminator<'tcx>,
         path_index: usize,
         bb_index: usize,
-        fn_map: &FnMap,
+        fn_map: &FxHashMap<DefId, AAResult>,
     ) {
         match &terminator.kind {
             TerminatorKind::Call {
@@ -365,7 +369,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         def_id: &DefId,
         args: &Box<[Spanned<Operand>]>,
         path_index: usize,
-        fn_map: &FnMap,
+        fn_map: &FxHashMap<DefId, AAResult>,
         fn_span: Span,
     ) {
         if !self.tcx.is_mir_available(def_id) {
@@ -436,7 +440,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         &mut self,
         dst_place: &Place<'tcx>,
         def_id: &DefId,
-        fn_map: &FnMap,
+        fn_map: &FxHashMap<DefId, AAResult>,
         args: &Box<[Spanned<Operand>]>,
     ) {
         let d_local = self.handle_proj(false, dst_place.clone());
@@ -444,11 +448,9 @@ impl<'tcx> BodyVisitor<'tcx> {
         // If one of the op is ptr, then alias the pointed node with another.
         if let Some(retalias) = fn_map.get(def_id) {
             for alias_set in retalias.aliases() {
-                let (l, r) = (alias_set.fact.lhs_no, alias_set.fact.rhs_no);
-                let (l_fields, r_fields) = (
-                    alias_set.fact.lhs_fields.clone(),
-                    alias_set.fact.rhs_fields.clone(),
-                );
+                let (l, r) = (alias_set.lhs_no, alias_set.rhs_no);
+                let (l_fields, r_fields) =
+                    (alias_set.lhs_fields.clone(), alias_set.rhs_fields.clone());
                 let (l_place, r_place) = (
                     if l != 0 {
                         get_arg_place(&args[l - 1].node)

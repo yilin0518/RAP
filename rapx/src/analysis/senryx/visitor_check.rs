@@ -5,11 +5,14 @@ use super::{
     matcher::{get_arg_place, UnsafeApi},
     visitor::{BodyVisitor, CheckResult, PlaceTy},
 };
-use crate::analysis::{
-    senryx::FnMap,
-    utils::fn_info::{display_hashmap, is_strict_ty_convert},
+use crate::{
+    analysis::{
+        core::alias_analysis::AAResult,
+        utils::fn_info::{display_hashmap, get_cleaned_def_path_name, is_strict_ty_convert},
+    },
+    rap_warn,
 };
-use crate::{analysis::utils::fn_info::get_cleaned_def_path_name, rap_warn};
+use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::Operand;
 use rustc_middle::mir::Place;
@@ -23,7 +26,7 @@ impl BodyVisitor<'_> {
         def_id: &DefId,
         args: &[Spanned<Operand>],
         _path_index: usize,
-        _fn_map: &FnMap,
+        _fn_map: &FxHashMap<DefId, AAResult>,
         fn_span: Span,
         fn_result: UnsafeApi,
     ) {

@@ -15,7 +15,7 @@ use std::{collections::HashMap, ops::ControlFlow};
 use super::*;
 use crate::rap_debug;
 
-pub struct DefaultOwnedHeapAnalysis<'tcx> {
+pub struct OwnedHeapAnalyzer<'tcx> {
     tcx: TyCtxt<'tcx>,
     adt_heap: OHAResult,
     fn_set: HashSet<DefId>,
@@ -23,7 +23,7 @@ pub struct DefaultOwnedHeapAnalysis<'tcx> {
     adt_recorder: HashSet<DefId>,
 }
 
-impl<'tcx> Analysis for DefaultOwnedHeapAnalysis<'tcx> {
+impl<'tcx> Analysis for OwnedHeapAnalyzer<'tcx> {
     fn name(&self) -> &'static str {
         "Default heap analysis."
     }
@@ -35,7 +35,7 @@ impl<'tcx> Analysis for DefaultOwnedHeapAnalysis<'tcx> {
     }
 }
 
-impl<'tcx> OwnedHeapAnalysis for DefaultOwnedHeapAnalysis<'tcx> {
+impl<'tcx> OwnedHeapAnalysis for OwnedHeapAnalyzer<'tcx> {
     fn get_all_items(&mut self) -> OHAResult {
         self.adt_heap.clone()
     }
@@ -54,7 +54,7 @@ pub(crate) fn copy_ty_context(tc: &TyContext) -> TyContext {
     }
 }
 
-impl<'tcx> DefaultOwnedHeapAnalysis<'tcx> {
+impl<'tcx> OwnedHeapAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,
@@ -141,7 +141,7 @@ impl<'tcx> DefaultOwnedHeapAnalysis<'tcx> {
         }
 
         #[inline(always)]
-        fn show_heap(ref_type_analysis: &mut DefaultOwnedHeapAnalysis) {
+        fn show_heap(ref_type_analysis: &mut OwnedHeapAnalyzer) {
             for elem in ref_type_analysis.adt_heap() {
                 let name = format!(
                     "{:?}",
@@ -382,7 +382,7 @@ impl<'tcx> DefaultOwnedHeapAnalysis<'tcx> {
     }
 }
 
-impl<'tcx> Visitor<'tcx> for DefaultOwnedHeapAnalysis<'tcx> {
+impl<'tcx> Visitor<'tcx> for OwnedHeapAnalyzer<'tcx> {
     fn visit_body(&mut self, body: &Body<'tcx>) {
         for (local, local_decl) in body.local_decls.iter().enumerate() {
             self.visit_local_decl(Local::from(local), local_decl);

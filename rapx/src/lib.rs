@@ -23,12 +23,12 @@ extern crate stable_mir;
 
 use analysis::{
     core::{
-        alias_analysis::default::DefaultAlias,
+        alias_analysis::default::AliasAnalyzer,
         api_dep::ApiDep,
-        callgraph::default::DefaultCallGraphAnalysis,
+        callgraph::default::CallGraphAnalyzer,
         dataflow::DataFlow,
-        ownedheap_analysis::{default::DefaultOwnedHeapAnalysis, OwnedHeapAnalysis},
-        range_analysis::DefaultRange,
+        ownedheap_analysis::{default::OwnedHeapAnalyzer, OwnedHeapAnalysis},
+        range_analysis::RangeAnalyzer,
         ssa_pass_runner::SSATrans,
     },
     opt::Opt,
@@ -274,7 +274,7 @@ pub enum RapPhase {
 
 pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     let _rcanary: Option<rCanary> = if callback.is_rcanary_enabled() {
-        let mut heap = DefaultOwnedHeapAnalysis::new(tcx);
+        let mut heap = OwnedHeapAnalyzer::new(tcx);
         heap.run();
         let adt_owner = heap.get_all_items();
         let mut rcx = rCanary::new(tcx, adt_owner);
@@ -285,7 +285,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     };
 
     if callback.is_alias_enabled() {
-        let mut alias = DefaultAlias::new(tcx);
+        let mut alias = AliasAnalyzer::new(tcx);
         alias.run();
     }
 
@@ -294,9 +294,9 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_ownedheap_enabled() {
-        let mut analysis = DefaultOwnedHeapAnalysis::new(tcx);
-        analysis.run();
-        analysis.output();
+        let mut analyzer = OwnedHeapAnalyzer::new(tcx);
+        analyzer.run();
+        analyzer.output();
     }
 
     let x = callback.is_unsafety_isolation_enabled();
@@ -333,8 +333,8 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     if callback.is_callgraph_enabled() {
-        let mut analysis = DefaultCallGraphAnalysis::new(tcx);
-        analysis.start();
+        let mut analyzer = CallGraphAnalyzer::new(tcx);
+        analyzer.start();
     }
 
     match callback.is_opt_enabled() {
@@ -347,8 +347,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         SSATrans::new(tcx, false).start();
     }
     if callback.is_range_analysis_enabled() {
-        let mut analyzer = DefaultRange::<i128>::new(tcx, false);
+        let mut analyzer = RangeAnalyzer::<i128>::new(tcx, false);
         analyzer.run();
-        // analyzer.using_path_constraints_analysis();
     }
 }

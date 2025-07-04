@@ -11,7 +11,7 @@ use crate::analysis::{
             range::Range,
             ConstraintGraph::ConstraintGraph,
         },
-        ssa_pass_runner::{ PassRunner},
+        ssa_pass_runner::PassRunner,
     },
     safedrop::graph::SafeDropGraph,
 };
@@ -37,7 +37,7 @@ pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Ana
     fn get_fn_local_range(&self, def_id: DefId, local: Place<'tcx>) -> Option<Range<T>>;
 }
 
-pub struct DefaultRange<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
+pub struct RangeAnalyzer<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
     pub tcx: TyCtxt<'tcx>,
     pub debug: bool,
     pub ssa_def_id: Option<DefId>,
@@ -49,7 +49,7 @@ pub struct DefaultRange<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
     pub body_map: FxHashMap<DefId, Body<'tcx>>,
     pub cg_map: FxHashMap<DefId, RefCell<ConstraintGraph<'tcx, T>>>,
 }
-impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> Analysis for DefaultRange<'tcx, T>
+impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> Analysis for RangeAnalyzer<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {
@@ -69,7 +69,7 @@ where
 }
 
 impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> RangeAnalysis<'tcx, T>
-    for DefaultRange<'tcx, T>
+    for RangeAnalyzer<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {
@@ -90,7 +90,7 @@ where
     }
 }
 
-impl<'tcx, T> DefaultRange<'tcx, T>
+impl<'tcx, T> RangeAnalyzer<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {

@@ -7,29 +7,28 @@ pub mod matcher;
 #[allow(unused)]
 pub mod visitor;
 pub mod visitor_check;
-use crate::analysis::utils::fn_info::*;
-use crate::{
-    analysis::unsafety_isolation::{
-        hir_visitor::{ContainsUnsafe, RelatedFnCollector},
-        UnsafetyIsolationCheck,
-    },
-    rap_info, rap_warn,
-};
 use dominated_chain::InterResultNode;
 use inter_record::InterAnalysisRecord;
+use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
-use rustc_middle::mir::{BasicBlock, Operand, TerminatorKind};
-use rustc_middle::ty;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::{
+    mir::{BasicBlock, Operand, TerminatorKind},
+    ty::{self, TyCtxt},
+};
 use std::collections::{HashMap, HashSet};
 use visitor::{BodyVisitor, CheckResult};
 
-use crate::analysis::{
-    core::alias_analysis::{
-        mop::{FnMap, MopAlias},
-        AliasAnalysis,
+use crate::{
+    analysis::{
+        core::alias_analysis::{default::AliasAnalyzer, AAResult, AliasAnalysis},
+        unsafety_isolation::{
+            hir_visitor::{ContainsUnsafe, RelatedFnCollector},
+            UnsafetyIsolationCheck,
+        },
+        utils::fn_info::*,
+        Analysis,
     },
-    Analysis,
+    rap_info, rap_warn,
 };
 
 macro_rules! cond_print {
@@ -59,9 +58,9 @@ impl<'tcx> SenryxCheck<'tcx> {
 
     pub fn start(&mut self, check_level: CheckLevel, is_verify: bool) {
         let tcx = self.tcx;
-        let mut mop = MopAlias::new(self.tcx);
-        mop.run();
-        let fn_map = &mop.get_all_fn_alias();
+        let mut analyzer = AliasAnalyzer::new(self.tcx);
+        analyzer.run();
+        let fn_map = &analyzer.get_all_fn_alias();
         let related_items = RelatedFnCollector::collect(tcx);
         for vec in related_items.clone().values() {
             for (body_id, _span) in vec {
@@ -100,7 +99,7 @@ impl<'tcx> SenryxCheck<'tcx> {
         }
     }
 
-    pub fn check_soundness(&mut self, def_id: DefId, fn_map: &FnMap) {
+    pub fn check_soundness(&mut self, def_id: DefId, fn_map: &FxHashMap<DefId, AAResult>) {
         let check_results = self.body_visit_and_check(def_id, fn_map);
         let tcx = self.tcx;
         if !check_results.is_empty() {
@@ -116,7 +115,11 @@ impl<'tcx> SenryxCheck<'tcx> {
         Self::show_annotate_results(self.tcx, def_id, annotation_results);
     }
 
-    pub fn body_visit_and_check(&mut self, def_id: DefId, fn_map: &FnMap) -> Vec<CheckResult> {
+    pub fn body_visit_and_check(
+        &mut self,
+        def_id: DefId,
+        fn_map: &FxHashMap<DefId, AAResult>,
+    ) -> Vec<CheckResult> {
         let mut body_visitor = BodyVisitor::new(self.tcx, def_id, self.global_recorder.clone(), 0);
         if get_type(self.tcx, def_id) == 1 {
             let func_cons = get_cons(self.tcx, def_id);

@@ -1,4 +1,4 @@
-use super::call_graph_helper::CallGraphInfo;
+use super::callgraph_helper::CallGraphInfo;
 use regex::Regex;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir;

@@ -2,12 +2,12 @@ digraph MIR {
   node [shape=box];
   0 [label="bb0:\l\l"];
   0 -> 1;
-  1 [label="bb1:\l_20 = SSAstmt\l_21 = SSAstmt\l_22 = SSAstmt\l_23 = SSAstmt\lStorageLive(_3)\lStorageLive(_4)\l_4 = copy _20\l_3 = Lt(move _4, const 100_usize)\l"];
+  1 [label="bb1:\l_20 = SSAstmt\l_21 = SSAstmt\l_22 = SSAstmt\l_23 = SSAstmt\lStorageLive(_3)\lStorageLive(_4)\l_4 = copy _23\l_3 = Lt(move _4, const 100_usize)\l"];
   1 -> 9;
   1 -> 2;
   2 [label="bb2:\l_24 = ESSAstmt\lStorageDead(_4)\lStorageLive(_5)\l_5 = const 0_usize\lStorageLive(_6)\l_6 = copy _24\lStorageLive(_7)\l"];
   2 -> 3;
-  3 [label="bb3:\l_25 = SSAstmt\l_26 = SSAstmt\l_27 = SSAstmt\lStorageLive(_8)\lStorageLive(_9)\l_9 = copy _25\lStorageLive(_10)\l_10 = copy _27\l_8 = Lt(move _9, move _10)\l"];
+  3 [label="bb3:\l_25 = SSAstmt\l_26 = SSAstmt\l_27 = SSAstmt\lStorageLive(_8)\lStorageLive(_9)\l_9 = copy _25\lStorageLive(_10)\l_10 = copy _26\l_8 = Lt(move _9, move _10)\l"];
   3 -> 7;
   3 -> 4;
   4 [label="bb4:\l_28 = ESSAstmt\l_29 = ESSAstmt\lStorageDead(_10)\lStorageDead(_9)\l_11 = AddWithOverflow(copy _28, const 1_usize)\l"];

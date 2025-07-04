@@ -1,10 +1,10 @@
-pub mod call_graph_helper;
-pub mod call_graph_visitor;
+pub mod callgraph_helper;
+pub mod callgraph_visitor;
 
 use std::collections::HashSet;
 
-use call_graph_helper::CallGraphInfo;
-use call_graph_visitor::CallGraphVisitor;
+use callgraph_helper::CallGraphInfo;
+use callgraph_visitor::CallGraphVisitor;
 use rustc_hir::def::DefKind;
 use rustc_middle::mir::Body;
 use rustc_middle::ty::TyCtxt;

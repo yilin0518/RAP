@@ -4,7 +4,7 @@
 
 use crate::analysis::{
     core::{
-        call_graph::{call_graph_helper::CallGraphInfo, call_graph_visitor::CallGraphVisitor},
+        callgraph::{callgraph_helper::CallGraphInfo, callgraph_visitor::CallGraphVisitor},
         ownedheap_analysis::OHAResult,
         range_analysis::domain::{
             domain::{ConstConvert, IntervalArithmetic},

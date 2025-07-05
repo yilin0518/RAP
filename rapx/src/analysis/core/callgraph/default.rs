@@ -7,7 +7,10 @@ use std::collections::HashSet;
 use std::{collections::HashMap, hash::Hash};
 
 use super::visitor::CallGraphVisitor;
-use crate::{rap_info, Analysis};
+use crate::{
+    rap_info, Analysis,
+    analysis::core::callgraph::{CallGraph, CallGraphAnalysis}
+};
 
 pub struct CallGraphAnalyzer<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -29,13 +32,24 @@ impl<'tcx> Analysis for CallGraphAnalyzer<'tcx> {
     }
 }
 
-/*
-impl CallGraphAnalysis for CallGraphAnalyzer {
-    fn get_callgraph(&mut self) -> CallGraph{
-        todo!()
+impl<'tcx> CallGraphAnalysis for CallGraphAnalyzer<'tcx> {
+    fn get_callgraph(&mut self) -> CallGraph {
+        let fn_calls: HashMap<DefId, Vec<DefId>> = self.graph.fn_calls.clone().into_iter()
+            .map(|(caller, callees)| {
+                let caller_id = self.graph.functions.get(&caller)
+                    .expect("Key must exist in functions map")
+                    .def_id;
+
+                let callees_id = callees.into_iter()
+                    .map(|(callee, _)| {
+                        self.graph.functions.get(&callee).expect("Value must exist in functions map")
+                            .def_id
+                    }).collect::<Vec<_>>();
+                (caller_id, callees_id)
+            }).collect();
+        CallGraph { fn_calls }
     }
 }
-*/
 
 impl<'tcx> CallGraphAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
@@ -64,15 +78,6 @@ impl<'tcx> CallGraphAnalyzer<'tcx> {
                 }
             }
         }
-        // for &def_id in self.tcx.mir_keys(()).iter() {
-        //     if self.tcx.is_mir_available(def_id) {
-        //         let body = &self.tcx.optimized_mir(def_id);
-        //         let mut call_graph_visitor =
-        //             CallGraphVisitor::new(self.tcx, def_id.into(), body, &mut self.graph);
-        //         call_graph_visitor.visit();
-        //     }
-        // }
-        self.graph.print_call_graph();
     }
 
     pub fn get_callee_def_path(&self, def_path: String) -> Option<HashSet<String>> {
@@ -105,7 +110,7 @@ impl Node {
 
 pub struct CallGraphInfo<'tcx> {
     pub functions: HashMap<usize, Node>, // id -> node
-    pub function_calls: HashMap<usize, Vec<(usize, &'tcx mir::Terminator<'tcx>)>>, // caller_id -> Vec<(callee_id, terminator)>
+    pub fn_calls: HashMap<usize, Vec<(usize, &'tcx mir::Terminator<'tcx>)>>, // caller_id -> Vec<(callee_id, terminator)>
     pub node_registry: HashMap<String, usize>,                                     // path -> id
 }
 
@@ -113,7 +118,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
     pub fn new() -> Self {
         Self {
             functions: HashMap::new(),
-            function_calls: HashMap::new(),
+            fn_calls: HashMap::new(),
             node_registry: HashMap::new(),
         }
     }
@@ -125,7 +130,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
     pub fn get_callees_path(&self, caller_def_path: &String) -> Option<HashSet<String>> {
         let mut callees_path: HashSet<String> = HashSet::new();
         if let Some(caller_id) = self.node_registry.get(caller_def_path) {
-            if let Some(callees) = self.function_calls.get(caller_id) {
+            if let Some(callees) = self.fn_calls.get(caller_id) {
                 for (id, _terminator) in callees {
                     if let Some(callee_node) = self.functions.get(id) {
                         callees_path.insert(callee_node.get_def_path());
@@ -154,7 +159,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
         terminator_stmt: &'tcx mir::Terminator<'tcx>,
     ) {
         let entry = self
-            .function_calls
+            .fn_calls
             .entry(caller_id)
             .or_insert_with(Vec::new);
         entry.push((callee_id, terminator_stmt));
@@ -167,7 +172,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
         let mut callers_map: HashMap<usize, Vec<(usize, &'tcx mir::Terminator<'tcx>)>> =
             HashMap::new();
 
-        for (&caller_id, calls_vec) in &self.function_calls {
+        for (&caller_id, calls_vec) in &self.fn_calls {
             for (callee_id, terminator) in calls_vec {
                 callers_map
                     .entry(*callee_id)
@@ -179,9 +184,9 @@ impl<'tcx> CallGraphInfo<'tcx> {
         callers_map
     }
 
-    pub fn print_call_graph(&self) {
+    pub fn display(&self) {
         rap_info!("CallGraph Analysis:");
-        for (caller_id, callees) in &self.function_calls {
+        for (caller_id, callees) in &self.fn_calls {
             if let Some(caller_node) = self.functions.get(caller_id) {
                 for (callee_id, terminator_stmt) in callees {
                     if let Some(callee_node) = self.functions.get(callee_id) {
@@ -240,7 +245,7 @@ impl<'tcx> CallGraphInfo<'tcx> {
         visited.insert(node_id);
 
         // Visit all callees (children) of the current node
-        if let Some(callees) = self.function_calls.get(&node_id) {
+        if let Some(callees) = self.fn_calls.get(&node_id) {
             for (callee_id, _terminator) in callees {
                 if !visited.contains(callee_id) {
                     self.dfs_post_order(*callee_id, visited, post_order_ids);

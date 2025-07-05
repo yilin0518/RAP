@@ -1,5 +1,7 @@
-// use std::ptr;
+#![allow(dead_code)]
+
 use std::slice;
+
 // use std::mem::MaybeUninit;
 
 // struct MySliceWrapperTest<T> {

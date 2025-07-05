@@ -1,3 +1,8 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+#![allow(non_upper_case_globals)]
+
 pub struct SSAstmt;
 pub struct ESSAstmt;
 

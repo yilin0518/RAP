@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+
 pub struct Iterator {
     ptr: *const Vec<i32>,
     ind: usize,

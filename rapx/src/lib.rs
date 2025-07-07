@@ -336,7 +336,13 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         let mut analyzer = CallGraphAnalyzer::new(tcx);
         analyzer.start();
         let callgraph = analyzer.get_callgraph();
-        rap_info!("{}", CallGraphDisplay{ graph: &callgraph, tcx});
+        rap_info!(
+            "{}",
+            CallGraphDisplay {
+                graph: &callgraph,
+                tcx
+            }
+        );
         //analyzer.display();
     }
 

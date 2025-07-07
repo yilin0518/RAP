@@ -29,7 +29,7 @@ use analysis::{
         dataflow::DataFlowAnalyzer,
         ownedheap_analysis::{default::OwnedHeapAnalyzer, OwnedHeapAnalysis},
         range_analysis::{default::RangeAnalyzer, RangeAnalysis},
-        ssa_pass_runner::SSATrans,
+        ssa_transform::SSATrans,
     },
     opt::Opt,
     rcanary::rCanary,

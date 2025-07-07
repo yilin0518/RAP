@@ -17,6 +17,9 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
 };
+
+/// This is the trait for range analysis. Range analysis is used to determine the value range of a
+/// given variable at particular program points.
 pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Analysis {
 
     /// Returns the range information for all local variables (Places) in a given function.

@@ -2,7 +2,7 @@
 /// The #[allow(unused)] attribute is applied to suppress excessive lint warnings.
 /// Once the analysis stabilizes, this marker should be removed.
 use crate::{
-    analysis::core::api_dependency::{ApiDependencyGraph, ApiDependencyAnalysis},
+    analysis::core::api_dependency::{ApiDependencyAnalysis, ApiDependencyGraph},
     rap_debug, rap_info, Analysis,
 };
 use rustc_hir::def_id::LOCAL_CRATE;

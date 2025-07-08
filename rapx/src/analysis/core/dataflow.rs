@@ -2,19 +2,16 @@ pub mod debug;
 pub mod graph;
 
 use std::{
-    collections::{HashSet, HashMap},
+    collections::{HashMap, HashSet},
     fs::File,
     io::Write,
-    process::Command
+    process::Command,
 };
 
-use rustc_hir::{
-    def::DefKind,
-    def_id::DefId
-};
+use rustc_hir::{def::DefKind, def_id::DefId};
 use rustc_middle::{
     mir::{Body, Local},
-    ty::TyCtxt
+    ty::TyCtxt,
 };
 
 use crate::Analysis;

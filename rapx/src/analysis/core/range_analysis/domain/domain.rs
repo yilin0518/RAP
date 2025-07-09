@@ -26,6 +26,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::{Add, Mul, Sub};
+use std::rc::Rc;
 pub trait ConstConvert: Sized {
     fn from_const(c: &Const) -> Option<Self>;
 }
@@ -264,8 +265,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> IntervalTypeTrait<T>
 
 // Define the basic operation trait
 pub trait Operation<T: IntervalArithmetic + ConstConvert + Debug> {
-    fn get_value_id(&self) -> u32; // Placeholder for an operation identifier
-    fn eval(&self) -> Range<T>; // Method to evaluate the result of the operation
+    fn eval(&self) -> Range<T>; // Method to evaluate the range of the operation
     fn print(&self, os: &mut dyn fmt::Write);
 }
 
@@ -422,10 +422,11 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
     pub fn eval_call(
         &self,
         caller_vars: &VarNodes<'tcx, T>,
-        all_cgs: &FxHashMap<DefId, RefCell<ConstraintGraph<'tcx, T>>>,
+        cg_map: &FxHashMap<DefId, Rc<RefCell<ConstraintGraph<'tcx, T>>>>,
+        vars_map: &mut FxHashMap<DefId, Vec<RefCell<VarNodes<'tcx, T>>>>,
     ) -> Range<T> {
         // 1. Find the callee's ConstraintGraph in the map.
-        if let Some(callee_cg_cell) = all_cgs.get(&self.def_id) {
+        if let Some(rc_callee_cg_cell) = cg_map.get(&self.def_id) {
             rap_debug!(
                 "Evaluating call to {:?} with args {:?}",
                 self.def_id,
@@ -433,7 +434,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
             );
             // 2. Try to get a mutable borrow of the callee's graph.
             //    Using `try_borrow_mut` is safer than `borrow_mut` to avoid panicking on recursive calls.
-            if let Ok(mut callee_cg) = callee_cg_cell.try_borrow_mut() {
+            if let Ok(mut callee_cg) = rc_callee_cg_cell.try_borrow_mut() {
                 // 3. Pass arguments from caller to callee.
                 //    This assumes arguments are in order and `_1`, `_2`, ... in the callee MIR.
                 for (i, caller_arg_operand) in self.args.iter().enumerate() {
@@ -508,7 +509,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                 //    NOTE: This is a simplification. A full implementation would use memoization
                 //    or a bottom-up analysis order to avoid re-analyzing functions repeatedly.
                 //    For now, we re-run it to ensure argument values are propagated.
-                callee_cg.find_intervals(all_cgs);
+                callee_cg.find_intervals(cg_map, vars_map);
 
                 // 5. Retrieve the return value.
                 //    The return value is stored in `_0` (RETURN_PLACE).
@@ -522,6 +523,13 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                     rap_debug!(" final return range {} ", return_range);
                     return return_range;
                 }
+                let Some(callee_varnodes_vec) = vars_map.get_mut(&self.def_id) else {
+                    panic!(
+                        "No variable map entry for this function {:?}, skipping Nuutila\n",
+                        self.def_id
+                    );
+                };
+                callee_cg.reset_vars(callee_varnodes_vec);
             } else {
                 // Recursive call detected or graph is already borrowed.
                 // Conservatively return a full range.

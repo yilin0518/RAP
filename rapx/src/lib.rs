@@ -34,6 +34,7 @@ use analysis::core::range_analysis::{RangeAnalysis, SSATrans};
 use analysis::opt::Opt;
 use analysis::rcanary::rCanary;
 use analysis::safedrop::SafeDrop;
+use analysis::scan::ScanAnalysis;
 use analysis::senryx::{CheckLevel, SenryxCheck};
 use analysis::testgen::Testgen;
 use analysis::unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck};
@@ -63,6 +64,7 @@ pub struct RapCallback {
     mop: bool,
     callgraph: bool,
     api_dep: bool,
+    scan: bool,
     testgen: bool,
     show_mir: bool,
     dataflow: usize,
@@ -86,6 +88,7 @@ impl Default for RapCallback {
             callgraph: false,
             api_dep: false,
             testgen: false,
+            scan: false,
             show_mir: false,
             dataflow: 0,
             opt: usize::MAX,
@@ -196,6 +199,10 @@ impl RapCallback {
         self.unsafety_isolation
     }
 
+    pub fn enable_scan(&mut self) {
+        self.scan = true;
+    }
+
     pub fn enable_api_dep(&mut self) {
         self.api_dep = true;
     }
@@ -210,6 +217,10 @@ impl RapCallback {
 
     pub fn is_testgen_enabled(&self) -> bool {
         self.testgen
+    }
+
+    pub fn is_scan_enabled(&self) -> bool {
+        self.scan
     }
 
     pub fn enable_verify(&mut self) {
@@ -342,6 +353,10 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
             pub_only: true,
             include_generic_api: true,
         });
+    }
+
+    if callback.is_scan_enabled() {
+        ScanAnalysis::new(tcx).start();
     }
 
     if callback.is_testgen_enabled() {

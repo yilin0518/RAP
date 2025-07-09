@@ -45,6 +45,7 @@ fn main() {
             "-alias" | "-alias0" | "-alias1" | "-alias2" => compiler.enable_mop(arg),
             "-heap" => compiler.enable_heap_item(),
             "-adg" => compiler.enable_api_dep(), // api dependency graph
+            "-scan" => compiler.enable_scan(),
             "-callgraph" => compiler.enable_callgraph(),
             "-dataflow" => compiler.enable_dataflow(1),
             "-ssa" => compiler.enable_ssa_transform(),

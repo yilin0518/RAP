@@ -1,6 +1,8 @@
 use super::bug_records::*;
-use super::types::*;
-use crate::analysis::{core::ownedheap_analysis::OHAResult, utils::intrinsic_id::*};
+use crate::analysis::{
+    core::alias_analysis::default::types::*, core::ownedheap_analysis::OHAResult,
+    utils::intrinsic_id::*,
+};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{
     BasicBlock, Body, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,

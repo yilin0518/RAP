@@ -8,6 +8,7 @@ use rustc_middle::{
     },
     ty::TypingEnv,
 };
+
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -17,7 +18,7 @@ impl<'tcx> MopGraph<'tcx> {
     pub fn split_check(
         &mut self,
         bb_index: usize,
-        fn_map: &mut FxHashMap<DefId, AAResult>,
+        fn_map: &mut MopAAResultMap,
         recursion_set: &mut HashSet<DefId>,
     ) {
         /* duplicate the status before visiting a path; */
@@ -35,7 +36,7 @@ impl<'tcx> MopGraph<'tcx> {
         bb_index: usize,
         path_discr_id: usize,
         path_discr_val: usize,
-        fn_map: &mut FxHashMap<DefId, AAResult>,
+        fn_map: &mut MopAAResultMap,
         recursion_set: &mut HashSet<DefId>,
     ) {
         /* duplicate the status before visiting a path; */
@@ -55,7 +56,7 @@ impl<'tcx> MopGraph<'tcx> {
     pub fn check(
         &mut self,
         bb_index: usize,
-        fn_map: &mut FxHashMap<DefId, AAResult>,
+        fn_map: &mut MopAAResultMap,
         recursion_set: &mut HashSet<DefId>,
     ) {
         self.visit_times += 1;
@@ -204,7 +205,7 @@ impl<'tcx> MopGraph<'tcx> {
 
         /* Handle cases if the current block is a merged scc block with sub block */
         if !cur_block.scc_sub_blocks.is_empty() {
-            match env::var_os("ALIAS") {
+            match env::var_os("MOP") {
                 Some(val) if val == "0" => {
                     order.push(cur_block.scc_sub_blocks.clone());
                 }

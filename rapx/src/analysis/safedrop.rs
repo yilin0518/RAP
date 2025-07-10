@@ -5,16 +5,12 @@ pub mod corner_handle;
 pub mod graph;
 #[allow(clippy::module_inception)]
 pub mod safedrop;
-pub mod types;
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 
 use crate::analysis::core::{
-    alias_analysis::{
-        mop::{FnMap, MopAliasAnalyzer},
-        AliasAnalysis,
-    },
+    alias_analysis::default::{AliasAnalyzer, MopAAResultMap},
     ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResult, OwnedHeapAnalysis},
 };
 use graph::SafeDropGraph;
@@ -31,9 +27,9 @@ impl<'tcx> SafeDrop<'tcx> {
         Self { tcx }
     }
     pub fn start(&self) {
-        let mut mop = MopAliasAnalyzer::new(self.tcx);
+        let mut mop = AliasAnalyzer::new(self.tcx);
         mop.run();
-        let fn_map = mop.get_all_fn_alias();
+        let fn_map = mop.get_all_fn_alias_raw();
 
         let mut heap = OwnedHeapAnalyzer::new(self.tcx);
         heap.run();
@@ -51,7 +47,7 @@ impl<'tcx> SafeDrop<'tcx> {
     }
 }
 
-pub fn query_safedrop(tcx: TyCtxt, fn_map: &FnMap, def_id: DefId, adt_owner: OHAResult) {
+pub fn query_safedrop(tcx: TyCtxt, fn_map: &MopAAResultMap, def_id: DefId, adt_owner: OHAResult) {
     /* filter const mir */
     if let Some(_other) = tcx.hir_body_const_context(def_id.expect_local()) {
         return;

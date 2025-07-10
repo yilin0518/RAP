@@ -1,6 +1,6 @@
-use super::{graph::*, types::*};
+use super::graph::*;
 use crate::{
-    analysis::core::alias_analysis::mop::{FnMap, MopAAFact},
+    analysis::core::alias_analysis::default::{types::*, MopAAFact, MopAAResultMap},
     rap_error,
 };
 use rustc_middle::{
@@ -42,7 +42,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     /* Check the aliases introduced by the terminators (function call) of a scc block */
-    pub fn alias_bbcall(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &FnMap) {
+    pub fn alias_bbcall(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
         let cur_block = self.blocks[bb_index].clone();
         for call in cur_block.calls {
             if let TerminatorKind::Call {

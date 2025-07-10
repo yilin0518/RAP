@@ -107,6 +107,15 @@ fn test_uaf_swithint_diffbranch() {
 }
 
 #[test]
+fn test_alias_nonptr() {
+    let output = running_tests_with_arg("alias/false_alias_iter", "-alias");
+    assert_eq!(
+        output.contains("Alias found in Some(\"::foo\"): {(0,1)}"),
+        false
+    );
+}
+
+#[test]
 fn test_alias_field() {
     let output = running_tests_with_arg("alias/alias_field", "-alias");
     assert_eq!(

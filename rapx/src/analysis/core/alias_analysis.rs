@@ -1,18 +1,21 @@
 pub mod default;
-pub mod mop;
 use super::super::Analysis;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use std::{collections::HashSet, fmt};
 
+/// The data structure to store aliases for a set of functions.
+pub type AAResultMap = FxHashMap<DefId, AAResult>;
+
+/// This is a wrapper struct for displaying AAResultMap.
+pub struct AAResultMapWrapper(pub FxHashMap<DefId, AAResult>);
+
 /// This trait provides features related to alias analysis.
-/// The type parameter `T` is used to specify the format of alias analysis result for each
-/// function. The default type is `AAResult`.
-pub trait AliasAnalysis<T>: Analysis {
+pub trait AliasAnalysis: Analysis {
     /// Return the aliases among the function arguments and return value of a specific function.
-    fn get_fn_alias(&mut self, def_id: DefId) -> T;
+    fn get_fn_alias(&mut self, def_id: DefId) -> AAResult;
     /// Return the aliases among the function arguments and return value for all functions.
-    fn get_all_fn_alias(&mut self) -> FxHashMap<DefId, T>;
+    fn get_all_fn_alias(&mut self) -> AAResultMap;
 }
 
 /// To store the alias relationships among arguments and return values.
@@ -72,6 +75,20 @@ impl fmt::Display for AAResult {
                 .collect::<Vec<String>>()
                 .join(",")
         )
+    }
+}
+
+impl fmt::Display for AAResultMapWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (def_id, result) in &self.0 {
+            writeln!(f, "Function {:?}:", def_id)?;
+            writeln!(f, "  Arg size: {}", result.arg_size)?;
+            writeln!(f, "  Alias facts:")?;
+            for fact in &result.alias_set {
+                writeln!(f, "    - {}", fact)?;
+            }
+        }
+        Ok(())
     }
 }
 

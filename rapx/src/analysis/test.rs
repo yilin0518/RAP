@@ -1,9 +1,13 @@
-use crate::analysis::{
-    core::{
-        alias_analysis::default::AliasAnalyzer, ownedheap_analysis::default::OwnedHeapAnalyzer,
-        range_analysis::default::RangeAnalyzer,
+use crate::{
+    analysis::{
+        core::{
+            alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
+            ownedheap_analysis::default::OwnedHeapAnalyzer,
+            range_analysis::default::RangeAnalyzer,
+        },
+        Analysis,
     },
-    Analysis,
+    rap_info,
 };
 
 use rustc_middle::ty::TyCtxt;
@@ -20,6 +24,8 @@ impl<'tcx> Test<'tcx> {
     pub fn start(&self) {
         let mut alias_analysis = AliasAnalyzer::new(self.tcx);
         alias_analysis.run();
+        let result = alias_analysis.get_all_fn_alias();
+        rap_info!("{}", AAResultMapWrapper(result));
 
         let mut heap_analysis = OwnedHeapAnalyzer::new(self.tcx);
         heap_analysis.run();

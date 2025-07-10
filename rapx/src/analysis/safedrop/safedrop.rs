@@ -1,4 +1,4 @@
-use crate::analysis::{core::alias_analysis::mop::FnMap, safedrop::SafeDropGraph};
+use crate::analysis::{core::alias_analysis::default::MopAAResultMap, safedrop::SafeDropGraph};
 use crate::rap_error;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::{
@@ -78,7 +78,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    pub fn split_check(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &FnMap) {
+    pub fn split_check(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
         /* duplicate the status before visiting a path; */
         let backup_values = self.values.clone(); // duplicate the status when visiting different paths;
         let backup_constant = self.constant.clone();
@@ -98,7 +98,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         path_discr_id: usize,
         path_discr_val: usize,
         tcx: TyCtxt<'tcx>,
-        fn_map: &FnMap,
+        fn_map: &MopAAResultMap,
     ) {
         /* duplicate the status before visiting a path; */
         let backup_values = self.values.clone(); // duplicate the status when visiting different paths;
@@ -116,7 +116,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     // the core function of the safedrop.
-    pub fn check(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &FnMap) {
+    pub fn check(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
         self.visit_times += 1;
         if self.visit_times > VISIT_LIMIT {
             return;

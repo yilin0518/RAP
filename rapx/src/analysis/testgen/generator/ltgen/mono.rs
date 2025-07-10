@@ -8,6 +8,7 @@ use rustc_infer::traits::{Obligation, ObligationCause};
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeVisitableExt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
+use std::cell::OnceCell;
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -45,7 +46,6 @@ impl<'tcx> Mono<'tcx> {
     }
 
     fn merge(&self, other: &Mono<'tcx>, tcx: TyCtxt<'tcx>) -> Option<Mono<'tcx>> {
-        rap_trace!("[Mono::merge] self: {:?} other: {:?}", self, other);
         assert!(self.value.len() == other.value.len());
         let mut res = Vec::new();
         for i in 0..self.value.len() {
@@ -75,6 +75,7 @@ impl<'tcx> Mono<'tcx> {
     fn fill_unbound_var(&self, tcx: TyCtxt<'tcx>) -> Vec<Mono<'tcx>> {
         let candidates = get_candidates(tcx);
         let mut res = vec![self.clone()];
+        rap_trace!("fill unbound: {:?}", self);
 
         for (i, arg) in self.value.iter().enumerate() {
             if let Some(ty) = arg.as_type() {
@@ -219,17 +220,20 @@ fn is_args_fit_trait_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
 ) -> bool {
     let args = tcx.mk_args(args);
-    rap_info!(
-        "fn: {:?} args: {:?} identity: {:?}",
-        fn_did,
-        args,
-        ty::GenericArgs::identity_for_item(tcx, fn_did)
-    );
+    // rap_info!(
+    //     "fn: {:?} args: {:?} identity: {:?}",
+    //     fn_did,
+    //     args,
+    //     ty::GenericArgs::identity_for_item(tcx, fn_did)
+    // );
     let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
     let pred = tcx.predicates_of(fn_did);
     let inst_pred = pred.instantiate(tcx, args);
     let param_env = tcx.param_env(fn_did);
-    rap_trace!("[trait bound] {fn_did:?} {args:?} {param_env:?} {inst_pred:?}");
+    rap_trace!(
+        "[trait bound] check {}",
+        tcx.def_path_str_with_args(fn_did, args)
+    );
 
     for pred in inst_pred.predicates.iter() {
         let obligation = Obligation::new(
@@ -240,16 +244,15 @@ fn is_args_fit_trait_bound<'tcx>(
         );
 
         let res = infcx.evaluate_obligation(&obligation);
-        rap_trace!("{obligation:?}");
-        rap_trace!("{res:?}");
         match res {
             Ok(eva) => {
                 if !eva.may_apply() {
+                    rap_trace!("[trait bound] check fail for {pred:?}");
                     return false;
                 }
             }
             Err(_) => {
-                rap_trace!("[trait bound] check fail");
+                rap_trace!("[trait bound] check fail for {pred:?}");
                 return false;
             }
         }
@@ -310,7 +313,7 @@ fn get_mono_set<'tcx>(
     let mut res = MonoSet::new();
 
     for mono in s.monos {
-        solve_unbound_generic_type(
+        solve_unbound_type_generics(
             fn_did,
             mono,
             &mut res,
@@ -328,17 +331,21 @@ fn get_mono_set<'tcx>(
     res
 }
 
-fn solve_unbound_generic_type<'tcx>(
+fn solve_unbound_type_generics<'tcx>(
     did: DefId,
     mono: Mono<'tcx>,
     res: &mut MonoSet<'tcx>,
-    // identity: &[ty::GenericArg<'tcx>],
     infcx: &InferCtxt<'tcx>,
     cause: &ObligationCause<'tcx>,
     param_env: ty::ParamEnv<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) {
+    if !mono.has_infer_types() {
+        res.insert(mono);
+        return;
+    }
     let args = tcx.mk_args(&mono.value);
+    rap_debug!("[solve_unbound] did = {did:?}");
     let preds = tcx.predicates_of(did).instantiate(tcx, args);
     let mut mset = MonoSet::all(args);
     for pred in preds.predicates.iter() {
@@ -354,6 +361,7 @@ fn solve_unbound_generic_type<'tcx>(
             }
 
             let mut p = MonoSet::new();
+
             for impl_did in tcx.all_impls(trait_def_id) {
                 let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();
                 if let Some(mono) = unify_trait(
@@ -411,7 +419,7 @@ fn unify_trait<'tcx>(
     Some(s)
 }
 
-pub fn get_all_concrete_mono_solution<'tcx>(
+pub fn resolve_mono_apis<'tcx>(
     fn_did: DefId,
     mut available_ty: HashSet<Ty<'tcx>>,
     tcx: TyCtxt<'tcx>,
@@ -419,14 +427,11 @@ pub fn get_all_concrete_mono_solution<'tcx>(
     // 1. prepare available types
     add_prelude_tys(&mut available_ty, tcx);
     add_transform_tys(&mut available_ty, tcx);
-    rap_debug!("[mono] input => {fn_did:?}: {available_ty:?}");
-
     // 2. get mono set from available types
     let ret = get_mono_set(fn_did, &available_ty, tcx).instantiate_unbound(tcx);
 
     // 3. check trait bound
     let ret = ret.filter_by_trait_bound(fn_did, tcx);
-    rap_debug!("possible mono solution for {fn_did:?}: {ret:?}");
     ret
 }
 
@@ -445,7 +450,20 @@ pub fn add_transform_tys<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt
             *ty,
             ty::Mutability::Mut,
         ));
+        new_tys.push(Ty::new_ref(
+            tcx,
+            tcx.lifetimes.re_erased,
+            Ty::new_slice(tcx, *ty),
+            ty::Mutability::Not,
+        ));
+        new_tys.push(Ty::new_ref(
+            tcx,
+            tcx.lifetimes.re_erased,
+            Ty::new_slice(tcx, *ty),
+            ty::Mutability::Mut,
+        ));
     });
+
     new_tys.into_iter().for_each(|ty| {
         available_ty.insert(ty);
     });
@@ -456,7 +474,6 @@ pub fn add_prelude_tys<'tcx>(available_ty: &mut HashSet<Ty<'tcx>>, tcx: TyCtxt<'
         tcx.types.bool,
         tcx.types.char,
         tcx.types.f32,
-        tcx.types.f64,
         tcx.types.i8,
         tcx.types.i32,
         tcx.types.u8,
@@ -490,10 +507,7 @@ pub fn eliminate_infer_var<'tcx>(
     res
 }
 
-pub fn get_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<Ty<'tcx>> {
-    // for (trait_id, impls) in tcx.all_local_trait_impls(()).iter(){
-
-    // }
+pub fn get_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
     vec![
         tcx.types.bool,
         tcx.types.char,
@@ -505,6 +519,7 @@ pub fn get_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<Ty<'tcx>> {
         tcx.types.u64,
         tcx.types.f32,
         tcx.types.f64,
+        Ty::new_slice(tcx, tcx.types.u8),
     ]
 }
 

@@ -1,7 +1,7 @@
 use crate::analysis::core::{alias, api_dep};
 use crate::analysis::testgen::generator::ltgen::LtGenBuilder;
 use crate::analysis::testgen::syn::impls::FuzzDriverSynImpl;
-use crate::analysis::testgen::syn::input::SillyInputGen;
+use crate::analysis::testgen::syn::input::{RandomGen, SillyInputGen};
 use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption};
 use crate::analysis::testgen::syn::{SynOption, Synthesizer};
 use crate::{rap_error, rap_info, rap_warn};
@@ -98,8 +98,8 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let option = SynOption {
             crate_name: local_crate_name.to_string(),
         };
-        let mut syn = FuzzDriverSynImpl::new(SillyInputGen, option);
-        let rs_str = syn.syn(&cx, tcx);
+        let mut syn = FuzzDriverSynImpl::new(RandomGen::new(), option);
+        let rs_str = syn.syn(cx.cx(), tcx);
 
         // 3. Build cargo project
         let project_name = format!("{}_case_{}", local_crate_name, run_count);

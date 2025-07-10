@@ -9,6 +9,7 @@ use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::io::Write;
+use std::ops::ControlFlow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionNode {
@@ -42,7 +43,7 @@ pub struct RegionGraph {
 }
 
 // Region Graph Id
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rid(NodeIndex);
 
 impl Rid {

@@ -5,7 +5,9 @@ mod syn;
 mod utils;
 
 use crate::analysis::testgen::driver::driver_main;
+use crate::analysis::utils::def_path::{def_path_def_ids, def_path_last_def_id, path_str_def_id};
 use crate::{rap_error, rap_info};
+use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 use rustc_session::config::CrateType;
 
@@ -36,7 +38,6 @@ impl<'tcx> Testgen<'tcx> {
                 return;
             }
         }
-
         match driver_main(self.tcx) {
             Ok(_) => rap_info!("testgen completed successfully"),
             Err(e) => rap_error!("testgen failed:\n{}", e),

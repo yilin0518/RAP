@@ -1,29 +1,11 @@
 use super::utils;
+use super::var::Var;
+use crate::analysis::testgen::context::{
+    var::{VarState, DUMMY_INPUT_VAR},
+    Context,
+};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, TyCtxt};
-use std::fmt;
-use std::fmt::Display;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-
-pub struct Var(pub usize, pub bool); // bool is true if the var is an input var
-
-impl Display for Var {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "v{}", self.0)
-    }
-}
-
-impl Var {
-    pub fn unique_id(&self) -> usize {
-        self.0
-    }
-    pub fn is_input(&self) -> bool {
-        self.1
-    }
-}
-
-pub static DUMMY_INPUT_VAR: Var = Var(0, true);
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct ApiCall<'tcx> {
@@ -71,8 +53,9 @@ pub enum StmtKind<'tcx> {
     Call(ApiCall<'tcx>),
     // Split(usize, Vec<Var>),        // (a, b) -> a, b
     // Concat(Vec<Var>),              // a, b -> (a, b)
-    Ref(Box<Var>, ty::Mutability), // a -> &(mut) b
-    Deref(Box<Var>),               // &a -> a
+    Ref(Box<Var>, ty::Mutability),   // a -> &(mut) b
+    Deref(Box<Var>, ty::Mutability), // &T -> &U
+    Box(Box<Var>),
     Drop(Box<Var>),
     Use(Var, UseKind),
 }
@@ -122,6 +105,20 @@ impl<'tcx> Stmt<'tcx> {
         }
     }
 
+    pub fn deref_(place: Var, deref_place: Var, mutability: ty::Mutability) -> Stmt<'tcx> {
+        Stmt {
+            kind: StmtKind::Deref(Box::new(deref_place), mutability),
+            place,
+        }
+    }
+
+    pub fn box_(place: Var, boxed: Var) -> Stmt<'tcx> {
+        Stmt {
+            kind: StmtKind::Box(Box::new(boxed)),
+            place,
+        }
+    }
+
     pub fn drop_(place: Var, dropped: Var) -> Stmt<'tcx> {
         Stmt {
             kind: StmtKind::Drop(Box::new(dropped)),
@@ -136,14 +133,14 @@ impl<'tcx> Stmt<'tcx> {
         }
     }
 
-    pub fn api_call(&self) -> &ApiCall<'tcx> {
+    pub fn as_apicall(&self) -> &ApiCall<'tcx> {
         match self.kind() {
             StmtKind::Call(call) => call,
-            _ => panic!("not a call"),
+            _ => panic!("stmt is not a call: {self:?}"),
         }
     }
 
-    pub fn as_call_arg(&self, no: usize) -> Var {
+    pub fn as_call_arg_at(&self, no: usize) -> Var {
         match self.kind() {
             StmtKind::Call(call) => {
                 if no == 0 {
@@ -153,6 +150,31 @@ impl<'tcx> Stmt<'tcx> {
                 }
             }
             _ => panic!("stmt is not a call: {self:?}"),
+        }
+    }
+
+    pub fn mk_fn_sig_with_var_tys(&self, cx: &Context<'tcx>) -> ty::FnSig<'tcx> {
+        match self.kind() {
+            StmtKind::Call(call) => {
+                let tcx = cx.tcx;
+                let fn_sig = utils::fn_sig_without_binders(call.fn_did(), tcx);
+                let var_ty = cx.type_of(self.place());
+
+                // get actual vid of input in the pattern
+                let mut inputs = Vec::new();
+                for var in call.args() {
+                    let ty = cx.type_of(*var);
+                    inputs.push(ty);
+                }
+                tcx.mk_fn_sig(
+                    inputs.into_iter(),
+                    var_ty,
+                    fn_sig.c_variadic,
+                    fn_sig.safety,
+                    fn_sig.abi,
+                )
+            }
+            _ => panic!("not a call"),
         }
     }
 }

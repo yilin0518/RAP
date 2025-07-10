@@ -16,7 +16,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         Self { input_gen, option }
     }
 
-    fn stmt_kind_str<'tcx>(&mut self, stmt: &Stmt<'tcx>, cx: &impl Context<'tcx>) -> String {
+    fn stmt_kind_str<'tcx>(&mut self, stmt: &Stmt<'tcx>, cx: &Context<'tcx>) -> String {
         match stmt.kind() {
             StmtKind::Call(call) => {
                 // let generics = cx.tcx().generics_of(call.fn_did());
@@ -48,11 +48,14 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
             StmtKind::Ref(var, mutability) => {
                 format!("{}{}", mutability.ref_prefix_str(), self.var_str(**var))
             }
-            StmtKind::Deref(var) => {
-                format!("*{}", self.var_str(**var))
+            StmtKind::Deref(var, mutability) => {
+                format!("{}*{}", mutability.ref_prefix_str(), self.var_str(**var))
             }
             StmtKind::Drop(var) => {
                 format!("drop({})", self.var_str(**var))
+            }
+            StmtKind::Box(var) => {
+                format!("Box::new({})", self.var_str(**var))
             }
             StmtKind::Use(var, kind) => match kind {
                 UseKind::Debug => {
@@ -70,7 +73,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         format!("{}", var)
     }
 
-    fn ty_str<'tcx>(&self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> String {
+    fn ty_str<'tcx>(&self, ty: Ty<'tcx>) -> String {
         format!("{}", ty)
         // format!(
         //     "{}",
@@ -79,18 +82,37 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         // )
     }
 
-    fn stmt_str<'tcx>(&mut self, stmt: Stmt<'tcx>, cx: &impl Context<'tcx>) -> String {
+    fn need_explicit_type_annotation(&self, stmt: &Stmt<'_>) -> bool {
+        match stmt.kind() {
+            StmtKind::Deref(..) => true,
+            _ => false,
+        }
+    }
+
+    fn place_str<'tcx>(&self, stmt: &Stmt<'tcx>, cx: &Context<'tcx>) -> String {
+        let var = stmt.place;
+        if self.need_explicit_type_annotation(stmt) {
+            format!(
+                "{}{}: {}",
+                cx.var_mutability(var).prefix_str(),
+                self.var_str(var),
+                self.ty_str(cx.type_of(var))
+            )
+        } else {
+            format!(
+                "{}{}",
+                cx.var_mutability(var).prefix_str(),
+                self.var_str(var)
+            )
+        }
+    }
+
+    fn stmt_str<'tcx>(&mut self, stmt: Stmt<'tcx>, cx: &Context<'tcx>) -> String {
         let var = stmt.place;
         let var_ty = cx.type_of(var);
         let stmt_str = self.stmt_kind_str(&stmt, cx);
-        if !var_ty.is_unit() || (var_ty.is_unit() && var.is_input()) {
-            format!(
-                "let {}{} = {};",
-                cx.var_mutability(var).prefix_str(),
-                self.var_str(var),
-                // self.ty_str(var_ty, cx.tcx()),
-                stmt_str
-            )
+        if !var_ty.is_unit() || (var_ty.is_unit() && var.is_from_input()) {
+            format!("let {} = {};", self.place_str(&stmt, cx), stmt_str)
         } else {
             format!("{};", stmt_str)
         }
@@ -100,7 +122,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
         format!("use {}::*;", self.option.crate_name)
     }
 
-    fn main_str<'tcx>(&mut self, cx: &impl Context<'tcx>) -> String {
+    fn main_str<'tcx>(&mut self, cx: &Context<'tcx>) -> String {
         let mut ret = String::new();
         ret.push_str("fn main() {\n");
         let indent = "    ";
@@ -115,7 +137,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
 }
 
 impl<'tcx, I: InputGen> Synthesizer<'tcx> for FuzzDriverSynImpl<I> {
-    fn syn<C: Context<'tcx>>(&mut self, cx: &C, tcx: TyCtxt<'tcx>) -> String {
+    fn syn(&mut self, cx: &Context<'tcx>, tcx: TyCtxt<'tcx>) -> String {
         format!("{}\n{}", self.header_str(), self.main_str(cx))
     }
 }

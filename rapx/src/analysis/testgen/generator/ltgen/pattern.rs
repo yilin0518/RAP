@@ -1,7 +1,5 @@
 use super::lifetime;
-use crate::analysis::testgen::{
-    context::HoldTyCtxt, generator::ltgen::folder::InfcxVarFolder, utils,
-};
+use crate::analysis::testgen::{generator::ltgen::folder::InfcxVarFolder, utils};
 use crate::rap_trace;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer;
@@ -55,12 +53,6 @@ pub struct PatternProvider<'tcx> {
     map: HashMap<DefId, EdgePatterns>,
 }
 
-impl<'tcx> HoldTyCtxt<'tcx> for PatternProvider<'tcx> {
-    fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
-    }
-}
-
 impl<'tcx> PatternProvider<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> PatternProvider<'tcx> {
         PatternProvider {
@@ -74,7 +66,7 @@ impl<'tcx> PatternProvider<'tcx> {
         args: &[ty::GenericArg<'tcx>],
         mut f: impl FnMut(&EdgePatterns) -> T,
     ) -> T {
-        let tcx = self.tcx();
+        let tcx = self.tcx;
         if !utils::fn_requires_monomorphization(fn_did, tcx) {
             f(self
                 .map

@@ -1,11 +1,13 @@
 pub use crate::analysis::core::api_dep::is_api_public;
 use crate::analysis::core::api_dep::{ApiDepGraph, DepNode};
+use crate::analysis::utils::def_path::path_str_def_id;
 use crate::rap_info;
 use rustc_hir::{def::Namespace, def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::print::{FmtPrinter, Printer};
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_trait_selection::infer::InferCtxtExt;
+use std::cell::OnceCell;
 use std::collections::{HashSet, VecDeque};
 
 /// return all DefId of all pub APIs
@@ -260,7 +262,10 @@ pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(
         return;
     }
     match ty.kind() {
-        TyKind::Ref(_, inner_ty, _) | TyKind::Array(inner_ty, _) | TyKind::Slice(inner_ty) => {
+        TyKind::RawPtr(inner_ty, _)
+        | TyKind::Ref(_, inner_ty, _)
+        | TyKind::Array(inner_ty, _)
+        | TyKind::Slice(inner_ty) => {
             visit_ty_while(*inner_ty, tcx, f);
         }
 

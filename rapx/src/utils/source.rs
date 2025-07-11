@@ -15,7 +15,7 @@ pub fn get_fn_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
 
 pub fn get_fn_name_byid(def_id: &DefId) -> String {
     let s = format!("{:?}", *def_id);
-    if let Some(start) = s.find("DefId"){ 
+    if let Some(start) = s.find("DefId") {
         if let Some(end) = s.find("]::") {
             let s1 = s.replace(&s[start..end + 1], "").to_string();
             if let Some(start) = s1.find(")") {

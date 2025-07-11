@@ -15,7 +15,7 @@ fn get_slice(v:&[u8], l:usize) -> &[u8]{
 
 fn main() {
     let vec1 = vec![1;10];
-    let vec2 = get_vec(&vec1);
+    let _vec2 = get_vec(&vec1);
     let slice =get_slice(&vec1, 5);
 
     let len = slice.len();

@@ -8,7 +8,7 @@ use rustc_middle::ty::TyCtxt;
 use crate::rap_warn;
 use crate::utils::log::span_to_source_code;
 
-use super::core::dataflow::{graph::Graph, DataFlowAnalyzer};
+use super::core::dataflow::{default::DataFlowAnalyzer, graph::Graph};
 use checking::bounds_checking::BoundsCheck;
 use checking::encoding_checking::EncodingCheck;
 use data_collection::initialization::InitializationCheck;

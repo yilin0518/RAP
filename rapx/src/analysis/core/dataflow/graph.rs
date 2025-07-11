@@ -3,79 +3,16 @@ use std::collections::HashSet;
 
 use rustc_hir::def_id::DefId;
 use rustc_index::IndexVec;
-use rustc_middle::mir::{
-    AggregateKind, BorrowKind, Const, Local, Operand, Place, PlaceElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+use rustc_middle::{
+    mir::{
+        AggregateKind, BorrowKind, Const, Local, Operand, Place, PlaceElem, Rvalue, Statement,
+        StatementKind, Terminator, TerminatorKind,
+    },
+    ty::TyKind,
 };
-use rustc_middle::ty::TyKind;
 use rustc_span::{Span, DUMMY_SP};
 
-use crate::utils::log::relative_pos_range;
-
-#[derive(Clone, Debug)]
-pub enum NodeOp {
-    //warning: the fields are related to the version of the backend rustc version
-    Nop,
-    Err,
-    Const(String, String),
-    //Rvalue
-    Use,
-    Repeat,
-    Ref,
-    ThreadLocalRef,
-    AddressOf,
-    Len,
-    Cast,
-    BinaryOp,
-    CheckedBinaryOp,
-    NullaryOp,
-    UnaryOp,
-    Discriminant,
-    Aggregate(AggKind),
-    ShallowInitBox,
-    CopyForDeref,
-    RawPtr,
-    //TerminatorKind
-    Call(DefId),
-    CallOperand, // the first in_edge is the func
-}
-
-#[derive(Clone, Debug)]
-pub enum EdgeOp {
-    Nop,
-    //Operand
-    Move,
-    Copy,
-    Const,
-    //Mutability
-    Immut,
-    Mut,
-    //Place
-    Deref,
-    Field(String),
-    Downcast(String),
-    Index,
-    ConstIndex,
-    SubSlice,
-    SubType,
-}
-
-#[derive(Clone)]
-pub struct GraphEdge {
-    pub src: Local,
-    pub dst: Local,
-    pub op: EdgeOp,
-    pub seq: usize,
-}
-
-#[derive(Clone)]
-pub struct GraphNode {
-    pub ops: Vec<NodeOp>,
-    pub span: Span, //the corresponding code span
-    pub seq: usize, //the sequence number, edges with the same seq number are added in the same batch within a statement or terminator
-    pub out_edges: Vec<EdgeIdx>,
-    pub in_edges: Vec<EdgeIdx>,
-}
+use crate::{analysis::core::dataflow::*, utils::log::relative_pos_range};
 
 impl GraphNode {
     pub fn new() -> Self {
@@ -89,9 +26,7 @@ impl GraphNode {
     }
 }
 
-pub type EdgeIdx = usize;
-pub type GraphNodes = IndexVec<Local, GraphNode>;
-pub type GraphEdges = IndexVec<EdgeIdx, GraphEdge>;
+#[derive(Clone)]
 pub struct Graph {
     pub def_id: DefId,
     pub span: Span,
@@ -100,6 +35,15 @@ pub struct Graph {
     pub edges: GraphEdges,
     pub n_locals: usize,
     pub closures: HashSet<DefId>,
+}
+
+impl From<Graph> for DataFlowGraph {
+    fn from(graph: Graph) -> Self {
+        DataFlowGraph {
+            nodes: graph.nodes,
+            edges: graph.edges,
+        }
+    }
 }
 
 impl Graph {
@@ -644,14 +588,4 @@ impl DFSStatus {
             DFSStatus::Stop
         }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum AggKind {
-    Array,
-    Tuple,
-    Adt(DefId),
-    Closure(DefId),
-    Coroutine(DefId),
-    RawPtr,
 }

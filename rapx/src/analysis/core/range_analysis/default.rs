@@ -89,9 +89,7 @@ where
     }
 
     fn get_fn_path_constraints(&self, def_id: DefId) -> Option<PathConstraint<'tcx>> {
-        self.path_constraints
-            .get(&def_id)
-            .cloned()
+        self.path_constraints.get(&def_id).cloned()
     }
 
     fn get_all_path_constraints(&self) -> PathConstraintMap<'tcx> {

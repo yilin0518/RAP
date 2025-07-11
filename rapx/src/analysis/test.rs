@@ -2,6 +2,7 @@ use crate::{
     analysis::{
         core::{
             alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
+            dataflow::{default::DataFlowAnalyzer, DataFlowAnalysis, DataFlowGraphMapWrapper},
             ownedheap_analysis::default::OwnedHeapAnalyzer,
             range_analysis::{default::RangeAnalyzer, PathConstraintMapWrapper, RangeAnalysis},
         },
@@ -26,6 +27,11 @@ impl<'tcx> Test<'tcx> {
         alias_analysis.run();
         let result = alias_analysis.get_local_fn_alias();
         rap_info!("{}", AAResultMapWrapper(result));
+
+        let mut dataflow_analysis = DataFlowAnalyzer::new(self.tcx, false);
+        dataflow_analysis.run();
+        let dataflow_graph = dataflow_analysis.get_all_dataflow();
+        rap_info!("{}", DataFlowGraphMapWrapper(dataflow_graph));
 
         let mut heap_analysis = OwnedHeapAnalyzer::new(self.tcx);
         heap_analysis.run();

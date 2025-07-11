@@ -1,9 +1,8 @@
 use std::fmt::Write;
 
-use rustc_middle::mir::Local;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::Local, ty::TyCtxt};
 
-use super::graph::{AggKind, Graph, GraphEdge, GraphNode, NodeOp};
+use crate::analysis::core::dataflow::{graph::*, *};
 
 fn escaped_string(s: String) -> String {
     s.replace("{", "\\{")

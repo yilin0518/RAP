@@ -1,16 +1,16 @@
 use std::collections::HashSet;
 
-use once_cell::sync::OnceCell;
-
-use rustc_middle::mir::Local;
-use rustc_middle::ty::TyCtxt;
-
-use crate::analysis::core::dataflow::graph::{DFSStatus, Direction, Graph, GraphNode, NodeOp};
-use crate::analysis::opt::OptCheck;
-use crate::analysis::utils::def_path::DefPath;
-use crate::utils::log::{
-    relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code,
+use crate::{
+    analysis::{
+        core::dataflow::{graph::*, *},
+        opt::OptCheck,
+        utils::def_path::DefPath,
+    },
+    utils::log::{relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code},
 };
+use once_cell::sync::OnceCell;
+use rustc_middle::{mir::Local, ty::TyCtxt};
+
 use annotate_snippets::{Level, Renderer, Snippet};
 use rustc_span::Span;
 

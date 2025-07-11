@@ -1,24 +1,58 @@
 pub mod debug;
+pub mod default;
 pub mod graph;
 
 use std::{
     collections::{HashMap, HashSet},
+    fmt::{self, Display},
     fs::File,
     io::Write,
     process::Command,
 };
 
+use crate::analysis::Analysis;
 use rustc_hir::{def::DefKind, def_id::DefId};
+use rustc_index::IndexVec;
 use rustc_middle::{
     mir::{Body, Local},
     ty::TyCtxt,
 };
+use rustc_span::Span;
 
-use crate::Analysis;
-use graph::Graph;
+#[derive(Clone)]
+pub struct DataFlowGraph {
+    pub nodes: GraphNodes,
+    pub edges: GraphEdges,
+}
+pub type DataFlowGraphMap = HashMap<DefId, DataFlowGraph>;
+pub struct DataFlowGraphWrapper(pub DataFlowGraph);
+pub struct DataFlowGraphMapWrapper(pub HashMap<DefId, DataFlowGraph>);
+
+pub type EdgeIdx = usize;
+pub type GraphNodes = IndexVec<Local, GraphNode>;
+pub type GraphEdges = IndexVec<EdgeIdx, GraphEdge>;
+
+#[derive(Clone, Debug)]
+pub struct GraphEdge {
+    pub src: Local,
+    pub dst: Local,
+    pub op: EdgeOp,
+    pub seq: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct GraphNode {
+    pub ops: Vec<NodeOp>,
+    pub span: Span, //the corresponding code span
+    pub seq: usize, //the sequence number, edges with the same seq number are added in the same batch within a statement or terminator
+    pub out_edges: Vec<EdgeIdx>,
+    pub in_edges: Vec<EdgeIdx>,
+}
 
 /// This trait provides features related to dataflow analysis.
 pub trait DataFlowAnalysis: Analysis {
+    fn get_fn_dataflow(&self, def_id: DefId) -> Option<DataFlowGraph>;
+    fn get_all_dataflow(&self) -> DataFlowGraphMap;
     /// If there is a dataflow between `local1` and `local2` within the function specified by
     /// `def_id`, the function returns ture; otherwise, it returns false.
     fn has_flow_between(&self, def_id: DefId, local1: Local, local2: Local) -> bool;
@@ -27,113 +61,88 @@ pub trait DataFlowAnalysis: Analysis {
     fn collect_equivalent_locals(&self, def_id: DefId, local: Local) -> HashSet<Local>;
 }
 
-pub struct DataFlowAnalyzer<'tcx> {
-    pub tcx: TyCtxt<'tcx>,
-    pub graphs: HashMap<DefId, Graph>,
-    pub debug: bool,
-}
-
-impl<'tcx> DataFlowAnalysis for DataFlowAnalyzer<'tcx> {
-    fn has_flow_between(&self, def_id: DefId, local1: Local, local2: Local) -> bool {
-        let graph = self.graphs.get(&def_id).unwrap();
-        graph.is_connected(local1, local2)
-    }
-
-    fn collect_equivalent_locals(&self, def_id: DefId, local: Local) -> HashSet<Local> {
-        let graph = self.graphs.get(&def_id).unwrap();
-        graph.collect_equivalent_locals(local, true)
+impl Display for DataFlowGraphWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Nodes:")?;
+        for node in &self.0.nodes {
+            writeln!(f, "  {:?}", node)?;
+        }
+        writeln!(f, "Edges:")?;
+        for edge in &self.0.edges {
+            writeln!(f, "  {:?}", edge)?;
+        }
+        Ok(())
     }
 }
 
-impl<'tcx> Analysis for DataFlowAnalyzer<'tcx> {
-    fn name(&self) -> &'static str {
-        "DataFlow Analysis"
-    }
-
-    fn run(&mut self) {
-        self.build_graphs();
-    }
-
-    fn reset(&mut self) {
-        self.graphs.clear();
+impl Display for DataFlowGraphMapWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (def_id, dfg) in &self.0 {
+            writeln!(
+                f,
+                "DefId: {:?}\n{}",
+                def_id,
+                DataFlowGraphWrapper(dfg.clone())
+            )?;
+        }
+        Ok(())
     }
 }
 
-impl<'tcx> DataFlowAnalyzer<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, debug: bool) -> Self {
-        Self {
-            tcx: tcx,
-            graphs: HashMap::new(),
-            debug,
-        }
-    }
+#[derive(Clone, Debug)]
+pub enum NodeOp {
+    //warning: the fields are related to the version of the backend rustc version
+    Nop,
+    Err,
+    Const(String, String),
+    //Rvalue
+    Use,
+    Repeat,
+    Ref,
+    ThreadLocalRef,
+    AddressOf,
+    Len,
+    Cast,
+    BinaryOp,
+    CheckedBinaryOp,
+    NullaryOp,
+    UnaryOp,
+    Discriminant,
+    Aggregate(AggKind),
+    ShallowInitBox,
+    CopyForDeref,
+    RawPtr,
+    //TerminatorKind
+    Call(DefId),
+    CallOperand, // the first in_edge is the func
+}
 
-    pub fn start(&mut self) {
-        self.build_graphs();
-        if self.debug {
-            self.draw_graphs();
-        }
-    }
+#[derive(Clone, Debug)]
+pub enum EdgeOp {
+    Nop,
+    //Operand
+    Move,
+    Copy,
+    Const,
+    //Mutability
+    Immut,
+    Mut,
+    //Place
+    Deref,
+    Field(String),
+    Downcast(String),
+    Index,
+    ConstIndex,
+    SubSlice,
+    SubType,
+}
 
-    pub fn build_graphs(&mut self) {
-        for local_def_id in self.tcx.iter_local_def_id() {
-            let def_kind = self.tcx.def_kind(local_def_id);
-            if matches!(def_kind, DefKind::Fn) || matches!(def_kind, DefKind::AssocFn) {
-                if self.tcx.hir_maybe_body_owned_by(local_def_id).is_some() {
-                    let def_id = local_def_id.to_def_id();
-                    self.build_graph(def_id);
-                }
-            }
-        }
-    }
-
-    fn build_graph(&mut self, def_id: DefId) {
-        if self.graphs.contains_key(&def_id) {
-            return;
-        }
-        let body: &Body = self.tcx.optimized_mir(def_id);
-        let mut graph = Graph::new(def_id, body.span, body.arg_count, body.local_decls.len());
-        let basic_blocks = &body.basic_blocks;
-        for basic_block_data in basic_blocks.iter() {
-            for statement in basic_block_data.statements.iter() {
-                graph.add_statm_to_graph(&statement);
-            }
-            if let Some(terminator) = &basic_block_data.terminator {
-                graph.add_terminator_to_graph(&terminator);
-            }
-        }
-        for closure_id in graph.closures.iter() {
-            self.build_graph(*closure_id);
-        }
-        self.graphs.insert(def_id, graph);
-    }
-
-    pub fn draw_graphs(&self) {
-        let dir_name = "DataflowGraph";
-
-        Command::new("rm")
-            .args(&["-rf", dir_name])
-            .output()
-            .expect("Failed to remove directory.");
-
-        Command::new("mkdir")
-            .args(&[dir_name])
-            .output()
-            .expect("Failed to create directory.");
-
-        for (def_id, graph) in self.graphs.iter() {
-            let name = self.tcx.def_path_str(def_id);
-            let dot_file_name = format!("DataflowGraph/{}.dot", &name);
-            let png_file_name = format!("DataflowGraph/{}.png", &name);
-            let mut file = File::create(&dot_file_name).expect("Unable to create file.");
-            let dot = graph.to_dot_graph(&self.tcx);
-            file.write_all(dot.as_bytes())
-                .expect("Unable to write data.");
-
-            Command::new("dot")
-                .args(&["-Tpng", &dot_file_name, "-o", &png_file_name])
-                .output()
-                .expect("Failed to execute Graphviz dot command.");
-        }
-    }
+#[derive(Clone, Copy, Debug)]
+pub enum AggKind {
+    Array,
+    Tuple,
+    Adt(DefId),
+    Closure(DefId),
+    Coroutine(DefId),
+    RawPtr,
 }

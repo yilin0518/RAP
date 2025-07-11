@@ -26,9 +26,11 @@ use analysis::{
         alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
         api_dependency::default::ApiDependencyAnalyzer,
         callgraph::{default::CallGraphAnalyzer, CallGraphAnalysis, CallGraphDisplay},
-        dataflow::DataFlowAnalyzer,
+        dataflow::default::DataFlowAnalyzer,
         ownedheap_analysis::{default::OwnedHeapAnalyzer, OwnedHeapAnalysis},
-        range_analysis::{default::RangeAnalyzer, PathConstraintMapWrapper, RAResultMapWrapper, RangeAnalysis},
+        range_analysis::{
+            default::RangeAnalyzer, PathConstraintMapWrapper, RAResultMapWrapper, RangeAnalysis,
+        },
         ssa_transform::SSATrans,
     },
     opt::Opt,

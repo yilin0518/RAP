@@ -9,6 +9,7 @@ use crate::analysis::opt::OptCheck;
 
 use super::super::LEVEL;
 use rustc_middle::ty::TyCtxt;
+
 pub struct InitializationCheck {
     local_set: LocalSetCheck,
     vec_init: VecInitCheck,

@@ -1,4 +1,6 @@
 pub mod default;
+use crate::utils::source::get_fn_name_byid;
+
 use super::super::Analysis;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
@@ -93,9 +95,10 @@ impl fmt::Display for AAResult {
 
 impl fmt::Display for AAResultMapWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "===Print alias analysis resuts===")?;
         for (def_id, result) in &self.0 {
-            write!(f, "Alias of {:?}: {} ", def_id, result)?;
-            writeln!(f)?;
+            let fn_name = get_fn_name_byid(def_id);
+            writeln!(f, "Alias of {}: {}", fn_name, result)?;
         }
         Ok(())
     }

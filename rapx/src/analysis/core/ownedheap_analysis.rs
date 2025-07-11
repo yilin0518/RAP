@@ -5,10 +5,11 @@ use rustc_span::def_id::DefId;
 
 use std::{
     collections::{HashMap, HashSet},
-    env, fmt::{self, Display},
+    env,
+    fmt::{self, Display},
 };
 
-use crate::{rap_info, Analysis};
+use crate::{rap_info, utils::source::get_fn_name_byid, Analysis};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -56,27 +57,28 @@ pub struct OHAResultMapWrapper(pub HashMap<DefId, Vec<(OwnedHeap, Vec<bool>)>>);
 
 impl Display for OHAResultMapWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "===Print owned heap analysis resuts===")?;
         for (def_id, units) in &self.0 {
-            let name = format!("{:?}", def_id);
+            let fn_name = get_fn_name_byid(def_id);
             let owning = units
                 .iter()
                 .map(Self::format_heap_unit)
                 .collect::<Vec<_>>()
                 .join(", ");
-            writeln!(f, "{} {}", name, owning)?;
+            writeln!(f, "{}: {}", fn_name, owning)?;
         }
         Ok(())
     }
 }
 
 impl OHAResultMapWrapper {
-      fn format_heap_unit((heap, bits): &(OwnedHeap, Vec<bool>)) -> String {
+    fn format_heap_unit((heap, bits): &(OwnedHeap, Vec<bool>)) -> String {
         let bit_str = bits
             .iter()
             .map(|b| if *b { "1" } else { "0" })
             .collect::<Vec<_>>()
             .join(",");
-        format!("{:?}, [{}]", heap, bit_str)
+        format!("{:?}, <{}>", heap, bit_str)
     }
 }
 /// This trait provides features for owned heap analysis, which is used to determine if a type owns

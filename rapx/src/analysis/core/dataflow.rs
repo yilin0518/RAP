@@ -77,6 +77,7 @@ impl Display for DataFlowGraphWrapper {
 
 impl Display for DataFlowGraphMapWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "===Print dataflow analysis resuts===")?;
         for (def_id, dfg) in &self.0 {
             writeln!(
                 f,

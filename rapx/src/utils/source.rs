@@ -13,6 +13,20 @@ pub fn get_fn_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
     Some(name)
 }
 
+pub fn get_fn_name_byid(def_id: &DefId) -> String {
+    let s = format!("{:?}", *def_id);
+    if let Some(start) = s.find("DefId"){ 
+        if let Some(end) = s.find("]::") {
+            let s1 = s.replace(&s[start..end + 1], "").to_string();
+            if let Some(start) = s1.find(")") {
+                let result = s1.replace(&s1[start..start + 1], "").to_string();
+                return result;
+            }
+            return s1;
+        }
+    }
+    s.clone()
+}
 pub fn get_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<Symbol> {
     if def_id.is_local() {
         if let Some(node) = tcx.hir_get_if_local(def_id) {

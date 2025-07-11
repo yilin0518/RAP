@@ -3,7 +3,9 @@ use crate::{
         core::{
             alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
             dataflow::{default::DataFlowAnalyzer, DataFlowAnalysis, DataFlowGraphMapWrapper},
-            ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResultMapWrapper, OwnedHeapAnalysis},
+            ownedheap_analysis::{
+                default::OwnedHeapAnalyzer, OHAResultMapWrapper, OwnedHeapAnalysis,
+            },
             range_analysis::{default::RangeAnalyzer, PathConstraintMapWrapper, RangeAnalysis},
         },
         Analysis,

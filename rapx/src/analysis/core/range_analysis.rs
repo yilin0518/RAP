@@ -57,7 +57,7 @@ pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Ana
     ///
     /// Returns:
     /// - A `Vec<HashMap<Place, Range<T>>>`, where each entry corresponds to one invocation context.
-    fn get_per_call_fn_ranges(&self, def_id: DefId) -> Option<Vec<RAResult<'tcx, T>>>;
+    fn get_fn_ranges_percall(&self, def_id: DefId) -> Option<Vec<RAResult<'tcx, T>>>;
 
     /// Returns the complete mapping of range information for all functions in the crate.
     ///
@@ -70,7 +70,7 @@ pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Ana
     /// Returns:
     /// - A map from `DefId` to a `Vec<HashMap<Place, Range<T>>>`,
     ///   where each `Vec` element corresponds to a different call context.
-    fn get_per_call_all_fn_ranges(&self) -> RAVecResultMap<'tcx, T>;
+    fn get_all_fn_ranges_percall(&self) -> RAVecResultMap<'tcx, T>;
 
     /// Returns the inferred range for a specific variable (Place) in a specific function.
     ///
@@ -101,7 +101,6 @@ pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Ana
     fn get_all_path_constraints(&self) -> PathConstraintMap<'tcx>;
 }
 
-
 impl<'tcx, T> Display for RAResultWrapper<'tcx, T>
 where
     Place<'tcx>: Debug,
@@ -121,6 +120,7 @@ where
     T: IntervalArithmetic + Clone + PartialOrd + Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "===Print range analysis resuts===")?;
         for (def_id, ra_result) in &self.0 {
             writeln!(f, "DefId: {:?} =>", def_id)?;
 
@@ -141,6 +141,7 @@ where
     T: IntervalArithmetic + Clone + PartialOrd + Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "===Print range analysis resuts===")?;
         for (def_id, vec_of_maps) in &self.0 {
             writeln!(f, "DefId: {:?} =>", def_id)?;
 
@@ -182,6 +183,7 @@ where
     BinOp: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "===Print paths and constraints===")?;
         for (def_id, pc) in &self.0 {
             writeln!(f, "DefId {:?}:", def_id)?;
             for (path, constraints) in pc {

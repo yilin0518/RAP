@@ -1,8 +1,8 @@
 use crate::{
     analysis::{
         core::{
-            callgraph::{default::CallGraphInfo, visitor::CallGraphVisitor},
             alias_analysis::default::graph::MopGraph,
+            callgraph::{default::CallGraphInfo, visitor::CallGraphVisitor},
             range_analysis::{
                 domain::{
                     domain::{ConstConvert, IntervalArithmetic, VarNodes},
@@ -74,14 +74,14 @@ where
     fn get_fn_range(&self, def_id: DefId) -> Option<RAResult<'tcx, T>> {
         self.final_vars.get(&def_id).cloned()
     }
-    fn get_per_call_fn_ranges(&self, def_id: DefId) -> Option<Vec<RAResult<'tcx, T>>> {
+    fn get_fn_ranges_percall(&self, def_id: DefId) -> Option<Vec<RAResult<'tcx, T>>> {
         self.final_vars_vec.get(&def_id).cloned()
     }
     fn get_all_fn_ranges(&self) -> RAResultMap<'tcx, T> {
         // REFACTOR: Using `.clone()` is more explicit that a copy is being returned.
         self.final_vars.clone()
     }
-    fn get_per_call_all_fn_ranges(&self) -> RAVecResultMap<'tcx, T> {
+    fn get_all_fn_ranges_percall(&self) -> RAVecResultMap<'tcx, T> {
         self.final_vars_vec.clone()
     }
 
@@ -162,8 +162,6 @@ where
         vec.push(RefCell::new(vars_map));
         self.vars_map.insert(def_id, vec);
     }
-
-
 
     fn only_caller_range_analysis(&mut self) {
         let ssa_def_id = self.ssa_def_id.expect("SSA definition ID is not set");
@@ -294,8 +292,7 @@ where
                     let body_mut_ref = unsafe { &mut *(&mut body as *mut Body<'tcx>) };
 
                     let mut cg: ConstraintGraph<'tcx, T> = ConstraintGraph::new_without_ssa(def_id);
-                    let mut graph =
-                        MopGraph::new(self.tcx, def_id);
+                    let mut graph = MopGraph::new(self.tcx, def_id);
                     graph.solve_scc();
                     let paths: Vec<Vec<usize>> = graph.get_paths();
                     let result = cg.start_analyze_path_constraints(body_mut_ref, &paths);

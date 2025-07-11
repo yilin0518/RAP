@@ -47,7 +47,12 @@ impl<'tcx> SafeDrop<'tcx> {
     }
 }
 
-pub fn query_safedrop(tcx: TyCtxt, fn_map: &MopAAResultMap, def_id: DefId, adt_owner: OHAResultMap) {
+pub fn query_safedrop(
+    tcx: TyCtxt,
+    fn_map: &MopAAResultMap,
+    def_id: DefId,
+    adt_owner: OHAResultMap,
+) {
     /* filter const mir */
     if let Some(_other) = tcx.hir_body_const_context(def_id.expect_local()) {
         return;

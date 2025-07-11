@@ -555,7 +555,6 @@ impl<'tcx> MopGraph<'tcx> {
         self.tarjan(0, &mut stack, &mut instack, &mut dfn, &mut low, &mut time);
     }
 
-
     pub fn dfs_on_spanning_tree(
         &self,
         index: usize,

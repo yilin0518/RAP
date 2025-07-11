@@ -115,9 +115,10 @@ fn test_alias_not_alias_iter() {
 #[test]
 fn test_alias_field() {
     let output = running_tests_with_arg("alias/alias_field", "-alias");
-    assert_eq!(output.contains("foo): (0,1.1), (0,1.0)") 
-            || output.contains("foo): (0,1.0), (0,1.1)"), 
-            true);
+    assert_eq!(
+        output.contains("foo): (0,1.1), (0,1.0)") || output.contains("foo): (0,1.0), (0,1.1)"),
+        true
+    );
 }
 
 #[test]

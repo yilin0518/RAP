@@ -17,8 +17,19 @@ use rustc_middle::mir::{BinOp, Place};
 use std;
 use std::{
     collections::HashMap,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
 };
+
+pub type RAResult<'tcx, T> = HashMap<Place<'tcx>, Range<T>>;
+pub type RAResultMap<'tcx, T> = FxHashMap<DefId, HashMap<Place<'tcx>, Range<T>>>;
+pub type PathConstraint<'tcx> = HashMap<Vec<usize>, Vec<(Place<'tcx>, Place<'tcx>, BinOp)>>;
+pub type PathConstraintMap<'tcx> =
+    FxHashMap<DefId, HashMap<Vec<usize>, Vec<(Place<'tcx>, Place<'tcx>, BinOp)>>>;
+pub struct RAResultWrapper<'tcx, T: Clone + PartialOrd>(pub RAResult<'tcx, T>);
+pub struct RAResultMapWrapper<'tcx, T: Clone + PartialOrd>(pub RAResultMap<'tcx, T>);
+pub struct PathConstraintWrapper<'tcx>(pub PathConstraint<'tcx>);
+pub struct PathConstraintMapWrapper<'tcx>(pub PathConstraintMap<'tcx>);
+
 /// This is the trait for range analysis. Range analysis is used to determine the value range of a
 /// given variable at particular program points.
 pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Analysis {
@@ -29,13 +40,13 @@ pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Ana
     ///
     /// Returns:
     /// - A HashMap mapping each Place (variable) in the function to its inferred Range<T>.
-    fn get_fn_range(&self, def_id: DefId) -> Option<HashMap<Place<'tcx>, Range<T>>>;
+    fn get_fn_range(&self, def_id: DefId) -> Option<RAResult<'tcx, T>>;
 
     /// Returns the complete mapping of range information for all functions in the crate.
     ///
     /// Returns:
     /// - A map from DefId (function) to a HashMap of Places and their corresponding ranges.
-    fn get_all_fn_ranges(&self) -> FxHashMap<DefId, HashMap<Place<'tcx>, Range<T>>>;
+    fn get_all_fn_ranges(&self) -> RAResultMap<'tcx, T>;
 
     /// Returns the range for a specific local variable in a specific function.
     ///
@@ -53,12 +64,75 @@ pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Ana
     ///
     /// This supports path-sensitive pruning by allowing reasoning over feasible paths.
 
-    fn get_path_constraints(
-        &self,
-        def_id: DefId,
-    ) -> HashMap<Vec<usize>, Vec<(Place<'tcx>, Place<'tcx>, BinOp)>>;
+    fn get_fn_path_constraints(&self, def_id: DefId) -> Option<PathConstraint<'tcx>>;
+
+    fn get_all_path_constraints(&self) -> PathConstraintMap<'tcx>;
 }
 
+impl<'tcx, T> Display for RAResultWrapper<'tcx, T>
+where
+    Place<'tcx>: Debug,
+    T: IntervalArithmetic + Clone + PartialOrd + Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (place, range) in &self.0 {
+            writeln!(f, "{:?} => {}", place, range)?;
+        }
+        Ok(())
+    }
+}
+impl<'tcx, T> Display for RAResultMapWrapper<'tcx, T>
+where
+    DefId: Debug,
+    Place<'tcx>: Debug,
+    T: IntervalArithmetic + Clone + PartialOrd + Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (def_id, ra_result) in &self.0 {
+            writeln!(f, "DefId: {:?} =>", def_id)?;
+            for (place, range) in ra_result {
+                writeln!(f, "  {:?} => {}", place, range)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'tcx> Display for PathConstraintWrapper<'tcx>
+where
+    Place<'tcx>: Debug,
+    BinOp: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (path, constraints) in &self.0 {
+            writeln!(f, "Path {:?}:", path)?;
+            for (p1, p2, op) in constraints {
+                writeln!(f, "    Constraint:{:?} {:?} {:?}", p1, op, p2)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'tcx> Display for PathConstraintMapWrapper<'tcx>
+where
+    DefId: Debug,
+    Place<'tcx>: Debug,
+    BinOp: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (def_id, pc) in &self.0 {
+            writeln!(f, "DefId {:?}:", def_id)?;
+            for (path, constraints) in pc {
+                writeln!(f, "  Path {:?}:", path)?;
+                for (p1, p2, op) in constraints {
+                    writeln!(f, "    Constraint:{:?} {:?} {:?}", p1, op, p2)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum RangeType {
     Unknown,
@@ -75,6 +149,7 @@ impl fmt::Display for RangeType {
         write!(f, "{}", s)
     }
 }
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Range<T>
 where
@@ -86,7 +161,8 @@ where
 
 static STR_MIN: Lazy<String> = Lazy::new(|| "Min".to_string());
 static STR_MAX: Lazy<String> = Lazy::new(|| "Max".to_string());
-impl<T> fmt::Display for Range<T>
+
+impl<T> Display for Range<T>
 where
     T: IntervalArithmetic,
 {

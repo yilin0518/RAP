@@ -3,7 +3,7 @@ use crate::{
         core::{
             alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
             ownedheap_analysis::default::OwnedHeapAnalyzer,
-            range_analysis::default::RangeAnalyzer,
+            range_analysis::{default::RangeAnalyzer, PathConstraintMapWrapper, RangeAnalysis},
         },
         Analysis,
     },
@@ -32,5 +32,7 @@ impl<'tcx> Test<'tcx> {
 
         let mut range_analysis = RangeAnalyzer::<i128>::new(self.tcx, false);
         range_analysis.run();
+        let path_constraint = range_analysis.get_all_path_constraints();
+        rap_info!("{}", PathConstraintMapWrapper(path_constraint));
     }
 }

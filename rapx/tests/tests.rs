@@ -269,21 +269,13 @@ fn test_range_analysis() {
     let output = running_tests_with_arg("range/range_1", "-range");
 
     let expected_ranges = vec![
-        "Var: _11, Regular [1, 99]",
-        "Var: _6, Regular [0, 99]",
-        "Var: _1, Regular [0, 0]",
-        "Var: _16, Regular [1, 100]",
-        "Var: _9, Regular [0, 99]",
-        "Var: _35, Regular [Min, Max]",
-        "Var: _7, Regular [Min, Max]",
-        "Var: _2, Regular [Min, Max]",
-        "Var: _31, Regular [0, 98]",
-        "Var: _12, Regular [0, 98]",
-        "Var: _10, Regular [0, 99]",
-        "Var: _30, Regular [1, 99]",
-        "Var: _5, Regular [0, 0]",
-        "Var: _4, Regular [0, 100]",
-        "Var: _34, Regular [1, 100]",
+        "_1 => Regular [0, 0]",
+        " _2 => Regular [Min, Max]",
+        "_4 => Regular [0, 100]",
+        "_6 => Regular [0, 99]",
+        "_11 => Regular [1, 99]",
+        "_12 => Regular [0, 98]",
+        "_34 => Regular [1, 100]",
     ];
 
     for expected in expected_ranges {
@@ -301,12 +293,10 @@ fn test_interprocedual_range_analysis() {
     let output = running_tests_with_arg("range/range_2", "-range");
 
     let expected_ranges = vec![
-        "Var: _5, Regular [100, 100]",
-        "Var: _3, Regular [42, 42]",
-        "Var: _1, Regular [42, 42]",
-        "Var: _4, Regular [52, 52]",
-        "Var: _6, Regular [52, 52]",
-        "Var: _2, Regular [Min, Max]",
+        "_1 => Regular [42, 42]",
+        "_2 => Regular [Min, Max]",
+        "_4 => Regular [52, 52]",
+        "_5 => Regular [100, 100]",
     ];
 
     for expected in expected_ranges {

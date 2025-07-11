@@ -1,47 +1,51 @@
-use crate::analysis::{
-    core::{
-        callgraph::{default::CallGraphInfo, visitor::CallGraphVisitor},
-        ownedheap_analysis::OHAResult,
-        range_analysis::{
-            domain::{
-                domain::{ConstConvert, IntervalArithmetic, VarNodes},
-                ConstraintGraph::ConstraintGraph,
+use crate::{
+    analysis::{
+        core::{
+            callgraph::{default::CallGraphInfo, visitor::CallGraphVisitor},
+            ownedheap_analysis::OHAResult,
+            range_analysis::{
+                domain::{
+                    domain::{ConstConvert, IntervalArithmetic, VarNodes},
+                    ConstraintGraph::ConstraintGraph,
+                },
+                Range, RangeAnalysis,
             },
-            Range, RangeAnalysis,
+            ssa_transform::*,
         },
-        ssa_transform::*,
+        safedrop::graph::SafeDropGraph,
+        Analysis,
     },
-    safedrop::graph::SafeDropGraph,
+    rap_debug, rap_info,
 };
-use crate::rap_info;
 
-use crate::analysis::Analysis;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::def::DefKind;
-use rustc_hir::def_id::DefId;
-use rustc_middle::mir::Place;
-use rustc_middle::mir::{BinOp, Body};
-use rustc_middle::ty::TyCtxt;
-use std::{cell::RefCell, rc::Rc};
+use rustc_hir::{def::DefKind, def_id::DefId};
+use rustc_middle::{
+    mir::{Body, Place},
+    ty::TyCtxt,
+};
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Debug,
+    rc::Rc,
 };
+
+use super::{PathConstraint, PathConstraintMap, RAResult, RAResultMap};
 pub struct RangeAnalyzer<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
     pub tcx: TyCtxt<'tcx>,
     pub debug: bool,
     pub ssa_def_id: Option<DefId>,
     pub essa_def_id: Option<DefId>,
-    pub final_vars: FxHashMap<DefId, HashMap<Place<'tcx>, Range<T>>>,
+    pub final_vars: RAResultMap<'tcx, T>,
     pub ssa_places_mapping: FxHashMap<DefId, HashMap<Place<'tcx>, HashSet<Place<'tcx>>>>,
-    pub fn_ConstraintGraph_mapping: FxHashMap<DefId, ConstraintGraph<'tcx, T>>,
+    pub fn_constraintgraph_mapping: FxHashMap<DefId, ConstraintGraph<'tcx, T>>,
     pub callgraph: CallGraphInfo<'tcx>,
     pub body_map: FxHashMap<DefId, Body<'tcx>>,
     pub cg_map: FxHashMap<DefId, Rc<RefCell<ConstraintGraph<'tcx, T>>>>,
     pub vars_map: FxHashMap<DefId, Vec<RefCell<VarNodes<'tcx, T>>>>,
     pub final_vars_vec: FxHashMap<DefId, Vec<HashMap<Place<'tcx>, Range<T>>>>,
-    pub path_constraints:
-        FxHashMap<DefId, HashMap<Vec<usize>, Vec<(Place<'tcx>, Place<'tcx>, BinOp)>>>,
+    pub path_constraints: PathConstraintMap<'tcx>,
 }
 impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> Analysis for RangeAnalyzer<'tcx, T>
 where
@@ -54,6 +58,7 @@ where
     fn run(&mut self) {
         // self.start();
         self.only_caller_range_analysis();
+        self.start_path_constraints_analysis();
     }
 
     fn reset(&mut self) {
@@ -67,11 +72,11 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> RangeAnalysis<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {
-    fn get_fn_range(&self, def_id: DefId) -> Option<HashMap<Place<'tcx>, Range<T>>> {
+    fn get_fn_range(&self, def_id: DefId) -> Option<RAResult<'tcx, T>> {
         self.final_vars.get(&def_id).cloned()
     }
 
-    fn get_all_fn_ranges(&self) -> FxHashMap<DefId, HashMap<Place<'tcx>, Range<T>>> {
+    fn get_all_fn_ranges(&self) -> RAResultMap<'tcx, T> {
         // REFACTOR: Using `.clone()` is more explicit that a copy is being returned.
         self.final_vars.clone()
     }
@@ -82,14 +87,15 @@ where
             .get(&def_id)
             .and_then(|vars| vars.get(&place).cloned())
     }
-    fn get_path_constraints(
-        &self,
-        def_id: DefId,
-    ) -> HashMap<Vec<usize>, Vec<(Place<'tcx>, Place<'tcx>, BinOp)>> {
+
+    fn get_fn_path_constraints(&self, def_id: DefId) -> Option<PathConstraint<'tcx>> {
         self.path_constraints
             .get(&def_id)
             .cloned()
-            .unwrap_or_default()
+    }
+
+    fn get_all_path_constraints(&self) -> PathConstraintMap<'tcx> {
+        self.path_constraints.clone()
     }
 }
 
@@ -128,7 +134,7 @@ where
             essa_def_id: essa_id,
             final_vars: FxHashMap::default(),
             ssa_places_mapping: FxHashMap::default(),
-            fn_ConstraintGraph_mapping: FxHashMap::default(),
+            fn_constraintgraph_mapping: FxHashMap::default(),
             callgraph: CallGraphInfo::new(),
             body_map: FxHashMap::default(),
             cg_map: FxHashMap::default(),
@@ -154,6 +160,7 @@ where
         vec.push(RefCell::new(vars_map));
         self.vars_map.insert(def_id, vec);
     }
+
     fn start(&mut self) {
         let ssa_def_id = self.ssa_def_id.expect("SSA definition ID is not set");
         let essa_def_id = self.essa_def_id.expect("ESSA definition ID is not set");
@@ -163,7 +170,7 @@ where
                 let def_id = local_def_id.to_def_id();
 
                 if self.tcx.is_mir_available(def_id) {
-                    rap_info!(
+                    rap_debug!(
                         "Analyzing function: {}",
                         self.tcx.def_path_str(local_def_id)
                     );
@@ -209,7 +216,7 @@ where
         // ====================================================================
         // PHASE 1: Build all ConstraintGraphs and the complete CallGraph first.
         // ====================================================================
-        rap_info!("PHASE 1: Building all ConstraintGraphs and the CallGraph...");
+        rap_debug!("PHASE 1: Building all ConstraintGraphs and the CallGraph...");
         for local_def_id in self.tcx.iter_local_def_id() {
             if matches!(self.tcx.def_kind(local_def_id), DefKind::Fn) {
                 let def_id = local_def_id.to_def_id();
@@ -229,7 +236,7 @@ where
 
                     self.ssa_places_mapping
                         .insert(def_id, passrunner.places_map.clone());
-                    // rap_info!("ssa_places_mapping: {:?}", self.ssa_places_mapping);
+                    // rap_debug!("ssa_places_mapping: {:?}", self.ssa_places_mapping);
                     // Build and store the constraint graph
                     self.build_constraintgraph(body_mut_ref, def_id);
                     // Visit for call graph construction
@@ -239,13 +246,13 @@ where
                 }
             }
         }
-        rap_info!("PHASE 1 Complete. CallGraph built.");
+        rap_debug!("PHASE 1 Complete. CallGraph built.");
         // self.callgraph.print_call_graph(); // Optional: for debugging
 
         // ====================================================================
         // PHASE 2: Analyze only the call chain start functions.
         // ====================================================================
-        rap_info!("PHASE 2: Finding and analyzing call chain start functions...");
+        rap_debug!("PHASE 2: Finding and analyzing call chain start functions...");
 
         let mut call_chain_starts: Vec<DefId> = Vec::new();
 
@@ -263,7 +270,7 @@ where
 
         call_chain_starts.sort_by_key(|d| self.tcx.def_path_str(*d));
 
-        rap_info!(
+        rap_debug!(
             "Found call chain starts ({} functions): {:?}",
             call_chain_starts.len(),
             call_chain_starts
@@ -273,7 +280,7 @@ where
         );
 
         for def_id in call_chain_starts {
-            rap_info!(
+            rap_debug!(
                 "Analyzing function (call chain start): {}",
                 self.tcx.def_path_str(def_id)
             );
@@ -281,7 +288,7 @@ where
                 let mut cg = cg_cell.borrow_mut();
                 cg.find_intervals(&self.cg_map, &mut self.vars_map);
             } else {
-                rap_info!(
+                rap_debug!(
                     "Warning: No ConstraintGraph found for DefId {:?} during analysis of call chain starts.",
                     def_id
                 );
@@ -298,7 +305,7 @@ where
                     ranges_for_fn.insert(place, varnode.get_range().clone());
                 }
                 let Some(varnodes_vec) = self.vars_map.get_mut(&def_id) else {
-                    rap_info!(
+                    rap_debug!(
                         "Warning: No VarNodes found for DefId {:?} during analysis of call chain starts.",
                         def_id
                     );
@@ -319,10 +326,11 @@ where
             }
         }
 
-        rap_info!("PHASE 2 Complete. Interval analysis finished for call chain start functions.");
+        rap_debug!("PHASE 2 Complete. Interval analysis finished for call chain start functions.");
         self.print_all_final_results();
     }
-    pub fn use_path_constraints_analysis(&mut self) {
+
+    pub fn start_path_constraints_analysis(&mut self) {
         for local_def_id in self.tcx.iter_local_def_id() {
             if matches!(self.tcx.def_kind(local_def_id), DefKind::Fn) {
                 let def_id = local_def_id.to_def_id();
@@ -337,18 +345,18 @@ where
                     safedrop_graph.solve_scc();
                     let paths: Vec<Vec<usize>> = safedrop_graph.get_paths();
                     let result = cg.start_analyze_path_constraints(body_mut_ref, &paths);
-                    rap_info!(
-                        "SafeDropGraph Paths for function {}: {:?}",
+                    rap_debug!(
+                        "Paths for function {}: {:?}",
                         self.tcx.def_path_str(def_id),
                         paths
                     );
                     let switchbbs = cg.switchbbs.clone();
-                    rap_info!(
+                    rap_debug!(
                         "Switch BBS for function {}: {:?}",
                         self.tcx.def_path_str(def_id),
                         switchbbs
                     );
-                    rap_info!(
+                    rap_debug!(
                         "Path Constraints Analysis Result for function {}: {:?}",
                         self.tcx.def_path_str(def_id),
                         result
@@ -360,9 +368,9 @@ where
     }
 
     pub fn print_all_final_results(&self) {
-        rap_info!("==============================================");
-        rap_info!("==== Final Analysis Results for All Functions ====");
-        rap_info!("==============================================");
+        rap_debug!("==============================================");
+        rap_debug!("==== Final Analysis Results for All Functions ====");
+        rap_debug!("==============================================");
 
         if self.final_vars.is_empty() {
             rap_info!("No final results available to display.");
@@ -375,20 +383,20 @@ where
 
         for def_id in sorted_def_ids {
             if let Some(var_map_vec) = self.final_vars_vec.get(&def_id) {
-                rap_info!("\n--- Function: {} ---", self.tcx.def_path_str(def_id));
+                rap_debug!("\n--- Function: {} ---", self.tcx.def_path_str(def_id));
                 for (index, var_map) in var_map_vec.iter().enumerate() {
                     if index == 0 {
                         continue;
                     }
-                    rap_info!("  Final Variables (Set {}):", index);
+                    rap_debug!("  Final Variables (Set {}):", index);
                     if var_map.is_empty() {
-                        rap_info!("  No final variables tracked for this function.");
+                        rap_debug!("  No final variables tracked for this function.");
                     } else {
                         let mut sorted_vars: Vec<_> = var_map.iter().collect();
                         sorted_vars.sort_by_key(|(place, _)| place.local.index());
 
                         for (place, range) in sorted_vars {
-                            rap_info!("Var: {:?}, {}", place, range);
+                            rap_debug!("Var: {:?}, {}", place, range);
                         }
                     }
                 }

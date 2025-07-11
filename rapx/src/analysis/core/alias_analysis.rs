@@ -9,17 +9,17 @@ use std::{collections::HashSet, fmt};
 pub type AAResultMap = FxHashMap<DefId, AAResult>;
 
 /// This is a wrapper struct for displaying AAResultMap.
-pub struct AAResultMapWrapper(pub FxHashMap<DefId, AAResult>);
+pub struct AAResultMapWrapper(pub AAResultMap);
 
 /// This trait provides features related to alias analysis.
 pub trait AliasAnalysis: Analysis {
     /// Return the aliases among the function arguments and return value of a specific function.
-    fn get_fn_alias(&mut self, def_id: DefId) -> AAResult;
+    fn get_fn_alias(&self, def_id: DefId) -> Option<AAResult>;
     /// Return the aliases among the function arguments and return value for all functions.
-    fn get_all_fn_alias(&mut self) -> AAResultMap;
+    fn get_all_fn_alias(&self) -> AAResultMap;
     /// Return the aliases among the function arguments and return value for functions of the local
     /// crate.
-    fn get_local_fn_alias(&mut self) -> AAResultMap {
+    fn get_local_fn_alias(&self) -> AAResultMap {
         self.get_all_fn_alias()
             .iter()
             .filter(|(def_id, _)| def_id.krate == LOCAL_CRATE)

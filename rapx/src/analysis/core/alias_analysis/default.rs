@@ -186,15 +186,11 @@ impl<'tcx> Analysis for AliasAnalyzer<'tcx> {
 }
 
 impl<'tcx> AliasAnalysis for AliasAnalyzer<'tcx> {
-    fn get_fn_alias(&mut self, def_id: DefId) -> AAResult {
-        self.fn_map
-            .get(&def_id)
-            .expect(&format!("Cannot find alias analysis result for {def_id:?}"))
-            .clone()
-            .into()
+    fn get_fn_alias(&self, def_id: DefId) -> Option<AAResult> {
+        self.fn_map.get(&def_id).cloned().map(Into::into)
     }
 
-    fn get_all_fn_alias(&mut self) -> AAResultMap {
+    fn get_all_fn_alias(&self) -> AAResultMap {
         self.fn_map
             .iter()
             .map(|(k, v)| (*k, AAResult::from(v.clone())))

@@ -34,6 +34,7 @@ fn main() {
             "-ownedheap" => compiler.enable_ownedheap(),
             "-range" => compiler.enable_range_analysis(1),
             "-range=print_mir" => compiler.enable_range_analysis(2),
+            "-pathcond" => compiler.enable_range_analysis(3),
             "-test" => compiler.enable_test(),
             "-F" | "-F0" | "-F1" | "-F2" | "-uaf" => compiler.enable_safedrop(arg),
             "-I" | "-infer" => compiler.enable_infer(),
@@ -52,7 +53,7 @@ fn main() {
         }
     }
     _ = init_log().inspect_err(|err| eprintln!("Failed to init log: {err}"));
-    rap_info!("Start analysis with RAP.");
+    rap_info!("Start analysis with RAPx.");
     rap_trace!("rap received arguments{:#?}", env::args());
     rap_trace!("arguments to rustc: {:?}", &args);
 

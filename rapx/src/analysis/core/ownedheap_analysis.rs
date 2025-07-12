@@ -84,8 +84,9 @@ impl OHAResultMapWrapper {
 /// This trait provides features for owned heap analysis, which is used to determine if a type owns
 /// memory on heap. Owned heap should be automatically released by default.
 pub trait OwnedHeapAnalysis: Analysis {
-    /// Return the result of owned heap analysis for all types.
+    /// The function returns the result of owned heap analysis for all types.
     fn get_all_items(&self) -> OHAResultMap;
+
     /// If a type is a heap owner, the function returns Result<true>. If the specified type is
     /// illegal, the function returns Err.
     fn is_heapowner<'tcx>(hares: OHAResultMap, ty: Ty<'tcx>) -> Result<bool, &'static str> {
@@ -102,6 +103,7 @@ pub trait OwnedHeapAnalysis: Analysis {
             _ => Err("The input is not an ADT"),
         }
     }
+
     /// A type might be a heap owner if it is not a heap owner directly but contains type
     /// parameters that may make the type become a heap owner after monomorphization.
     fn maybe_heapowner<'tcx>(hares: OHAResultMap, ty: Ty<'tcx>) -> Result<bool, &'static str> {

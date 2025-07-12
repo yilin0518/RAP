@@ -58,8 +58,12 @@ pub struct GraphNode {
 
 /// This trait provides features related to dataflow analysis.
 pub trait DataFlowAnalysis: Analysis {
+    /// The function returns the dataflow graph for the given function id.
     fn get_fn_dataflow(&self, def_id: DefId) -> Option<DataFlowGraph>;
+
+    /// The function returns the dataflow graph for all functions.
     fn get_all_dataflow(&self) -> DataFlowGraphMap;
+
     /// If there is a dataflow between `local1` and `local2` within the function specified by
     /// `def_id`, the function returns ture; otherwise, it returns false.
     fn has_flow_between(&self, def_id: DefId, local1: Local, local2: Local) -> bool;

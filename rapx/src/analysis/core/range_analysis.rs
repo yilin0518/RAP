@@ -41,66 +41,30 @@ pub struct PathConstraintMapWrapper<'tcx>(pub PathConstraintMap<'tcx>);
 /// This trait provides access to both intra-procedural and inter-procedural
 /// range results inferred through static interval analysis.
 pub trait RangeAnalysis<'tcx, T: IntervalArithmetic + ConstConvert + Debug>: Analysis {
-    /// Returns the range information for all local variables (Places) in a given function.
-    ///
-    /// Parameters:
-    /// - `def_id`: The function's unique identifier (DefId).
-    ///
-    /// Returns:
-    /// - A `HashMap` mapping each `Place` (variable) in the function to its inferred `Range<T>`.
+    /// The fucntion returns the range information for all local variables (Places) in a given
+    /// function specified by `def_id`.
     fn get_fn_range(&self, def_id: DefId) -> Option<RAResult<'tcx, T>>;
 
-    /// Returns the range analysis results for **each call instance** of the specified function.
-    ///
+    /// The function returns the range analysis results for **each call instance** of the specified function.
     /// This is useful in interprocedural or context-sensitive analyses,
     /// where a function might be analyzed multiple times under different calling contexts.
-    ///
-    /// Parameters:
-    /// - `def_id`: The target function's `DefId`.
-    ///
-    /// Returns:
-    /// - A `Vec<HashMap<Place, Range<T>>>`, where each entry corresponds to one invocation context.
     fn get_fn_ranges_percall(&self, def_id: DefId) -> Option<Vec<RAResult<'tcx, T>>>;
 
-    /// Returns the complete mapping of range information for all functions in the crate.
-    ///
-    /// Returns:
-    /// - A map from `DefId` (function) to a `HashMap` of `Place`s and their corresponding `Range<T>`.
+    /// The function returns the complete mapping of range information for all functions in the crate.
     fn get_all_fn_ranges(&self) -> RAResultMap<'tcx, T>;
 
-    /// Returns the range results for **every call instance** of every function in the crate.
-    ///
-    /// Returns:
-    /// - A map from `DefId` to a `Vec<HashMap<Place, Range<T>>>`,
-    ///   where each `Vec` element corresponds to a different call context.
+    /// The function returns the range results for **every call instance** of every function in the crate.
     fn get_all_fn_ranges_percall(&self) -> RAVecResultMap<'tcx, T>;
 
-    /// Returns the inferred range for a specific variable (Place) in a specific function.
-    ///
-    /// Parameters:
-    /// - `def_id`: The target function's `DefId`.
-    /// - `local`: The target `Place` (local variable) within the function.
-    ///
-    /// Returns:
-    /// - The inferred `Range<T>` if available, otherwise `None`.
+    /// The function returns the inferred range for a specific variable (Place) in a specific function.
     fn get_fn_local_range(&self, def_id: DefId, local: Place<'tcx>) -> Option<Range<T>>;
 
-    /// Returns a mapping from feasible control-flow paths to symbolic constraints.
-    ///
+    /// The function returns a mapping from feasible control-flow paths to symbolic constraints.
     /// Each constraint is a triple of (`Place`, `Place`, `BinOp`) representing
     /// path-sensitive relational information useful for pruning infeasible paths.
-    ///
-    /// Parameters:
-    /// - `def_id`: The target function's `DefId`.
-    ///
-    /// Returns:
-    /// - An optional `PathConstraint`, mapping paths to symbolic conditions.
     fn get_fn_path_constraints(&self, def_id: DefId) -> Option<PathConstraint<'tcx>>;
 
-    /// Returns path constraints for all functions in the crate.
-    ///
-    /// Returns:
-    /// - A mapping from `DefId` to their corresponding `PathConstraint` information.
+    /// The function returns path constraints for all functions in the crate.
     fn get_all_path_constraints(&self) -> PathConstraintMap<'tcx>;
 }
 

@@ -93,7 +93,12 @@ impl fmt::Display for Arg2RetMapWrapper {
         writeln!(f, "=== Print dataflow analysis results ===")?;
         for (def_id, arg2ret) in &self.0 {
             let fn_name = get_fn_name_byid(def_id);
-            writeln!(f, "{}\n{}", fn_name, Arg2RetWrapper(arg2ret.clone()))?;
+            writeln!(
+                f,
+                "Function: {:?}\n{}",
+                fn_name,
+                Arg2RetWrapper(arg2ret.clone())
+            )?;
         }
         Ok(())
     }
@@ -151,10 +156,11 @@ impl Display for DataFlowGraphMapWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "===Print dataflow analysis resuts===")?;
         for (def_id, dfg) in &self.0 {
+            let fn_name = get_fn_name_byid(def_id);
             writeln!(
                 f,
-                "DefId: {:?}\n{}",
-                def_id,
+                "Function: {:?}\n{}",
+                fn_name,
                 DataFlowGraphWrapper(dfg.clone())
             )?;
         }

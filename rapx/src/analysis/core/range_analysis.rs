@@ -3,9 +3,12 @@
 #![allow(dead_code)]
 pub mod default;
 pub mod domain;
-use crate::analysis::{
-    core::range_analysis::domain::domain::{ConstConvert, IntervalArithmetic},
-    Analysis,
+use crate::{
+    analysis::{
+        core::range_analysis::domain::domain::{ConstConvert, IntervalArithmetic},
+        Analysis,
+    },
+    utils::source::get_fn_name_byid,
 };
 use intervals::Closed;
 use once_cell::sync::Lazy;
@@ -120,9 +123,10 @@ where
     T: IntervalArithmetic + Clone + PartialOrd + Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "===Print range analysis resuts===")?;
+        writeln!(f, "=== Print range analysis resuts ===")?;
         for (def_id, ra_result) in &self.0 {
-            writeln!(f, "DefId: {:?} =>", def_id)?;
+            let fn_name = get_fn_name_byid(def_id);
+            writeln!(f, "Function: {:?} =>", fn_name)?;
 
             let mut sorted: Vec<_> = ra_result.iter().collect();
             sorted.sort_by_key(|(place, _)| place.local.as_usize());
@@ -141,9 +145,10 @@ where
     T: IntervalArithmetic + Clone + PartialOrd + Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "===Print range analysis resuts===")?;
+        writeln!(f, "=== Print range analysis resuts ===")?;
         for (def_id, vec_of_maps) in &self.0 {
-            writeln!(f, "DefId: {:?} =>", def_id)?;
+            let fn_name = get_fn_name_byid(def_id);
+            writeln!(f, "Function: {:?} =>", fn_name)?;
 
             for (i, map) in vec_of_maps.iter().enumerate() {
                 writeln!(f, "  Result Set #{}:", i)?;
@@ -183,9 +188,10 @@ where
     BinOp: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "===Print paths and constraints===")?;
+        writeln!(f, "=== Print paths and constraints ===")?;
         for (def_id, pc) in &self.0 {
-            writeln!(f, "DefId {:?}:", def_id)?;
+            let fn_name = get_fn_name_byid(def_id);
+            writeln!(f, "Function: {:?}:", fn_name)?;
             for (path, constraints) in pc {
                 writeln!(f, "  Path {:?}:", path)?;
                 for (p1, p2, op) in constraints {

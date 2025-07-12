@@ -95,10 +95,10 @@ impl fmt::Display for AAResult {
 
 impl fmt::Display for AAResultMapWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "===Print alias analysis resuts===")?;
+        writeln!(f, "=== Print alias analysis resuts ===")?;
         for (def_id, result) in &self.0 {
             let fn_name = get_fn_name_byid(def_id);
-            writeln!(f, "Alias of {}: {}", fn_name, result)?;
+            writeln!(f, "Alias of {:?}: {}", fn_name, result)?;
         }
         Ok(())
     }

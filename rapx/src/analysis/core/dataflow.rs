@@ -4,13 +4,14 @@ pub mod graph;
 
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Display, Debug},
+    fmt::{self, Debug, Display},
     fs::File,
     io::Write,
     process::Command,
 };
 
-use crate::analysis::Analysis;
+use crate::{analysis::Analysis, utils::source::get_fn_name_byid};
+
 use rustc_hir::{def::DefKind, def_id::DefId};
 use rustc_index::IndexVec;
 use rustc_middle::{
@@ -19,13 +20,18 @@ use rustc_middle::{
 };
 use rustc_span::Span;
 
+pub type Arg2Ret = IndexVec<Local, bool>;
+pub type Arg2RetMap = HashMap<DefId, IndexVec<Local, bool>>;
 #[derive(Clone)]
 pub struct DataFlowGraph {
     pub nodes: GraphNodes,
     pub edges: GraphEdges,
-    pub param_ret_deps: IndexVec<Local, bool>,
+    pub param_ret_deps: Arg2Ret,
 }
 pub type DataFlowGraphMap = HashMap<DefId, DataFlowGraph>;
+
+pub struct Arg2RetWrapper(pub Arg2Ret);
+pub struct Arg2RetMapWrapper(pub Arg2RetMap);
 pub struct DataFlowGraphWrapper(pub DataFlowGraph);
 pub struct DataFlowGraphMapWrapper(pub HashMap<DefId, DataFlowGraph>);
 
@@ -62,7 +68,35 @@ pub trait DataFlowAnalysis: Analysis {
     fn collect_equivalent_locals(&self, def_id: DefId, local: Local) -> HashSet<Local>;
 
     /// The function returns an IndexVec of whether the returned Local depends on the parameter Local.
-    fn param_return_deps(&self, def_id: DefId) -> IndexVec<Local, bool>;
+    fn get_fn_arg2ret(&self, def_id: DefId) -> Arg2Ret;
+
+    /// The function returns the dataflow between the arguments and return value for all functions
+    fn get_all_arg2ret(&self) -> Arg2RetMap;
+}
+
+impl fmt::Display for Arg2RetWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let arg2ret: &Arg2Ret = &self.0;
+        for (local, depends) in arg2ret.iter_enumerated() {
+            if local.as_u32() > 0 {
+                if *depends {
+                    writeln!(f, "Argument {:?} ---> Return value _0", local)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Arg2RetMapWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "=== Print dataflow analysis results ===")?;
+        for (def_id, arg2ret) in &self.0 {
+            let fn_name = get_fn_name_byid(def_id);
+            writeln!(f, "{}\n{}", fn_name, Arg2RetWrapper(arg2ret.clone()))?;
+        }
+        Ok(())
+    }
 }
 
 impl Display for DataFlowGraphWrapper {
@@ -80,10 +114,7 @@ impl Display for DataFlowGraphWrapper {
         for (node_idx, deps) in graph.param_ret_deps.iter_enumerated() {
             if node_idx.as_u32() > 0 {
                 if *deps {
-                    write!(f, "Parameter {:?} ---> Return value _0.\n", node_idx)?;
-                }
-                else {
-                    write!(f, "Parameter {:?} -x-> Return value _0.\n", node_idx)?;
+                    write!(f, "Argument {:?} ---> Return value _0.\n", node_idx)?;
                 }
             }
         }

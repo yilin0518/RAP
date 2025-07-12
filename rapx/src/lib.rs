@@ -26,7 +26,9 @@ use analysis::{
         alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
         api_dependency::default::ApiDependencyAnalyzer,
         callgraph::{default::CallGraphAnalyzer, CallGraphAnalysis, CallGraphDisplay},
-        dataflow::default::DataFlowAnalyzer,
+        dataflow::{
+            default::DataFlowAnalyzer, Arg2RetMapWrapper, DataFlowAnalysis, DataFlowGraphMapWrapper,
+        },
         ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResultMapWrapper, OwnedHeapAnalysis},
         range_analysis::{
             default::RangeAnalyzer, PathConstraintMapWrapper, RAResultMapWrapper, RangeAnalysis,
@@ -352,8 +354,18 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     }
 
     match callback.is_dataflow_enabled() {
-        1 => DataFlowAnalyzer::new(tcx, false).run(),
-        2 => DataFlowAnalyzer::new(tcx, true).run(),
+        1 => {
+            let mut analyzer = DataFlowAnalyzer::new(tcx, false);
+            analyzer.run();
+            let result = analyzer.get_all_arg2ret();
+            rap_info!("{}", Arg2RetMapWrapper(result));
+        }
+        2 => {
+            let mut analyzer = DataFlowAnalyzer::new(tcx, true);
+            analyzer.run();
+            let result = analyzer.get_all_dataflow();
+            rap_info!("{}", DataFlowGraphMapWrapper(result));
+        }
         _ => {}
     }
 

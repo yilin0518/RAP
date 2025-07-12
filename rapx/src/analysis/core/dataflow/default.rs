@@ -29,9 +29,18 @@ impl<'tcx> DataFlowAnalysis for DataFlowAnalyzer<'tcx> {
         graph.collect_equivalent_locals(local, true)
     }
 
-    fn param_return_deps(&self, def_id: DefId) -> IndexVec<Local, bool> {
+    fn get_fn_arg2ret(&self, def_id: DefId) -> Arg2Ret {
         let graph = self.graphs.get(&def_id).unwrap();
         graph.param_return_deps()
+    }
+
+    fn get_all_arg2ret(&self) -> Arg2RetMap {
+        let mut result = HashMap::new();
+        for (def_id, graph) in &self.graphs {
+            let deps = graph.param_return_deps();
+            result.insert(*def_id, deps);
+        }
+        result
     }
 }
 

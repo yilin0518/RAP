@@ -6,9 +6,9 @@ use rustc_span::symbol::Symbol;
 use rustc_span::DUMMY_SP;
 use thin_vec::ThinVec;
 
-use crate::rap_info;
+use crate::rap_debug;
 pub(crate) fn create_ssa_struct(_krate: &mut ast::Crate) {
-    rap_info!("[CALLBACK] Injecting new structs into the AST...");
+    rap_debug!("[CALLBACK] Injecting new structs into the AST...");
 
     let ssa_struct = create_struct(
         "SSAstmt",

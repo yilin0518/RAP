@@ -18,6 +18,7 @@ Analysis:
     -callgraph      generate callgraphs
     -dataflow       generate dataflow graphs
     -ownedheap      analyze if the type holds a piece of memory on heap
+    -pathcond       extract path constraints
     -range          perform range analysis
 
 General command: 

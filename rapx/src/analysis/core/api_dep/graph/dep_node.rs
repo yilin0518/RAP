@@ -63,4 +63,13 @@ impl<'tcx> DepNode<'tcx> {
             }
         }
     }
+
+    pub fn as_api(&self) -> (DefId, ty::GenericArgsRef<'tcx>) {
+        match self {
+            DepNode::Api(did, args) => (*did, args),
+            _ => {
+                panic!("{self:?} is not a ty")
+            }
+        }
+    }
 }

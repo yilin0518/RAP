@@ -1,7 +1,8 @@
 use super::graph::ApiDepGraph;
 use super::graph::{DepEdge, DepNode};
-use super::is_api_public;
+use super::is_def_id_public;
 use super::Config;
+use crate::analysis::core::api_dep::mono;
 use crate::{rap_debug, rap_trace};
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
@@ -13,9 +14,8 @@ use rustc_span::Span;
 use std::io::Write;
 
 pub struct FnVisitor<'tcx, 'a> {
-    fn_cnt: usize,
     tcx: TyCtxt<'tcx>,
-    funcs: Vec<DefId>,
+    apis: Vec<DefId>,
     config: Config,
     graph: &'a mut ApiDepGraph<'tcx>,
 }
@@ -29,18 +29,23 @@ impl<'tcx, 'a> FnVisitor<'tcx, 'a> {
         let fn_cnt = 0;
         let funcs = Vec::new();
         FnVisitor {
-            fn_cnt,
             tcx,
             graph,
-            funcs,
+            apis: funcs,
             config,
         }
     }
-    pub fn fn_cnt(&self) -> usize {
-        self.fn_cnt
+
+    pub fn count_api(&self) -> usize {
+        self.apis.len()
     }
+
+    pub fn apis(self) -> Vec<DefId> {
+        self.apis
+    }
+
     pub fn write_funcs<T: Write>(&self, f: &mut T) {
-        for id in &self.funcs {
+        for id in &self.apis {
             write!(f, "{}\n", self.tcx.def_path_str(id)).expect("fail when write funcs");
         }
     }
@@ -60,21 +65,18 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
             .tcx
             .generics_of(fn_did)
             .requires_monomorphization(self.tcx);
-        if self.config.pub_only && !is_api_public(fn_did, self.tcx) {
+        if self.config.pub_only && !is_def_id_public(fn_did, self.tcx) {
             return;
         }
-        if !self.config.include_generic_api && is_generic {
+        if !self.config.resolve_generic && is_generic {
             return;
         }
-        let res = if !is_generic {
+
+        if !is_generic {
             let args = ty::GenericArgs::identity_for_item(self.tcx, fn_did);
-            self.graph.add_api(fn_did, &args)
-        } else {
-            self.graph.add_generic_api(fn_did)
-        };
-        if res {
-            self.fn_cnt += 1;
-            self.funcs.push(fn_did);
+            self.graph.add_api(fn_did, &args);
         }
+
+        self.apis.push(fn_did);
     }
 }

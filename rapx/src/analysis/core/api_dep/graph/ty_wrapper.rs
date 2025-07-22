@@ -5,7 +5,7 @@ use super::transform::TransformKind;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_infer::traits::{Obligation, ObligationCause};
 use rustc_middle::traits;
-use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
 
@@ -60,6 +60,12 @@ impl<'tcx> TyWrapper<'tcx> {
 impl<'tcx> From<Ty<'tcx>> for TyWrapper<'tcx> {
     fn from(ty: ty::Ty<'tcx>) -> TyWrapper<'tcx> {
         TyWrapper { ty }
+    }
+}
+
+impl<'tcx> Into<Ty<'tcx>> for TyWrapper<'tcx> {
+    fn into(self) -> Ty<'tcx> {
+        self.ty
     }
 }
 
@@ -168,21 +174,7 @@ fn traverse_ty_with_lifetime<'tcx, F: Fn(ty::Region, usize)>(ty: Ty<'tcx>, no: &
 
 // hashing Ty<'tcx>, but ignore the difference of lifetimes
 fn hash_ty<'tcx, H: std::hash::Hasher>(ty: Ty<'tcx>, state: &mut H, no: &mut usize) {
-    // hash the variant
-    match ty.kind() {
-        ty::TyKind::Adt(..) => 0,
-        ty::TyKind::RawPtr(..) => 1,
-        ty::TyKind::Ref(..) => 2,
-        ty::TyKind::Array(..) => 3,
-        ty::TyKind::Pat(..) => 4,
-        ty::TyKind::Slice(..) => 5,
-        ty::TyKind::Tuple(..) => 6,
-        _ => {
-            ty.hash(state);
-            return;
-        }
-    }
-    .hash(state);
+    std::mem::discriminant(ty.kind()).hash(state);
 
     // hash the content
     match ty.kind() {
@@ -214,9 +206,7 @@ fn hash_ty<'tcx, H: std::hash::Hasher>(ty: Ty<'tcx>, state: &mut H, no: &mut usi
             no.hash(state);
             hash_ty(*inner_ty, state, no);
         }
-        ty::TyKind::Array(inner_ty, _)
-        | ty::TyKind::Pat(inner_ty, _)
-        | ty::TyKind::Slice(inner_ty) => {
+        ty::TyKind::Array(inner_ty, _) | ty::TyKind::Slice(inner_ty) => {
             hash_ty(*inner_ty, state, no);
         }
         ty::TyKind::Tuple(tys) => {
@@ -225,7 +215,7 @@ fn hash_ty<'tcx, H: std::hash::Hasher>(ty: Ty<'tcx>, state: &mut H, no: &mut usi
             }
         }
         _ => {
-            unreachable!("unexpected ty kind");
+            ty.hash(state);
         }
     }
 }
@@ -255,33 +245,29 @@ pub fn desc_ty_str<'tcx>(ty: Ty<'tcx>, no: &mut usize, tcx: TyCtxt<'tcx>) -> Str
         }
 
         ty::TyKind::RawPtr(inner_ty, mutability) => {
-            let mut_str = {
-                match mutability {
-                    ty::Mutability::Mut => "mut",
-                    ty::Mutability::Not => "const",
-                }
-            };
-            format!("*{} {}", mut_str, desc_ty_str(*inner_ty, no, tcx))
-        }
-        ty::TyKind::Ref(_, inner_ty, mutability) => {
-            let mut_str = {
-                match mutability {
-                    ty::Mutability::Mut => "mut",
-                    ty::Mutability::Not => "",
-                }
-            };
-            let current_no = *no;
-            *no = *no + 1;
             format!(
-                "&'#{}{} {}",
-                current_no,
-                mut_str,
+                "*{} {}",
+                mutability.ptr_str(),
                 desc_ty_str(*inner_ty, no, tcx)
             )
         }
-        ty::TyKind::Array(inner_ty, _)
-        | ty::TyKind::Pat(inner_ty, _)
-        | ty::TyKind::Slice(inner_ty) => desc_ty_str(*inner_ty, no, tcx),
+        ty::TyKind::Ref(_, inner_ty, mutability) => {
+            let current_no = *no;
+            *no = *no + 1;
+            format!(
+                "&'#{} {}{}",
+                current_no,
+                mutability.prefix_str(),
+                desc_ty_str(*inner_ty, no, tcx)
+            )
+        }
+        ty::TyKind::Array(inner_ty, len) => {
+            format!("[{};{}]", desc_ty_str(*inner_ty, no, tcx), len)
+        }
+
+        ty::TyKind::Slice(inner_ty) => {
+            format!("[{}]", desc_ty_str(*inner_ty, no, tcx))
+        }
         ty::TyKind::Tuple(tys) => format!(
             "({})",
             tys.iter()
@@ -289,6 +275,9 @@ pub fn desc_ty_str<'tcx>(ty: Ty<'tcx>, no: &mut usize, tcx: TyCtxt<'tcx>) -> Str
                 .collect::<Vec<String>>()
                 .join(", "),
         ),
+        ty::TyKind::Pat(inner_ty, _) => {
+            unreachable!();
+        }
         _ => format!("{:?}", ty),
     }
 }

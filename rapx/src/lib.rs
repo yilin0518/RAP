@@ -351,7 +351,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
     if callback.is_api_dep_enabled() {
         ApiDep::new(tcx).start(api_dep::Config {
             pub_only: true,
-            include_generic_api: true,
+            resolve_generic: true,
         });
     }
 

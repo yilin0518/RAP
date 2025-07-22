@@ -4,14 +4,20 @@
 
 #[allow(unused)]
 pub mod graph;
+mod mono;
+mod utils;
 #[allow(unused)]
 mod visitor;
+
 use crate::{rap_debug, rap_info, rap_trace};
 pub use graph::ApiDepGraph;
 pub use graph::{DepEdge, DepNode};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
-use rustc_middle::ty::TyCtxt;
-
+use rustc_infer::infer::TyCtxtInferExt;
+use rustc_infer::traits::ObligationCause;
+use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_span::DUMMY_SP;
+use rustc_trait_selection::infer::InferCtxtExt;
 pub struct ApiDep<'tcx> {
     pub tcx: TyCtxt<'tcx>,
 }
@@ -19,10 +25,10 @@ pub struct ApiDep<'tcx> {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Default)]
 pub struct Config {
     pub pub_only: bool,
-    pub include_generic_api: bool,
+    pub resolve_generic: bool,
 }
 
-pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
+pub fn is_def_id_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
     let fn_def_id: DefId = fn_def_id.into();
     let local_id = fn_def_id.expect_local();
     rap_trace!(
@@ -32,7 +38,7 @@ pub fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
         tcx.effective_visibilities(()).effective_vis(local_id)
     );
     tcx.effective_visibilities(()).is_directly_public(local_id)
-        // || tcx.effective_visibilities(()).is_exported(local_id)
+    // || tcx.effective_visibilities(()).is_exported(local_id)
 }
 
 impl<'tcx> ApiDep<'tcx> {
@@ -53,13 +59,13 @@ impl<'tcx> ApiDep<'tcx> {
 
         let statistics = api_graph.statistics();
         // print all statistics
-        rap_debug!(
-            "API Graph contains {} API nodes, {} type nodes, {} generic parameter def nodes",
+        rap_info!(
+            "API Graph contains {} API nodes, {} type nodes, {} generic parameter def nodes, {} edges",
             statistics.api_count,
             statistics.type_count,
-            statistics.generic_param_count
+            statistics.generic_param_count,
+            statistics.edge_cnt
         );
-
         let dot_filename = format!("api_graph_{}_{}.dot", local_crate_name, local_crate_type);
         rap_info!("Dump API dependency graph to {}", dot_filename);
         api_graph.dump_to_dot(dot_filename, self.tcx);

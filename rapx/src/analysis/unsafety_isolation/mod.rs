@@ -133,7 +133,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
 
     fn check_if_unsafety_doc_exists(&self, def_id: DefId) -> bool {
         if def_id.krate == rustc_hir::def_id::LOCAL_CRATE {
-            let attrs = self.tcx.get_attrs_unchecked(def_id);
+            let attrs = self.tcx.get_all_attrs(def_id);
             for attr in attrs {
                 if attr.is_doc_comment() {
                     return true;

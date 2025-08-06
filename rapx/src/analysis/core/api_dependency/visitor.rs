@@ -44,21 +44,21 @@ impl<'tcx, 'a> FnVisitor<'tcx, 'a> {
     }
 }
 
-fn get_bound_var_attr(var: ty::BoundVariableKind) -> (String, bool) {
+fn get_bound_var_attr<'tcx>(tcx: TyCtxt<'tcx>, var: ty::BoundVariableKind) -> (String, bool) {
     let name: String;
     let is_lifetime;
     match var {
         ty::BoundVariableKind::Ty(bound_ty_kind) => {
             is_lifetime = false;
             name = match bound_ty_kind {
-                ty::BoundTyKind::Param(_, sym) => sym.to_string(),
+                ty::BoundTyKind::Param(def_id) => tcx.item_name(def_id).to_string(),
                 _ => "anon".to_string(),
             }
         }
         ty::BoundVariableKind::Region(bound_region_kind) => {
             is_lifetime = true;
             name = match bound_region_kind {
-                ty::BoundRegionKind::Named(_, name) => name.to_string(),
+                ty::BoundRegionKind::Named(def_id) => tcx.item_name(def_id).to_string(),
                 _ => "anon".to_string(),
             }
         }
@@ -116,7 +116,7 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         );
         for (i, var) in binder_fn_sig.bound_vars().iter().enumerate() {
             rap_debug!("bound var#{i}: {var:?}");
-            let (name, is_lifetime) = get_bound_var_attr(var);
+            let (name, is_lifetime) = get_bound_var_attr(self.tcx, var);
             let node_index = self.graph.get_node(Node::generic_param_def(
                 fn_def_id,
                 early_generic_count + i,

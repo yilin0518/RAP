@@ -1,6 +1,5 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
-#![feature(let_chains)]
 #[macro_use]
 pub mod utils;
 pub mod analysis;
@@ -20,7 +19,7 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
-extern crate stable_mir;
+//extern crate stable_mir;
 extern crate thin_vec;
 use analysis::{
     core::{

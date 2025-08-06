@@ -1,7 +1,8 @@
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId, LOCAL_CRATE};
+use rustc_hir::HirId;
 use rustc_hir::PrimTy;
-use rustc_hir::{ImplItemRef, ItemKind, Mutability, Node, OwnerId, TraitItemRef};
+use rustc_hir::{ImplItemId, ItemKind, Mutability, Node, OwnerId, TraitItemId};
 use rustc_middle::ty::fast_reject::SimplifiedType;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::{FloatTy, IntTy, UintTy};
@@ -181,11 +182,15 @@ fn local_item_children_by_name(tcx: &TyCtxt<'_>, local_id: LocalDefId, name: Sym
         ItemKind::Impl(r#impl) => r#impl
             .items
             .iter()
-            .filter_map(|&ImplItemRef { ident, id, .. }| res(ident, id.owner_id))
+            .filter_map(|&ImplItemId { owner_id }| {
+                res(tcx.hir_ident(HirId::from(owner_id)), owner_id)
+            })
             .collect(),
         ItemKind::Trait(.., trait_item_refs) => trait_item_refs
             .iter()
-            .filter_map(|&TraitItemRef { ident, id, .. }| res(ident, id.owner_id))
+            .filter_map(|&TraitItemId { owner_id }| {
+                res(tcx.hir_ident(HirId::from(owner_id)), owner_id)
+            })
             .collect(),
         _ => Vec::new(),
     }

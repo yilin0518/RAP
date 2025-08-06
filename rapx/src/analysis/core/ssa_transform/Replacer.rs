@@ -66,9 +66,9 @@ impl<'tcx> Replacer<'tcx> {
                 for _ in 0..predecessors.len() {
                     operands.push(Operand::Copy(Place::from(var)));
                 }
-                let phi_stmt: Statement<'_> = Statement {
-                    source_info: SourceInfo::outermost(body.span),
-                    kind: StatementKind::Assign(Box::new((
+                let phi_stmt: Statement<'_> = Statement::new(
+                    SourceInfo::outermost(body.span),
+                    StatementKind::Assign(Box::new((
                         Place::from(var),
                         Rvalue::Aggregate(
                             Box::new(AggregateKind::Adt(
@@ -81,7 +81,7 @@ impl<'tcx> Replacer<'tcx> {
                             operands,
                         ),
                     ))),
-                };
+                );
                 // let phi_stmt = Statement {
                 //     source_info: SourceInfo::outermost(body.span),
                 //     kind: StatementKind::Assign(Box::new((
@@ -327,14 +327,14 @@ impl<'tcx> Replacer<'tcx> {
                                     rvalue2 = Rvalue::Aggregate(Box::new(ADT.clone()), operand2);
                                 }
 
-                                let assign_stmt1 = Statement {
-                                    source_info: SourceInfo::outermost(body.span),
-                                    kind: StatementKind::Assign(Box::new((place1, rvalue1))),
-                                };
-                                let assign_stmt2 = Statement {
-                                    source_info: SourceInfo::outermost(body.span),
-                                    kind: StatementKind::Assign(Box::new((place2, rvalue2))),
-                                };
+                                let assign_stmt1 = Statement::new(
+                                    SourceInfo::outermost(body.span),
+                                    StatementKind::Assign(Box::new((place1, rvalue1))),
+                                );
+                                let assign_stmt2 = Statement::new(
+                                    SourceInfo::outermost(body.span),
+                                    StatementKind::Assign(Box::new((place2, rvalue2))),
+                                );
                                 block_data.statements.insert(0, assign_stmt2);
                                 block_data.statements.insert(0, assign_stmt1);
 
@@ -370,10 +370,10 @@ impl<'tcx> Replacer<'tcx> {
                             None,
                         );
                         rvalue = Rvalue::Aggregate(Box::new(ADT.clone()), operand);
-                        let assign_stmt = Statement {
-                            source_info: SourceInfo::outermost(body.span),
-                            kind: StatementKind::Assign(Box::new((place, rvalue))),
-                        };
+                        let assign_stmt = Statement::new(
+                            SourceInfo::outermost(body.span),
+                            StatementKind::Assign(Box::new((place, rvalue))),
+                        );
                         block_data.statements.insert(0, assign_stmt);
 
                         for i in 0..1 {

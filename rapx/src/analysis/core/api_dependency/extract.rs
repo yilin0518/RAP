@@ -1,7 +1,7 @@
 extern crate rustc_infer;
 use crate::rap_debug;
 use rustc_hir::def_id::DefId;
-use rustc_infer::infer::region_constraints::Constraint;
+use rustc_infer::infer::region_constraints::{Constraint, ConstraintKind};
 use rustc_infer::infer::{self, InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::ObligationCause;
 use rustc_middle::ty::{self, TyCtxt, TypeFoldable, TypingMode};
@@ -44,16 +44,28 @@ fn region_vid_str(vid: ty::RegionVid) -> String {
     format!("{:?}", vid)
 }
 
-fn region_str(region: ty::Region<'_>) -> String {
-    region.get_name_or_anon().to_string()
+fn region_str<'tcx>(tcx: TyCtxt<'tcx>, region: ty::Region<'tcx>) -> String {
+    region.get_name_or_anon(tcx).to_string()
 }
 
-fn constraint_str<'tcx>(constraint: Constraint<'tcx>, _tcx: TyCtxt<'tcx>) -> String {
-    let (a, b) = match constraint {
-        Constraint::VarSubVar(a, b) => (region_vid_str(a), region_vid_str(b)),
-        Constraint::RegSubVar(a, b) => (region_str(a), region_vid_str(b)),
-        Constraint::VarSubReg(a, b) => (region_vid_str(a), region_str(b)),
-        Constraint::RegSubReg(a, b) => (region_str(a), region_str(b)),
+fn constraint_str<'tcx>(constraint: Constraint<'tcx>, tcx: TyCtxt<'tcx>) -> String {
+    let (a, b) = match constraint.kind {
+        ConstraintKind::VarSubVar => (
+            region_vid_str(constraint.sub.as_var()),
+            region_vid_str(constraint.sup.as_var()),
+        ),
+        ConstraintKind::RegSubVar => (
+            region_str(tcx, constraint.sub),
+            region_vid_str(constraint.sup.as_var()),
+        ),
+        ConstraintKind::VarSubReg => (
+            region_vid_str(constraint.sub.as_var()),
+            region_str(tcx, constraint.sup),
+        ),
+        ConstraintKind::RegSubReg => (
+            region_str(tcx, constraint.sub),
+            region_str(tcx, constraint.sup),
+        ),
     };
     format!("{} <= {}", a, b)
 }

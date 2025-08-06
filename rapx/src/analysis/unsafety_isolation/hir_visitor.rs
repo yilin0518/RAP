@@ -1,8 +1,7 @@
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::ImplItemKind;
 use rustc_hir::{
     def_id::DefId, intravisit, intravisit::Visitor, Block, Body, BodyId, ExprKind, HirId, Impl,
-    ItemKind, QPath,
+    ImplItemKind, ItemKind, QPath, TraitItemKind,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::Span;
@@ -40,26 +39,33 @@ impl<'tcx> Visitor<'tcx> for RelatedFnCollector<'tcx> {
             }) => {
                 let key = Some(self_ty.hir_id);
                 let entry = self.hash_map.entry(key).or_default();
-                entry.extend(impl_items.iter().filter_map(|impl_item_ref| {
-                    if let rustc_hir::AssocItemKind::Fn { has_self: _ } = impl_item_ref.kind {
-                        let hir_id = impl_item_ref.id.hir_id();
-                        self.tcx
-                            .hir_maybe_body_owned_by(hir_id.owner.def_id)
-                            .map(|body| (body.id(), impl_item_ref.span))
-                    } else {
-                        None
-                    }
+                entry.extend(impl_items.iter().filter_map(|impl_item_id| {
+                    //if let AssocItemKind::Fn(_) = impl_item_ref.kind {
+                    self.tcx
+                        .hir_maybe_body_owned_by(impl_item_id.owner_id.def_id)
+                        .map(|body| (body.id(), self.tcx.hir_impl_item(*impl_item_id).span))
+                    //} else {
+                    //    None
+                    //}
                 }));
             }
-            ItemKind::Trait(_is_auto, _safety, _ident, _generics, _generic_bounds, trait_items) => {
+            ItemKind::Trait(
+                _,
+                _is_auto,
+                _safety,
+                _ident,
+                _generics,
+                _generic_bounds,
+                trait_item_ids,
+            ) => {
                 let key = None;
                 let entry = self.hash_map.entry(key).or_default();
-                entry.extend(trait_items.iter().filter_map(|trait_item_ref| {
-                    if let rustc_hir::AssocItemKind::Fn { has_self: _ } = trait_item_ref.kind {
-                        let hir_id = trait_item_ref.id.hir_id();
+                entry.extend(trait_item_ids.iter().filter_map(|trait_item_id| {
+                    let trait_item = self.tcx.hir_trait_item(*trait_item_id);
+                    if let TraitItemKind::Fn(_, _) = trait_item.kind {
                         self.tcx
-                            .hir_maybe_body_owned_by(hir_id.owner.def_id)
-                            .map(|body| (body.id(), trait_item_ref.span))
+                            .hir_maybe_body_owned_by(trait_item.owner_id.def_id)
+                            .map(|body| (body.id(), trait_item.span))
                     } else {
                         None
                     }

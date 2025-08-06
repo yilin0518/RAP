@@ -26,11 +26,11 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use syn::Expr;
 
-pub fn generate_node_ty(tcx: TyCtxt<'_>, def_id: DefId) -> NodeType {
+pub fn generate_node_ty(tcx: TyCtxt, def_id: DefId) -> NodeType {
     (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
 }
 
-pub fn check_visibility(tcx: TyCtxt<'_>, func_defid: DefId) -> bool {
+pub fn check_visibility(tcx: TyCtxt, func_defid: DefId) -> bool {
     if !tcx.visibility(func_defid).is_public() {
         return false;
     }
@@ -47,7 +47,7 @@ pub fn check_visibility(tcx: TyCtxt<'_>, func_defid: DefId) -> bool {
     true
 }
 
-pub fn is_re_exported(tcx: TyCtxt<'_>, target_defid: DefId, module_defid: LocalDefId) -> bool {
+pub fn is_re_exported(tcx: TyCtxt, target_defid: DefId, module_defid: LocalDefId) -> bool {
     for child in tcx.module_children_local(module_defid) {
         if child.vis.is_public() {
             if let Some(def_id) = child.res.opt_def_id() {
@@ -67,12 +67,9 @@ pub fn print_hashset<T: std::fmt::Debug>(set: &HashSet<T>) {
     println!("---------------");
 }
 
-pub fn get_cleaned_def_path_name(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+pub fn get_cleaned_def_path_name(tcx: TyCtxt, def_id: DefId) -> String {
     let def_id_str = format!("{:?}", def_id);
-    let mut parts: Vec<&str> = def_id_str
-        .split("::")
-        // .filter(|part| !part.contains("{")) // 去除包含 "{" 的部分
-        .collect();
+    let mut parts: Vec<&str> = def_id_str.split("::").collect();
 
     let mut remove_first = false;
     if let Some(first_part) = parts.get_mut(0) {
@@ -232,7 +229,7 @@ pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> usize {
     node_type
 }
 
-pub fn get_adt_ty(tcx: TyCtxt<'_>, def_id: DefId) -> Option<Ty> {
+pub fn get_adt_ty(tcx: TyCtxt, def_id: DefId) -> Option<Ty> {
     if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
         if let Some(impl_id) = assoc_item.impl_container(tcx) {
             return Some(tcx.type_of(impl_id).skip_binder());
@@ -356,14 +353,14 @@ pub fn is_ref(matched_ty: Ty<'_>) -> bool {
     false
 }
 
-pub fn is_slice(matched_ty: Ty<'_>) -> Option<Ty> {
+pub fn is_slice(matched_ty: Ty) -> Option<Ty> {
     if let ty::Slice(inner) = matched_ty.kind() {
         return Some(*inner);
     }
     None
 }
 
-pub fn has_mut_self_param(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+pub fn has_mut_self_param(tcx: TyCtxt, def_id: DefId) -> bool {
     if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
         match assoc_item.kind {
             AssocKind::Fn { has_self, .. } => {
@@ -384,7 +381,7 @@ pub fn has_mut_self_param(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
 
 // Input the adt def id
 // Return set of (mutable method def_id, fields can be modified)
-pub fn get_all_mutable_methods(tcx: TyCtxt<'_>, def_id: DefId) -> HashMap<DefId, HashSet<usize>> {
+pub fn get_all_mutable_methods(tcx: TyCtxt, def_id: DefId) -> HashMap<DefId, HashSet<usize>> {
     let mut results = HashMap::new();
     let adt_def = get_adt_def_id_by_adt_method(tcx, def_id);
     let public_fields = adt_def.map_or_else(HashSet::new, |def| get_public_fields(tcx, def));
@@ -410,7 +407,7 @@ pub fn get_all_mutable_methods(tcx: TyCtxt<'_>, def_id: DefId) -> HashMap<DefId,
 }
 
 // Check each field's visibility, return the public fields vec
-pub fn get_public_fields(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<usize> {
+pub fn get_public_fields(tcx: TyCtxt, def_id: DefId) -> HashSet<usize> {
     let adt_def = tcx.adt_def(def_id);
     adt_def
         .all_fields()
@@ -436,7 +433,7 @@ where
     }
 }
 
-pub fn get_all_std_unsafe_callees(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<String> {
+pub fn get_all_std_unsafe_callees(tcx: TyCtxt, def_id: DefId) -> Vec<String> {
     let mut results = Vec::new();
     let body = tcx.optimized_mir(def_id);
     let bb_len = body.basic_blocks.len();
@@ -452,7 +449,7 @@ pub fn get_all_std_unsafe_callees(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<String>
     results
 }
 
-pub fn get_all_std_unsafe_callees_block_id(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<usize> {
+pub fn get_all_std_unsafe_callees_block_id(tcx: TyCtxt, def_id: DefId) -> Vec<usize> {
     let mut results = Vec::new();
     let body = tcx.optimized_mir(def_id);
     let bb_len = body.basic_blocks.len();
@@ -520,7 +517,7 @@ pub fn reverse_op(op: BinOp) -> BinOp {
 
 /// Same with `generate_contract_from_annotation` but does not contain field types.
 pub fn generate_contract_from_annotation_without_field_types(
-    tcx: TyCtxt<'_>,
+    tcx: TyCtxt,
     def_id: DefId,
 ) -> Vec<(usize, Vec<usize>, PropertyContract)> {
     let contracts_with_ty = generate_contract_from_annotation(tcx, def_id);
@@ -542,15 +539,15 @@ pub fn generate_contract_from_annotation_without_field_types(
 /// This function will recognize the args name and record states to MIR variable (represent by usize).
 /// Return value means Vec<(local_id, fields of this local, contracts)>
 pub fn generate_contract_from_annotation(
-    tcx: TyCtxt<'_>,
+    tcx: TyCtxt,
     def_id: DefId,
 ) -> Vec<(usize, Vec<(usize, Ty)>, PropertyContract)> {
     const REGISTER_TOOL: &str = "rapx";
-    let tool_attrs = tcx.get_all_attrs(def_id).filter(|attr| {
-        if let Attribute::Unparsed(tool_attr) = attr
-            && tool_attr.path.segments[0].as_str() == REGISTER_TOOL
-        {
-            return true;
+    let tool_attrs = tcx.get_all_attrs(def_id).into_iter().filter(|attr| {
+        if let Attribute::Unparsed(tool_attr) = attr {
+            if tool_attr.path.segments[0].as_str() == REGISTER_TOOL {
+                return true;
+            }
         }
         false
     });
@@ -586,11 +583,7 @@ pub fn generate_contract_from_annotation(
 ///     -> "2" means the second arg "region", "[1]" means "size" is region's second field.
 ///
 /// If this function doesn't have args, then it will return default pattern: (0, Vec::new())
-pub fn parse_cis_local(
-    tcx: TyCtxt<'_>,
-    def_id: DefId,
-    expr: Vec<Expr>,
-) -> (usize, Vec<(usize, Ty<'_>)>) {
+pub fn parse_cis_local(tcx: TyCtxt, def_id: DefId, expr: Vec<Expr>) -> (usize, Vec<(usize, Ty)>) {
     // match expr with cis local
     for e in expr {
         if let Some((base, fields, _ty)) = parse_expr_into_local_and_ty(tcx, def_id, &e) {
@@ -723,7 +716,7 @@ fn get_known_std_names<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Vec<Str
 }
 
 /// Return the Vecs of args' names and types of local functions.
-pub fn parse_local_signature(tcx: TyCtxt<'_>, def_id: DefId) -> (Vec<String>, Vec<Ty>) {
+pub fn parse_local_signature(tcx: TyCtxt, def_id: DefId) -> (Vec<String>, Vec<Ty>) {
     // 1. parse local def_id and get arg list
     let local_def_id = def_id.as_local().unwrap();
     let hir_body = tcx.hir_body_owned_by(local_def_id);
@@ -813,7 +806,7 @@ pub fn parse_expr_into_number(expr: &Expr) -> Option<usize> {
 /// Returns:
 /// - `Some(Ty)` if a matching type is found
 /// - `None` if no match is found
-pub fn match_ty_with_ident(tcx: TyCtxt<'_>, def_id: DefId, type_ident: String) -> Option<Ty> {
+pub fn match_ty_with_ident(tcx: TyCtxt, def_id: DefId, type_ident: String) -> Option<Ty> {
     // 1. First check for built-in primitive types
     if let Some(primitive_ty) = match_primitive_type(tcx, type_ident.clone()) {
         return Some(primitive_ty);
@@ -825,7 +818,7 @@ pub fn match_ty_with_ident(tcx: TyCtxt<'_>, def_id: DefId, type_ident: String) -
 }
 
 /// Match built-in primitive types from String
-fn match_primitive_type(tcx: TyCtxt<'_>, type_ident: String) -> Option<Ty> {
+fn match_primitive_type(tcx: TyCtxt, type_ident: String) -> Option<Ty> {
     match type_ident.as_str() {
         "i8" => Some(tcx.types.i8),
         "i16" => Some(tcx.types.i16),
@@ -851,7 +844,7 @@ fn match_primitive_type(tcx: TyCtxt<'_>, type_ident: String) -> Option<Ty> {
 }
 
 /// Find generic type parameters in the parameter list
-fn find_generic_param(tcx: TyCtxt<'_>, def_id: DefId, type_ident: String) -> Option<Ty> {
+fn find_generic_param(tcx: TyCtxt, def_id: DefId, type_ident: String) -> Option<Ty> {
     rap_debug!(
         "Searching for generic param: {} in {:?}",
         type_ident,
@@ -910,7 +903,7 @@ fn find_generic_in_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, type_ident: &str) -
 }
 
 // /// Find user-defined types in the parameter list
-// fn find_user_defined_type(tcx: TyCtxt<'_>, def_id: DefId, type_ident: String) -> Option<Ty> {
+// fn find_user_defined_type(tcx: TyCtxt, def_id: DefId, type_ident: String) -> Option<Ty> {
 //     let param_ty = parse_signature(tcx, def_id).1;
 //     param_ty.iter().find_map(|&ty| {
 //         // Peel off references and pointers to get to the underlying type

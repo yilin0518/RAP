@@ -5,9 +5,8 @@ mod mono;
 mod pattern;
 mod select;
 
-use crate::analysis::core::alias::{FnRetAlias, RetAlias};
+use crate::analysis::core::alias::FnRetAlias;
 use crate::analysis::core::api_dep::{graph::TransformKind, ApiDepGraph};
-use crate::analysis::testgen::context::{ApiCall, Context, Var};
 use crate::analysis::testgen::utils::{self};
 use crate::{rap_debug, rap_info};
 use context::LtContext;
@@ -16,7 +15,7 @@ use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, GenericArgs, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::TyCtxt;
 use std::cell::RefCell;
 use std::collections::HashSet;
 

@@ -13,7 +13,7 @@ use crate::{rap_debug, rap_info, rap_trace};
 pub use graph::ApiDepGraph;
 pub use graph::{DepEdge, DepNode};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
-use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_middle::ty::TyCtxt;
 pub struct ApiDep<'tcx> {
     pub tcx: TyCtxt<'tcx>,
 }

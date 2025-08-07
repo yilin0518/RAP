@@ -1,8 +1,8 @@
 mod stmt;
 mod var;
-use super::utils::{self, is_fuzzable_ty};
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
-use std::collections::{HashMap, HashSet};
+use super::utils::{self};
+use rustc_middle::ty::{self, Ty, TyCtxt};
+use std::collections::HashMap;
 pub use stmt::{ApiCall, Stmt, StmtKind, UseKind};
 pub use var::{Var, VarState, DUMMY_INPUT_VAR};
 

@@ -4,7 +4,6 @@ use crate::analysis::testgen::generator::ltgen::pattern::PatternNode;
 use crate::{rap_debug, rap_trace};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::NodeIndex;
-use rustc_infer::infer::region_constraints::Constraint;
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
 use std::collections::VecDeque;
 use std::fmt::Display;

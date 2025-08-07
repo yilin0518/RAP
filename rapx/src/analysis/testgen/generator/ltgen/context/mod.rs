@@ -1,22 +1,18 @@
 mod build_stmt;
 mod safety;
 
-use super::folder::extract_rids;
 use super::lifetime::{RegionGraph, Rid};
 use super::pattern::PatternProvider;
 use super::FnAliasMap;
-use crate::analysis::testgen::context::{Context, UseKind, VarState};
-use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
-use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
-use crate::analysis::testgen::generator::ltgen::lifetime::{
-    visit_structure_region_with, RegionNode,
-};
-use crate::{rap_debug, rap_trace};
+use crate::analysis::testgen::context::{Context, UseKind};
+use crate::analysis::testgen::context::Var;
+use crate::analysis::testgen::generator::ltgen::lifetime::visit_structure_region_with;
+use crate::rap_debug;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypingMode};
+use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TypingMode};
 use rustc_trait_selection::infer::InferCtxtExt;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 pub struct LtContext<'tcx, 'a> {
     tcx: TyCtxt<'tcx>,

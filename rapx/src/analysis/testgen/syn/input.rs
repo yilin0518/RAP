@@ -2,7 +2,7 @@ use rand::{rngs::ThreadRng, Rng};
 use rustc_abi::FIRST_VARIANT;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_type_ir::{IntTy, UintTy};
-use std::ops::{Range, RangeInclusive};
+use std::ops::Range;
 
 pub trait InputGen {
     fn gen_bool(&mut self) -> bool;

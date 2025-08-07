@@ -1,14 +1,11 @@
-use super::mono;
-use crate::analysis::core::alias::{FnRetAlias, RetAlias};
-use crate::analysis::core::api_dep::{graph::TransformKind, ApiDepGraph};
-use crate::analysis::testgen::context::{ApiCall, Context, Stmt, Var};
+use crate::analysis::testgen::context::ApiCall;
 use crate::analysis::testgen::generator::ltgen::context::LtContext;
 use crate::analysis::testgen::generator::ltgen::LtGen;
 use crate::analysis::testgen::utils::{self};
-use crate::{rap_debug, rap_info};
+use crate::rap_debug;
 use rand::{self, Rng};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, GenericArgs, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self};
 
 impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     pub fn get_eligable_call(

@@ -1,19 +1,12 @@
 use super::super::folder::extract_rids;
-use super::super::lifetime::{RegionGraph, Rid};
+use super::super::lifetime::Rid;
 use super::super::utils;
 use super::LtContext;
 use crate::analysis::core::alias::RetAlias;
-use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
-use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
-use crate::analysis::testgen::generator::ltgen::lifetime::{
-    visit_structure_region_with, RegionNode,
-};
+use crate::analysis::testgen::context::{Stmt, Var};
 use crate::{rap_debug, rap_trace};
-use rustc_hir::def_id::DefId;
-use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypingMode};
-use rustc_trait_selection::infer::InferCtxtExt;
-use std::collections::{HashMap, HashSet, VecDeque};
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use std::collections::{HashMap, HashSet};
 
 fn ty_project_to<'tcx>(mut ty: Ty<'tcx>, proj: &[usize], tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
     for field_no in proj {

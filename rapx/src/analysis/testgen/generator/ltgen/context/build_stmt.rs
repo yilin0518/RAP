@@ -1,18 +1,12 @@
-use super::FnAliasMap;
-use crate::analysis::testgen::context::{ApiCall, Context, UseKind, VarState, DUMMY_INPUT_VAR};
-use crate::analysis::testgen::context::{Stmt, StmtKind, Var};
+use crate::analysis::testgen::context::{ApiCall, UseKind, VarState, DUMMY_INPUT_VAR};
+use crate::analysis::testgen::context::{Stmt, Var};
 use crate::analysis::testgen::generator::ltgen::context::LtContext;
 use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
-use crate::analysis::testgen::generator::ltgen::lifetime::{
-    visit_structure_region_with, RegionNode,
-};
+use crate::analysis::testgen::generator::ltgen::lifetime::RegionNode;
 use crate::analysis::testgen::utils;
 use crate::{rap_debug, rap_trace};
-use rustc_hir::def_id::DefId;
-use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt, TyKind, TypeFoldable, TypingMode};
-use rustc_trait_selection::infer::InferCtxtExt;
-use std::collections::{HashMap, HashSet, VecDeque};
+use rustc_middle::ty::{self, Ty, TyKind, TypeFoldable};
+use std::collections::VecDeque;
 
 impl<'tcx, 'a> LtContext<'tcx, 'a> {
     /// from is exclusive

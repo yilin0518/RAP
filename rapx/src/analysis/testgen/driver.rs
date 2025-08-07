@@ -1,7 +1,7 @@
 use crate::analysis::core::{alias, api_dep};
 use crate::analysis::testgen::generator::ltgen::LtGenBuilder;
 use crate::analysis::testgen::syn::impls::FuzzDriverSynImpl;
-use crate::analysis::testgen::syn::input::{RandomGen, SillyInputGen};
+use crate::analysis::testgen::syn::input::RandomGen;
 use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption};
 use crate::analysis::testgen::syn::{SynOption, Synthesizer};
 use crate::{rap_error, rap_info, rap_warn};

@@ -1,6 +1,6 @@
 use crate::analysis::testgen::utils::{self, fn_sig_with_generic_args};
 use crate::analysis::utils::def_path::path_str_def_id;
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
@@ -9,7 +9,6 @@ use rustc_infer::traits::{Obligation, ObligationCause};
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeVisitableExt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
-use std::cell::OnceCell;
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

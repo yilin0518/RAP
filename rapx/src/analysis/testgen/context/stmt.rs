@@ -1,11 +1,8 @@
 use super::utils;
 use super::var::Var;
-use crate::analysis::testgen::context::{
-    var::{VarState, DUMMY_INPUT_VAR},
-    Context,
-};
+use crate::analysis::testgen::context::Context;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, TyCtxt};
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct ApiCall<'tcx> {

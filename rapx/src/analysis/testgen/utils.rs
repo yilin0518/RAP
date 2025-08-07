@@ -1,15 +1,9 @@
 pub use crate::analysis::core::api_dep::is_def_id_public;
-use crate::analysis::core::api_dep::{ApiDepGraph, DepNode};
-use crate::analysis::utils::def_path::path_str_def_id;
-use crate::rap_info;
-use rustc_hir::{def::Namespace, def_id::DefId, BodyOwnerKind};
+use rustc_hir::{def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
-use rustc_middle::ty::print::{FmtPrinter, Printer};
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::STDLIB_STABLE_CRATES;
 use rustc_trait_selection::infer::InferCtxtExt;
-use std::cell::OnceCell;
-use std::collections::{HashSet, VecDeque};
 
 /// return all DefId of all pub APIs
 pub fn get_all_pub_apis(tcx: TyCtxt<'_>) -> Vec<DefId> {

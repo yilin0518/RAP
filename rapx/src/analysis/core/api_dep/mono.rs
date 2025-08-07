@@ -1,14 +1,14 @@
 use super::graph::TyWrapper;
 use super::utils::{self, fn_sig_with_generic_args};
 use crate::analysis::utils::def_path::path_str_def_id;
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
 use rustc_infer::infer::{InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::{ImplSource, Obligation, ObligationCause};
 use rustc_middle::ty::{
-    self, GenericArgsRef, PseudoCanonicalInput, TraitRef, Ty, TyCtxt, TypeVisitableExt, TypingEnv,
+    self, GenericArgsRef, Ty, TyCtxt, TypeVisitableExt, TypingEnv,
 };
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;

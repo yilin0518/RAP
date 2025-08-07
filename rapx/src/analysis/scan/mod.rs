@@ -5,10 +5,9 @@ mod statistic;
 
 #[allow(unused)]
 mod visitor;
-use crate::{analysis::scan::visitor::FnVisitor, rap_debug, rap_info, rap_trace};
-use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use crate::{analysis::scan::visitor::FnVisitor, rap_info};
+use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::config::CrateType;
 
 pub struct ScanAnalysis<'tcx> {
     tcx: TyCtxt<'tcx>,

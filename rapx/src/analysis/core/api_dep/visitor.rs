@@ -51,6 +51,23 @@ impl<'tcx, 'a> FnVisitor<'tcx, 'a> {
     }
 }
 
+pub fn has_const_generics(generics: &ty::Generics, tcx: TyCtxt<'_>) -> bool {
+    if generics
+        .own_params
+        .iter()
+        .any(|param| matches!(param.kind, ty::GenericParamDefKind::Const { .. }))
+    {
+        return true;
+    }
+
+    if let Some(parent_def_id) = generics.parent {
+        let parent = tcx.generics_of(parent_def_id);
+        has_const_generics(parent, tcx)
+    } else {
+        false
+    }
+}
+
 impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
     fn visit_fn<'v>(
         &mut self,
@@ -61,14 +78,22 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         id: LocalDefId,
     ) -> Self::Result {
         let fn_did = id.to_def_id();
-        let is_generic = self
-            .tcx
-            .generics_of(fn_did)
-            .requires_monomorphization(self.tcx);
+        let generics = self.tcx.generics_of(fn_did);
+
+        let is_generic = generics.requires_monomorphization(self.tcx);
         if self.config.pub_only && !is_def_id_public(fn_did, self.tcx) {
             return;
         }
+
+        // if config.resolve_generic is false,
+        // skip all generic functions
         if !self.config.resolve_generic && is_generic {
+            return;
+        }
+
+        // if config.ignore_const_generic is true,
+        // skip functions with const generics
+        if self.config.ignore_const_generic && has_const_generics(generics, self.tcx) {
             return;
         }
 

@@ -69,8 +69,12 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let api_dep_graph = api_dep::ApiDep::new(tcx).start(api_dep::Config {
         pub_only: true,
-        include_generic_api: false,
+        resolve_generic: true,
+        ignore_const_generic: true,
     });
+
+    api_dep_graph.dump_to_dot(workspace_dir.join("api_graph.dot"), tcx);
+
     let mut alias_analysis = alias::mop::MopAlias::new(tcx);
     let alias_map = alias_analysis.start();
 
@@ -149,11 +153,6 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         reports.push(report);
         run_count += 1;
     }
-
-    ltgen
-        .api_graph()
-        .borrow()
-        .dump_to_dot(workspace_dir.join("api_graph.dot"), tcx);
 
     writeln!(&mut report_file, "{}", ltgen.statistic_str())?;
 

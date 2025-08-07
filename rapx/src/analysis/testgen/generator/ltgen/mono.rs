@@ -1,4 +1,5 @@
 use crate::analysis::testgen::utils::{self, fn_sig_with_generic_args};
+use crate::analysis::utils::def_path::path_str_def_id;
 use crate::{rap_debug, rap_info, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
@@ -331,6 +332,15 @@ fn get_mono_set<'tcx>(
     res
 }
 
+fn is_special_std_ty<'tcx>(def_id: DefId, tcx: TyCtxt<'tcx>) -> bool {
+    let allowed_std_ty = [
+        tcx.lang_items().string().unwrap(),
+        path_str_def_id(tcx, "std::vec::Vec"),
+    ];
+
+    allowed_std_ty.contains(&def_id)
+}
+
 fn solve_unbound_type_generics<'tcx>(
     did: DefId,
     mono: Mono<'tcx>,
@@ -363,7 +373,13 @@ fn solve_unbound_type_generics<'tcx>(
             let mut p = MonoSet::new();
 
             for impl_did in tcx.all_impls(trait_def_id) {
+                // only consider local implement
+
                 let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();
+
+                if !impl_did.is_local() {
+                    continue;
+                }
                 if let Some(mono) = unify_trait(
                     trait_pred.trait_ref,
                     impl_trait_ref,
@@ -402,13 +418,13 @@ fn unify_trait<'tcx>(
     if lhs.def_id != rhs.def_id {
         return None;
     }
+
     assert!(lhs.args.len() == rhs.args.len());
     let mut s = Mono::new(identity);
     for (lhs_arg, rhs_arg) in lhs.args.iter().zip(rhs.args.iter()) {
         if let (Some(lhs_ty), Some(rhs_ty)) = (lhs_arg.as_type(), rhs_arg.as_type()) {
-            if rhs_ty.has_infer_types() {
+            if rhs_ty.has_infer_types() || rhs_ty.has_param() {
                 // if rhs has infer types, we cannot unify it with lhs
-
                 return None;
             }
             let mono = unify_ty(lhs_ty, rhs_ty, identity, infcx, cause, param_env)?;

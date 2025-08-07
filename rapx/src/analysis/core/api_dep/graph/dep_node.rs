@@ -17,16 +17,12 @@ enum IntrinsicKind {
 pub enum DepNode<'tcx> {
     Api(DefId, ty::GenericArgsRef<'tcx>),
     Ty(TyWrapper<'tcx>),
-    GenericParamDef(DefId, usize, String, bool), // (fn_def_id, index, symbol, is_lifetime_param)
 }
 
 pub fn desc_str<'tcx>(node: DepNode<'tcx>, tcx: TyCtxt<'tcx>) -> String {
     match node {
         DepNode::Api(def_id, args) => tcx.def_path_str_with_args(def_id, args),
         DepNode::Ty(ty) => ty.desc_str(tcx),
-        DepNode::GenericParamDef(idx, index, sym, is_lifetime) => {
-            format!("{sym}/#{index}")
-        }
     }
 }
 
@@ -37,22 +33,11 @@ impl<'tcx> DepNode<'tcx> {
     pub fn ty(ty: Ty<'tcx>) -> DepNode<'tcx> {
         DepNode::Ty(TyWrapper::from(ty))
     }
-    pub fn generic_param_def(
-        fn_def_id: DefId,
-        index: usize,
-        name: impl ToString,
-        is_lifetime: bool,
-    ) -> DepNode<'tcx> {
-        DepNode::GenericParamDef(fn_def_id, index, name.to_string(), is_lifetime)
-    }
     pub fn is_ty(&self) -> bool {
         matches!(self, DepNode::Ty(_))
     }
     pub fn is_api(&self) -> bool {
         matches!(self, DepNode::Api(..))
-    }
-    pub fn is_generic(&self) -> bool {
-        matches!(self, DepNode::GenericParamDef(..))
     }
 
     pub fn as_ty(&self) -> TyWrapper<'tcx> {

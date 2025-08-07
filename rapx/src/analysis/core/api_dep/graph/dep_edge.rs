@@ -35,4 +35,10 @@ impl DepEdge {
     pub fn transform(kind: TransformKind) -> DepEdge {
         DepEdge::Transform(kind)
     }
+    pub fn as_transform_kind(self) -> Option<TransformKind> {
+        match self {
+            DepEdge::Transform(kind) => Some(kind),
+            _ => None,
+        }
+    }
 }

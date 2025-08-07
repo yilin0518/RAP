@@ -152,6 +152,9 @@ impl<'tcx> MonoSet<'tcx> {
         self
     }
 
+    // if the unbound generic type is still exist (this could happen
+    // if `T` has no trait bounds at all)
+    // we substitute the unbound generic type with predefined type candidates
     fn instantiate_unbound(&self, tcx: TyCtxt<'tcx>) -> Self {
         let mut res = MonoSet::new();
         for mono in &self.monos {
@@ -215,7 +218,7 @@ fn unify_ty<'tcx>(
                 Some(mono)
             }
             Err(e) => {
-                rap_trace!("[infer_err] {} = {} : {:?}", lhs, rhs, e);
+                // rap_trace!("[infer_err] {} = {} : {:?}", lhs, rhs, e);
                 None
             }
         }
@@ -274,6 +277,7 @@ fn get_mono_set<'tcx>(
     available_ty: &HashSet<TyWrapper<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
+    rap_debug!("[get_mono_set] fn_did: {:?}", fn_did);
     let infcx = tcx
         .infer_ctxt()
         .ignoring_regions()
@@ -288,7 +292,7 @@ fn get_mono_set<'tcx>(
     // Print fresh_args for debugging
     for i in 0..fresh_args.len() {
         rap_trace!(
-            "arg#{}: {:?} -> {:?}",
+            "[get_mono_set] arg#{}: {:?} -> {:?}",
             i,
             generics.param_at(i, tcx).name,
             fresh_args[i]
@@ -297,12 +301,13 @@ fn get_mono_set<'tcx>(
 
     let mut s = MonoSet::all(&fresh_args);
 
-    rap_trace!("[solve] initialize s: {:?}", s);
+    rap_trace!("[get_mono_set] initialize s: {:?}", s);
 
     for input_ty in fn_sig.inputs().iter() {
         if !input_ty.has_infer_types() {
             continue;
         }
+        rap_trace!("[get_mono_set] input_ty: {:?}", input_ty);
         let reachable_set = available_ty
             .iter()
             .fold(MonoSet::new(), |mut reachable_set, ty| {
@@ -321,7 +326,7 @@ fn get_mono_set<'tcx>(
         s = s.merge(&reachable_set, tcx)
     }
 
-    rap_trace!("[solve] after input types: {:?}", s);
+    rap_trace!("[get_mono_set] after input types: {:?}", s);
 
     let mut res = MonoSet::new();
 
@@ -367,9 +372,9 @@ fn solve_unbound_type_generics<'tcx>(
         return;
     }
     let args = tcx.mk_args(&mono.value);
-    rap_debug!("[solve_unbound] did = {did:?}");
     let preds = tcx.predicates_of(did).instantiate(tcx, args);
     let mut mset = MonoSet::all(args);
+    rap_debug!("[solve_unbound] did = {did:?}, mset={mset:?}");
     for pred in preds.predicates.iter() {
         if let Some(trait_pred) = pred.as_trait_clause() {
             rap_trace!("[solve_unbound] pred: {:?}", trait_pred);
@@ -378,13 +383,18 @@ fn solve_unbound_type_generics<'tcx>(
 
             let trait_def_id = trait_pred.trait_ref.def_id;
             // ignore Sized trait
-            if tcx.is_lang_item(trait_def_id, LangItem::Sized) {
+            if tcx.is_lang_item(trait_def_id, LangItem::Sized)
+                || tcx.is_lang_item(trait_def_id, LangItem::Copy)
+            {
                 continue;
             }
 
             let mut p = MonoSet::new();
 
-            for impl_did in tcx.all_impls(trait_def_id) {
+            for impl_did in tcx
+                .all_impls(trait_def_id)
+                .chain(tcx.inherent_impls(trait_def_id).iter().map(|did| *did))
+            {
                 // only consider local implement
 
                 let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();

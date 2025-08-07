@@ -1,6 +1,6 @@
 use super::lifetime;
 use crate::analysis::testgen::{generator::ltgen::folder::InfcxVarFolder, utils};
-use crate::rap_trace;
+use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer;
 use rustc_infer::{
@@ -92,7 +92,10 @@ pub fn extract_constraints<'tcx>(
     let mut folder = InfcxVarFolder::new(&infcx, tcx);
 
     let fn_sig = utils::fn_sig_with_generic_args(fn_did, generic_args, tcx);
-    let fn_with_free_vars = fn_sig.fold_with(&mut folder);
+    let free_fn_sig = fn_sig.fold_with(&mut folder);
+
+    rap_debug!("[extract_contraints] fn_sig = {:?}", fn_sig);
+    rap_debug!("[extract_contraints] free_fn_sig = {:?}", free_fn_sig);
 
     let param_env = tcx.param_env(fn_did);
 
@@ -100,7 +103,7 @@ pub fn extract_constraints<'tcx>(
 
     let res = infcx
         .at(&dummy, param_env)
-        .sub(infer::DefineOpaqueTypes::Yes, fn_sig, fn_with_free_vars)
+        .sub(infer::DefineOpaqueTypes::Yes, fn_sig, free_fn_sig)
         .unwrap();
 
     rap_trace!("infcx result: {res:?}");

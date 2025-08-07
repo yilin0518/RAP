@@ -38,6 +38,10 @@ impl<'tcx> ApiCall<'tcx> {
     pub fn fn_sig(&self, tcx: TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         utils::fn_sig_with_generic_args(self.fn_did, self.generic_args, tcx)
     }
+
+    // pub fn canonicalize_args(&mut self, tcx: TyCtxt<'tcx>) {
+    //     for args
+    // }
 }
 
 // pub type StmtRef<'tcx> = Rc<Stmt<'tcx>>;

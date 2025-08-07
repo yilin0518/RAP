@@ -271,16 +271,21 @@ impl<'tcx> ApiDepGraph<'tcx> {
                 entry.push((args, false));
             });
         }
+        // add transform edges
+        self.update_transform_edges();
+
+        self.dump_to_dot(Path::new("api_graph_unpruned.dot"), self.tcx);
 
         let mut visited = vec![false; self.graph.node_count()];
         let mut reserved = vec![false; self.graph.node_count()];
 
         // initialize reserved
         // all non-generic API should be reserved
-        for idx in 0..self.num_api() {
-            let (fn_did, _) = self.api_at(idx);
-            if !utils::fn_requires_monomorphization(fn_did, self.tcx) {
-                reserved[self.api_nodes[idx].index()] = true;
+        for idx in self.graph.node_indices() {
+            if let DepNode::Api(fn_did, _) = self.graph[idx] {
+                if !utils::fn_requires_monomorphization(fn_did, self.tcx) {
+                    reserved[idx.index()] = true;
+                }
             }
         }
 
@@ -295,19 +300,18 @@ impl<'tcx> ApiDepGraph<'tcx> {
             }
         }
 
-        // add transform edges
-        self.update_transform_edges();
-
-        // traverse from start node (which indegree is zero), if a node can
-        // achieve a reserved node, this node should be reserved as well
+        // traverse from start node, if a node can achieve a reserved node,
+        // this node should be reserved as well
         for node in self.graph.node_indices() {
-            if !visited[node.index()]
-                && self
-                    .graph
-                    .neighbors_directed(node, Incoming)
-                    .next()
-                    .is_none()
-            {
+            if !visited[node.index()] && self.is_start_node_index(node) {
+                rap_trace!("start propagate from {:?}", self.graph[node]);
+                self.propagate_reserved(node, &mut visited, &mut reserved);
+            }
+        }
+
+        for node in self.graph.node_indices() {
+            if !visited[node.index()] {
+                rap_trace!("{:?} is unvisited", self.graph[node]);
                 self.propagate_reserved(node, &mut visited, &mut reserved);
             }
         }
@@ -321,7 +325,23 @@ impl<'tcx> ApiDepGraph<'tcx> {
                 count += 1;
             }
         }
+        self.recache();
         rap_info!("remove {} nodes by pruning", count);
+    }
+
+    fn recache(&mut self) {
+        self.node_indices.clear();
+        self.ty_nodes.clear();
+        self.api_nodes.clear();
+        for idx in self.graph.node_indices() {
+            let node = &self.graph[idx];
+            self.node_indices.insert(node.clone(), idx);
+            match node {
+                DepNode::Api(..) => self.api_nodes.push(idx),
+                DepNode::Ty(..) => self.ty_nodes.push(idx),
+                _ => {}
+            }
+        }
     }
 
     pub fn propagate_reserved(
@@ -331,11 +351,26 @@ impl<'tcx> ApiDepGraph<'tcx> {
         reserved: &mut [bool],
     ) -> bool {
         visited[node.index()] = true;
-        for neighbor in self.graph.neighbors(node) {
-            if !visited[neighbor.index()] {
-                reserved[node.index()] |= self.propagate_reserved(neighbor, visited, reserved);
+
+        match self.graph[node] {
+            DepNode::Api(..) => {
+                for neighbor in self.graph.neighbors(node) {
+                    if !visited[neighbor.index()] {
+                        reserved[node.index()] |=
+                            self.propagate_reserved(neighbor, visited, reserved);
+                    }
+                }
+            }
+            DepNode::Ty(..) => {
+                for neighbor in self.graph.neighbors(node) {
+                    if !visited[neighbor.index()] {
+                        self.propagate_reserved(neighbor, visited, reserved);
+                    }
+                    reserved[node.index()] |= reserved[neighbor.index()]
+                }
             }
         }
+
         if reserved[node.index()] {
             rap_trace!(
                 "[propagate_reserved] reserve: {:?}",

@@ -9,7 +9,6 @@ use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::io::Write;
-use std::ops::ControlFlow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionNode {
@@ -49,6 +48,12 @@ pub struct Rid(NodeIndex);
 impl Rid {
     pub fn index(&self) -> usize {
         self.0.index()
+    }
+}
+
+impl Display for Rid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "'{}", self.index())
     }
 }
 
@@ -140,7 +145,7 @@ impl RegionGraph {
     /// from: the index of start named node
     /// to: the index of end named node
     pub fn prove(&self, from: Rid, to: Rid) -> bool {
-        rap_debug!("try to prove {:?} -> {:?}", from, to);
+        rap_debug!("try to prove {} -> {}", from, to);
         let mut visited = vec![false; self.inner.node_count()];
         self.dfs_find_path(from.into(), to.into(), &mut visited)
     }
@@ -184,6 +189,7 @@ impl RegionGraph {
     }
 
     pub fn add_edge(&mut self, from: Rid, to: Rid) {
+        rap_debug!("[region_graph] add edge: {} -> {}", from, to);
         self.inner.update_edge(from.into(), to.into(), ());
     }
 
@@ -232,24 +238,6 @@ impl RegionGraph {
             }
         }
     }
-}
-
-fn region_vid_str(vid: ty::RegionVid) -> String {
-    format!("{:?}", vid)
-}
-
-fn region_str(region: ty::Region<'_>) -> String {
-    region.get_name_or_anon().to_string()
-}
-
-pub fn constraint_str<'tcx>(constraint: Constraint<'tcx>) -> String {
-    let (a, b) = match constraint {
-        Constraint::VarSubVar(a, b) => (region_vid_str(a), region_vid_str(b)),
-        Constraint::RegSubVar(a, b) => (region_str(a), region_vid_str(b)),
-        Constraint::VarSubReg(a, b) => (region_vid_str(a), region_str(b)),
-        Constraint::RegSubReg(a, b) => (region_str(a), region_str(b)),
-    };
-    format!("{} <= {}", a, b)
 }
 
 pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'tcx>)>(

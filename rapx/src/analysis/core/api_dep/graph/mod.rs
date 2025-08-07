@@ -8,15 +8,18 @@ use super::Config;
 use crate::analysis::core::api_dep::utils;
 use crate::analysis::core::api_dep::visitor::FnVisitor;
 use crate::analysis::utils::def_path::path_str_def_id;
+use crate::rap_debug;
 use crate::rap_trace;
 use crate::utils::fs::rap_create_file;
 pub use dep_edge::DepEdge;
 pub use dep_node::{desc_str, DepNode};
 use petgraph::dot;
 use petgraph::graph::NodeIndex;
+use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use petgraph::Graph;
 use rustc_hir::def_id::DefId;
+use rustc_middle::ty::Binder;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -40,7 +43,6 @@ pub struct ApiDepGraph<'tcx> {
 pub struct Statistics {
     pub api_count: usize,
     pub type_count: usize,
-    pub generic_param_count: usize,
     pub edge_cnt: usize,
 }
 
@@ -99,20 +101,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         self.tcx
     }
 
-    pub fn add_auxiliary_api(&mut self) {
-        // let apis = [
-        //     // path_str_def_id(self.tcx, "std::string::String::from"),
-        //     path_str_def_id(self.tcx, "std::vec::Vec::from"),
-        // ];
-        // apis.into_iter().for_each(|did| {
-        //     self.all_apis.insert(did);
-        // });
-        // let from_did = path_str_def_id(self.tcx, "std::convert::From::from");
-
-        // let string_did = path_str_def_id(self.tcx, "std::string::String");
-        // self.add_api(from_did, );
-    }
-
     pub fn build(&mut self, config: Config) {
         let tcx = self.tcx();
         let mut fn_visitor = FnVisitor::new(self, config, tcx);
@@ -129,51 +117,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         } else {
             self.update_transform_edges();
         }
-
-        // 3. prune redundant nodes
-        self.prune_redundant_nodes();
-    }
-
-    pub fn update_transform_edges(&mut self) {
-        for node_index in self.graph.node_indices() {
-            if let DepNode::Ty(ty) = self.graph[node_index] {
-                self.add_possible_transform::<3>(ty, 0);
-            }
-        }
-    }
-
-    fn add_possible_transform<const MAX_DEPTH: usize>(
-        &mut self,
-        current_ty: TyWrapper<'tcx>,
-        depth: usize,
-    ) -> Option<NodeIndex> {
-        if depth > 0 {
-            let index = self.get_index(DepNode::Ty(current_ty));
-            if index.is_some() {
-                return index;
-            }
-        }
-
-        if depth >= MAX_DEPTH {
-            return None;
-        }
-
-        let mut ret = None;
-        for kind in TransformKind::all() {
-            let new_ty = current_ty.transform(*kind, self.tcx()); // &T or &mut T
-            if let Some(next_index) = self.add_possible_transform::<MAX_DEPTH>(new_ty, depth + 1) {
-                let current_index = self.get_or_create_index(DepNode::Ty(current_ty));
-                self.add_edge_once(current_index, next_index, DepEdge::transform(*kind));
-                ret = Some(current_index);
-            }
-        }
-        ret
-    }
-
-    pub fn prune_redundant_nodes(&mut self) {}
-
-    pub fn is_ty_exist(&self, ty: Ty<'tcx>) -> bool {
-        self.node_indices.contains_key(&DepNode::Ty(ty.into()))
     }
 
     pub fn inner_graph(&self) -> &InnerGraph<'tcx> {
@@ -183,14 +126,12 @@ impl<'tcx> ApiDepGraph<'tcx> {
     pub fn statistics(&self) -> Statistics {
         let mut api_cnt = 0;
         let mut ty_cnt = 0;
-        let mut generic_param_cnt = 0;
         let mut edge_cnt = 0;
 
         for node in self.graph.node_indices() {
             match self.graph[node] {
                 DepNode::Api(..) => api_cnt += 1,
                 DepNode::Ty(_) => ty_cnt += 1,
-                DepNode::GenericParamDef(..) => generic_param_cnt += 1,
             }
         }
 
@@ -201,7 +142,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         Statistics {
             api_count: api_cnt,
             type_count: ty_cnt,
-            generic_param_count: generic_param_cnt,
             edge_cnt,
         }
     }
@@ -243,19 +183,54 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
     }
 
-    /// return all types that can be transformed into `ty`
-    pub fn provider_tys(&self, ty: Ty<'tcx>) -> Vec<Ty<'tcx>> {
-        let index = self
-            .get_index(DepNode::Ty(ty.into()))
-            .expect(&format!("{ty:?} should be existed in api graph"));
-        let mut tys = Vec::new();
+    pub fn eligible_api_nodes_with(&self, tys: &[Ty<'tcx>]) -> Vec<&DepNode<'tcx>> {
+        let check_ty = |ty: Ty<'tcx>| {
+            if utils::is_fuzzable_ty(ty, self.tcx) {
+                return true;
+            }
+            if tys.iter().any(|avail_ty| {
+                if utils::is_ty_eq(*avail_ty, ty, self.tcx) {
+                    return true;
+                }
+                false
+            }) {
+                return true;
+            }
+            return false;
+        };
+        self.graph
+            .node_indices()
+            .filter_map(|index| {
+                if let DepNode::Api(fn_did, args) = self.graph[index] {
+                    if self
+                        .graph
+                        .neighbors_directed(index, Direction::Incoming)
+                        .all(|neighbor| check_ty(self.graph[neighbor].as_ty().ty()))
+                    {
+                        return Some(&self.graph[index]);
+                    }
+                }
+                None
+            })
+            .collect()
+    }
 
-        for node_index in self.graph.neighbors_directed(index, Direction::Incoming) {
-            if let DepNode::Ty(ty) = self.graph[node_index] {
-                tys.push(ty.ty());
+    pub fn eligible_transform_with(
+        &self,
+        tys: &[Ty<'tcx>],
+    ) -> Vec<(TyWrapper<'tcx>, TransformKind)> {
+        let mut set = HashSet::new();
+        for ty in tys {
+            if let Some(node) = self.get_index(DepNode::Ty((*ty).into())) {
+                for edge in self.graph.edges(node) {
+                    if let Some(kind) = edge.weight().as_transform_kind() {
+                        let target_ty = self.graph[edge.target()].as_ty();
+                        set.insert((target_ty, kind));
+                    }
+                }
             }
         }
-        tys
+        set.into_iter().collect()
     }
 
     pub fn add_generic_api(&mut self, fn_did: DefId) -> bool {
@@ -273,30 +248,30 @@ impl<'tcx> ApiDepGraph<'tcx> {
         let generics = self.tcx.generics_of(fn_did);
         let early_generic_count = generics.count();
         // rap_debug!("early bound generic count = {}", early_generic_count);
-        for i in 0..early_generic_count {
-            let generic_param_def = generics.param_at(i, self.tcx);
-            // rap_debug!("early bound generic#{i}: {:?}", generic_param_def);
-            let node_index = self.get_or_create_index(DepNode::generic_param_def(
-                fn_did,
-                i,
-                generic_param_def.name,
-                !generic_param_def.kind.is_ty_or_const(),
-            ));
-            self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
-        }
+        // for i in 0..early_generic_count {
+        //     let generic_param_def = generics.param_at(i, self.tcx);
+        //     // rap_debug!("early bound generic#{i}: {:?}", generic_param_def);
+        //     let node_index = self.get_or_create_index(DepNode::generic_param_def(
+        //         fn_did,
+        //         i,
+        //         generic_param_def.name,
+        //         !generic_param_def.kind.is_ty_or_const(),
+        //     ));
+        //     self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
+        // }
 
         // add late bound generic
-        for (i, var) in binder_fn_sig.bound_vars().iter().enumerate() {
-            // rap_debug!("bound var#{i}: {var:?}");
-            let (name, is_lifetime) = get_bound_var_attr(var);
-            let node_index = self.get_or_create_index(DepNode::generic_param_def(
-                fn_did,
-                early_generic_count + i,
-                name,
-                is_lifetime,
-            ));
-            self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
-        }
+        // for (i, var) in binder_fn_sig.bound_vars().iter().enumerate() {
+        //     // rap_debug!("bound var#{i}: {var:?}");
+        //     let (name, is_lifetime) = get_bound_var_attr(var);
+        //     let node_index = self.get_or_create_index(DepNode::generic_param_def(
+        //         fn_did,
+        //         early_generic_count + i,
+        //         name,
+        //         is_lifetime,
+        //     ));
+        //     self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
+        // }
         true
     }
 
@@ -310,18 +285,17 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
         rap_trace!("[ApiDepGraph] add fn: {:?} args: {:?}", fn_did, args);
 
-        let binder_fn_sig = self.tcx.fn_sig(fn_did).instantiate(self.tcx, args);
-        let fn_sig = binder_fn_sig.skip_binder();
+        let fn_sig = utils::fn_sig_with_generic_args(fn_did, args, self.tcx);
 
         // add inputs/output to graph, and compute constraints based on subtyping
         for (no, input_ty) in fn_sig.inputs().iter().enumerate() {
             let input_node = self.get_or_create_index(DepNode::ty(*input_ty));
-            self.add_edge_once(input_node, api_node, DepEdge::arg(no));
+            self.add_edge(input_node, api_node, DepEdge::arg(no));
         }
 
         let output_ty = fn_sig.output();
         let output_node = self.get_or_create_index(DepNode::ty(output_ty));
-        self.add_edge_once(api_node, output_node, DepEdge::ret());
+        self.add_edge(api_node, output_node, DepEdge::ret());
 
         true
     }
@@ -339,82 +313,67 @@ impl<'tcx> ApiDepGraph<'tcx> {
         tfs
     }
 
-    /// only count local api
+    pub fn is_start_node_index(&self, index: NodeIndex) -> bool {
+        match self.graph[index] {
+            DepNode::Api(..) => self
+                .graph
+                .neighbors_directed(index, Direction::Incoming)
+                .next()
+                .is_none(),
+            DepNode::Ty(ty) => utils::is_fuzzable_ty(ty.into(), self.tcx),
+        }
+    }
+
+    /// estimate maximum fuzzing coverage
     /// return (num_covered, num_total)
-    pub fn estimate_max_coverage(&self, tcx: TyCtxt<'tcx>) -> (usize, usize) {
-        let inner_graph = self.inner_graph();
+    pub fn estimate_coverage(&self, tcx: TyCtxt<'tcx>) -> (usize, usize) {
         let mut estimated_cover = HashSet::new();
-        let mut num_total = 0;
-        // let mut num_reachable = 0;
-        let mut reachable = vec![false; inner_graph.node_count()];
 
-        // initalize worklist
-        let mut worklist = VecDeque::from_iter(inner_graph.node_indices().filter(|index| {
-            match inner_graph[*index] {
-                DepNode::Ty(ty) => {
-                    if utils::is_fuzzable_ty(ty.ty(), tcx) {
-                        reachable[index.index()] = true;
-                        return true;
-                    }
-                }
-                DepNode::Api(fn_did, _) => {
-                    num_total += 1;
-                    if utils::fn_sig_without_binders(fn_did, tcx).inputs().len() == 0 {
-                        return true;
-                    }
-                }
-                _ => {}
+        let mut reachable = vec![false; self.graph.node_count()];
+
+        // initialize worklist with start node (indegree is zero)
+        let mut worklist = VecDeque::from_iter(self.graph.node_indices().filter(|index| {
+            if self.is_start_node_index(*index) {
+                reachable[index.index()] = true;
+                true
+            } else {
+                false
             }
-
-            false
         }));
+
+        rap_debug!("[estimate_coverage] worklist = {:?}", worklist);
 
         // initialize queue with fuzzable type
         while let Some(index) = worklist.pop_front() {
-            if let DepNode::Api(did, _) = inner_graph[index] {
-                if did.is_local() {
-                    estimated_cover.insert(did);
-                }
+            if let DepNode::Api(did, args) = self.graph[index] {
+                estimated_cover.insert((did, args));
             }
 
-            for next in inner_graph.neighbors(index) {
-                match inner_graph[next] {
-                    DepNode::Ty(_) => {
-                        if !reachable[next.index()] {
-                            reachable[next.index()] = true;
-                            worklist.push_back(next);
-                        }
-                    }
-                    DepNode::Api(fn_did, _) => {
-                        // regard the function as unreachalbe if it need monomorphization
-                        if utils::fn_requires_monomorphization(fn_did, tcx) {
-                            continue;
-                        }
-
-                        if reachable[next.index()] {
-                            continue;
-                        }
-
-                        let mut flag = true;
-                        for nnbor in
-                            inner_graph.neighbors_directed(next, petgraph::Direction::Incoming)
+            for next in self.graph.neighbors(index) {
+                if reachable[next.index()] {
+                    continue;
+                }
+                if match self.graph[next] {
+                    DepNode::Ty(_) => true,
+                    DepNode::Api(..) => {
+                        if self
+                            .graph
+                            .neighbors_directed(next, petgraph::Direction::Incoming)
+                            .all(|nbor| reachable[nbor.index()])
                         {
-                            if inner_graph[nnbor].is_ty() && !reachable[nnbor.index()] {
-                                flag = false;
-                                break;
-                            }
-                        }
-
-                        if flag {
-                            reachable[next.index()] = true;
-                            worklist.push_back(next);
+                            true
+                        } else {
+                            false
                         }
                     }
-                    _ => {}
+                } {
+                    rap_debug!("[estimate_coverage] add {:?} to worklist", next);
+                    reachable[next.index()] = true;
+                    worklist.push_back(next);
                 }
             }
         }
-        (estimated_cover.len(), num_total)
+        (estimated_cover.len(), self.num_api())
     }
 
     pub fn dump_to_dot<P: AsRef<Path>>(&self, path: P, tcx: TyCtxt<'tcx>) {
@@ -434,7 +393,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
                 + match node_ref.1 {
                     DepNode::Api(..) => "color = blue",
                     DepNode::Ty(_) => "color = red",
-                    DepNode::GenericParamDef(..) => "color = green",
                 }
                 + ", shape=box"
         };

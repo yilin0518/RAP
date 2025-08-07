@@ -1,4 +1,4 @@
-pub use crate::analysis::core::api_dep::is_api_public;
+pub use crate::analysis::core::api_dep::is_def_id_public;
 use crate::analysis::core::api_dep::{ApiDepGraph, DepNode};
 use crate::analysis::utils::def_path::path_str_def_id;
 use crate::rap_info;
@@ -6,6 +6,7 @@ use rustc_hir::{def::Namespace, def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::print::{FmtPrinter, Printer};
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
+use rustc_span::STDLIB_STABLE_CRATES;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::cell::OnceCell;
 use std::collections::{HashSet, VecDeque};
@@ -16,7 +17,7 @@ pub fn get_all_pub_apis(tcx: TyCtxt<'_>) -> Vec<DefId> {
 
     for local_def_id in tcx.hir_body_owners() {
         if matches!(tcx.hir_body_owner_kind(local_def_id), BodyOwnerKind::Fn)
-            && is_api_public(local_def_id, tcx)
+            && is_def_id_public(local_def_id, tcx)
         {
             // tcx.hir().
             apis.push(local_def_id.to_def_id());
@@ -179,84 +180,6 @@ pub fn ty_check_ptr<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> PtrCheckResult {
     }
 }
 
-/// only count local api
-pub fn estimate_max_coverage<'tcx>(graph: &ApiDepGraph<'tcx>, tcx: TyCtxt<'tcx>) -> (usize, usize) {
-    let inner_graph = graph.inner_graph();
-    let mut estimated_cover = HashSet::new();
-    let num_total = get_all_pub_apis(tcx).len();
-    // let mut num_reachable = 0;
-    let mut reachable = vec![false; inner_graph.node_count()];
-
-    // initalize worklist
-    let mut worklist = VecDeque::from_iter(inner_graph.node_indices().filter(|index| {
-        match inner_graph[*index] {
-            DepNode::Ty(ty) => {
-                if is_fuzzable_ty(ty.ty(), tcx) {
-                    reachable[index.index()] = true;
-                    return true;
-                }
-            }
-            DepNode::Api(fn_did, _) => {
-                if fn_requires_monomorphization(fn_did, tcx) {
-                    return false;
-                }
-                if fn_sig_without_binders(fn_did, tcx).inputs().len() == 0 {
-                    return true;
-                }
-            }
-            _ => {}
-        }
-
-        false
-    }));
-
-    // initialize queue with fuzzable type
-    while let Some(index) = worklist.pop_front() {
-        if let DepNode::Api(did, _) = inner_graph[index] {
-            if did.is_local() {
-                estimated_cover.insert(did);
-            }
-        }
-
-        for next in inner_graph.neighbors(index) {
-            match inner_graph[next] {
-                DepNode::Ty(_) => {
-                    if !reachable[next.index()] {
-                        reachable[next.index()] = true;
-                        worklist.push_back(next);
-                    }
-                }
-                DepNode::Api(fn_did, _) => {
-                    // regard the function as unreachalbe if it need monomorphization
-                    if fn_requires_monomorphization(fn_did, tcx) {
-                        continue;
-                    }
-
-                    if reachable[next.index()] {
-                        continue;
-                    }
-
-                    let mut flag = true;
-                    for nnbor in inner_graph.neighbors_directed(next, petgraph::Direction::Incoming)
-                    {
-                        if inner_graph[nnbor].is_ty() && !reachable[nnbor.index()] {
-                            flag = false;
-                            break;
-                        }
-                    }
-
-                    if flag {
-                        reachable[next.index()] = true;
-                        worklist.push_back(next);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    (estimated_cover.len(), num_total)
-}
-
 pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(Ty<'tcx>) -> bool) {
     if !f(ty) {
         return;
@@ -284,15 +207,7 @@ pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(
     }
 }
 
-pub fn effective_path_str<'tcx>(
-    def_id: DefId,
-    args: &'tcx [ty::GenericArg<'tcx>],
-    tcx: TyCtxt<'tcx>,
-) -> String {
-    let res =
-        FmtPrinter::print_string(tcx, Namespace::TypeNS, |cx| cx.print_def_path(def_id, args))
-            .unwrap();
-    rap_info!("Effective path for {:?} is: {}", def_id, res);
-
-    res
+pub fn def_id_from_std<'tcx>(def_id: DefId, tcx: TyCtxt<'tcx>) -> bool {
+    let crate_name = tcx.crate_name(def_id.krate);
+    STDLIB_STABLE_CRATES.contains(&crate_name)
 }

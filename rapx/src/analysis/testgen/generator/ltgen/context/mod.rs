@@ -74,7 +74,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         let next_var = self.cx.mk_var(ty, is_input);
         let rid = self.region_graph.register_var(next_var);
         rap_debug!(
-            "[mk_var] register '?{} -> {}: {:?}",
+            "[mk_var] register ['?{}] {}: {:?}",
             rid.index(),
             next_var,
             ty

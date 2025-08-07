@@ -83,7 +83,7 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
     max_iteration: usize,
     pub_api: Vec<DefId>,
     alias_map: &'a FnAliasMap,
-    api_graph: RefCell<ApiDepGraph<'tcx>>,
+    api_graph: ApiDepGraph<'tcx>,
     covered_api: HashSet<DefId>,
 }
 
@@ -103,7 +103,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             max_complexity,
             max_iteration,
             alias_map,
-            api_graph: RefCell::new(api_graph),
+            api_graph,
             covered_api: HashSet::new(),
         }
     }
@@ -112,17 +112,8 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         self.tcx
     }
 
-    pub fn api_graph(&self) -> &RefCell<ApiDepGraph<'tcx>> {
+    pub fn api_graph(&self) -> &ApiDepGraph<'tcx> {
         &self.api_graph
-    }
-
-    pub fn pub_api_def_id(&self) -> &[DefId] {
-        &self.pub_api
-    }
-
-    pub fn is_enable_monomorphization(&self) -> bool {
-        true
-        // false
     }
 
     fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> bool {
@@ -136,8 +127,47 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 .join(", ")
         );
 
-        if hit {
-            if let Some(call) = self.choose_eligable_api(cx) {
+        let tys: Vec<_> = cx
+            .cx()
+            .available_vars()
+            .map(|var| cx.cx().type_of(var))
+            .collect();
+
+        rap_debug!(
+            "live tys: {}",
+            tys.iter().map(|ty| format!("{ty}")).join(", ")
+        );
+        let nodes = self.api_graph.eligible_api_nodes_with(&tys);
+        let mut transforms = Vec::new();
+
+        for var in cx.cx().available_vars() {
+            let res = self
+                .api_graph
+                .eligible_transform_with(&[cx.cx().type_of(var)])
+                .into_iter()
+                .map(|(_, kind)| (var, kind));
+            transforms.extend(res);
+        }
+
+        // No action can do
+        if nodes.is_empty() && transforms.is_empty() {
+            return false;
+        }
+
+        let num_total = nodes.len() + transforms.len();
+        rap_debug!(
+            "# eligible APIs = {}, # transforms = {}",
+            nodes.len(),
+            transforms.len()
+        );
+        let no = self.rng.borrow_mut().random_range(0..num_total);
+        if no < nodes.len() {
+            let (fn_did, args) = nodes[no].as_api();
+            rap_debug!(
+                "[next] select API call: {}",
+                self.tcx.def_path_str_with_args(fn_did, args)
+            );
+            if let Some(call) = self.get_eligable_call(fn_did, args, cx) {
                 self.covered_api.insert(call.fn_did());
                 cx.add_call_stmt(call);
                 if self.rng.borrow_mut().random_ratio(1, 2) && cx.try_inject_drop() {
@@ -145,8 +175,14 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 }
                 return true;
             }
-        }
-        if let Some((var, kind)) = self.choose_transform(cx) {
+        } else {
+            let (var, kind) = transforms[no - nodes.len()];
+            rap_debug!(
+                "[next] select transform: {}: {} {}",
+                var,
+                cx.cx().type_of(var),
+                kind
+            );
             match kind {
                 TransformKind::Ref(mutability) => {
                     cx.add_ref_stmt(var, mutability);
@@ -166,7 +202,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
         let tcx = self.tcx();
         let mut lt_ctxt = LtContext::new(self.tcx, &self.alias_map);
-        let (estimated, total) = utils::estimate_max_coverage(self.api_graph.get_mut(), tcx);
+        let (estimated, total) = self.api_graph.estimate_coverage(tcx);
         let mut count = 0;
         loop {
             count += 1;
@@ -211,9 +247,9 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
 
     pub fn statistic_str(&self) -> String {
         let mut s = String::new();
-        s.push_str(&format!("#APIs = {}\n", self.pub_api.len()));
-        s.push_str(&format!("#generic APIs = {}\n", self.count_generic_api()));
-        s.push_str(&format!("#covered APIs = {}\n", self.covered_api.len()));
+        s.push_str(&format!("# APIs = {}\n", self.pub_api.len()));
+        s.push_str(&format!("# generic APIs = {}\n", self.count_generic_api()));
+        s.push_str(&format!("# covered APIs = {}\n", self.covered_api.len()));
         s.push_str("covered APIs:\n");
         s.push_str(
             &self

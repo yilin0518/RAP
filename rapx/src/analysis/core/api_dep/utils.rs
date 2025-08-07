@@ -1,6 +1,8 @@
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_middle::ty::{self, FnSig, Ty, TyCtxt, TyKind};
 
+use crate::rap_debug;
+
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     match ty.kind() {
         // Basical data type

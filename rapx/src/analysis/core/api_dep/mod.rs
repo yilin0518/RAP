@@ -13,11 +13,7 @@ use crate::{rap_debug, rap_info, rap_trace};
 pub use graph::ApiDepGraph;
 pub use graph::{DepEdge, DepNode};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
-use rustc_infer::infer::TyCtxtInferExt;
-use rustc_infer::traits::ObligationCause;
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_span::DUMMY_SP;
-use rustc_trait_selection::infer::InferCtxtExt;
 pub struct ApiDep<'tcx> {
     pub tcx: TyCtxt<'tcx>,
 }
@@ -26,6 +22,7 @@ pub struct ApiDep<'tcx> {
 pub struct Config {
     pub pub_only: bool,
     pub resolve_generic: bool,
+    pub ignore_const_generic: bool,
 }
 
 pub fn is_def_id_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
@@ -57,14 +54,21 @@ impl<'tcx> ApiDep<'tcx> {
         let mut api_graph = ApiDepGraph::new(self.tcx);
         api_graph.build(config);
 
+        let (estimate, total) = api_graph.estimate_coverage(self.tcx);
+
         let statistics = api_graph.statistics();
         // print all statistics
         rap_info!(
-            "API Graph contains {} API nodes, {} type nodes, {} generic parameter def nodes, {} edges",
+            "API Graph contains {} API nodes, {} type nodes, {} edges",
             statistics.api_count,
             statistics.type_count,
-            statistics.generic_param_count,
             statistics.edge_cnt
+        );
+        rap_info!(
+            "estimate coverage: {:.2} ({}/{})",
+            estimate as f64 / total as f64,
+            estimate,
+            total
         );
         let dot_filename = format!("api_graph_{}_{}.dot", local_crate_name, local_crate_type);
         rap_info!("Dump API dependency graph to {}", dot_filename);

@@ -21,11 +21,7 @@ impl<'tcx> ScanAnalysis<'tcx> {
     pub fn start(&self) {
         let crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let crate_type = self.tcx.crate_types()[0];
-        if matches!(crate_type, CrateType::Executable) {
-            rap_info!("Skip executable target: {}", crate_name);
-            return;
-        }
-        rap_info!("Scan lib crate: {}", crate_name.as_str());
+        rap_info!("Scan crate: {}", crate_name.as_str());
         let mut fn_visitor = FnVisitor::new(self.tcx);
         self.tcx.hir_visit_all_item_likes_in_crate(&mut fn_visitor);
         let stats = fn_visitor.statistic();

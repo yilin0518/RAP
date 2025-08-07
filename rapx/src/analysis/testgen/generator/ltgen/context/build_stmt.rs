@@ -82,6 +82,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     }
 
     /// deref should explicitly annotate the type of deref var
+    /// &'a T -> &'a U
     pub fn add_deref_stmt(
         &mut self,
         derefed: Var,
@@ -130,6 +131,13 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
             self.cx.add_stmt(Stmt::input(var));
         }
         var
+    }
+
+    pub fn is_var_impl_copy(&self, var: Var) -> bool {
+        if var == DUMMY_INPUT_VAR {
+            return true;
+        }
+        utils::is_ty_impl_copy(self.cx.type_of(var), self.tcx)
     }
 
     pub fn add_call_stmt(&mut self, mut call: ApiCall<'tcx>) -> Var {

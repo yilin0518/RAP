@@ -59,6 +59,11 @@ impl<'tcx> FnVisitor<'tcx> {
             .generics_of(fn_did)
             .requires_monomorphization(self.tcx);
         let fn_sig = self.tcx.fn_sig(fn_did);
+        rap_debug!("fn_sig: {:?}", fn_sig);
+        let late_fn_sig = self
+            .tcx
+            .liberate_late_bound_regions(fn_did, fn_sig.instantiate_identity());
+        rap_debug!("late_fn_sig: {:?}", late_fn_sig);
 
         if is_generic {
             self.stats.pub_generic_api.insert(fn_did);

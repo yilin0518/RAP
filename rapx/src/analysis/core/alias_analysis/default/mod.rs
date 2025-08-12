@@ -4,16 +4,7 @@ pub mod mop;
 pub mod types;
 
 use super::{AAFact, AAResult, AAResultMap, AliasAnalysis};
-use crate::{
-    analysis::{
-        utils::intrinsic_id::{
-            COPY_FROM, COPY_FROM_NONOVERLAPPING, COPY_TO, COPY_TO_NONOVERLAPPING,
-        },
-        Analysis,
-    },
-    rap_debug, rap_trace,
-    utils::source::*,
-};
+use crate::{analysis::Analysis, def_id::*, rap_debug, rap_trace, utils::source::*};
 use graph::MopGraph;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
@@ -208,14 +199,14 @@ impl<'tcx> AliasAnalyzer<'tcx> {
 
     fn handle_conor_cases(&mut self) {
         let cases = [
-            COPY_FROM_NONOVERLAPPING,
-            COPY_TO_NONOVERLAPPING,
-            COPY_TO,
-            COPY_FROM,
+            copy_from_nonoverlapping(),
+            copy_to_nonoverlapping(),
+            copy_to(),
+            copy_from(),
         ];
         let alias = MopAAFact::new(1, true, true, 2, true, true);
         for (key, value) in self.fn_map.iter_mut() {
-            if cases.contains(&key.index.as_usize()) {
+            if cases.iter().any(|lock| lock == key) {
                 value.alias_set.clear();
                 value.alias_set.insert(alias.clone());
             }

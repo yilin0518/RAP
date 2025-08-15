@@ -1,5 +1,4 @@
 use rustc_ast::ast::{self, Item, ItemKind, VariantData};
-use rustc_ast::ptr::P;
 use rustc_ast::FieldDef;
 use rustc_span::symbol::Ident;
 use rustc_span::symbol::Symbol;
@@ -40,7 +39,7 @@ pub(crate) fn create_ssa_struct(_krate: &mut ast::Crate) {
 
     // println!("[CALLBACK] Injection complete. Continuing compilation...");
 }
-pub(crate) fn create_struct(name: &str, fields_def: Vec<(&str, Symbol)>) -> P<Item> {
+pub(crate) fn create_struct(name: &str, fields_def: Vec<(&str, Symbol)>) -> Box<Item> {
     let fields: ThinVec<FieldDef> = fields_def
         .into_iter()
         .map(|(fname, fty)| ast::FieldDef {
@@ -51,7 +50,7 @@ pub(crate) fn create_struct(name: &str, fields_def: Vec<(&str, Symbol)>) -> P<It
                 tokens: None,
             },
             ident: Some(Ident::from_str(fname)),
-            ty: P(ast::Ty {
+            ty: Box::new(ast::Ty {
                 id: ast::NodeId::from_u32(0),
                 kind: ast::TyKind::Path(None, ast::Path::from_ident(Ident::with_dummy_span(fty))),
                 span: DUMMY_SP,
@@ -76,7 +75,7 @@ pub(crate) fn create_struct(name: &str, fields_def: Vec<(&str, Symbol)>) -> P<It
 
     let item_kind = ItemKind::Struct(ident, ast::Generics::default(), variant_data);
 
-    P(Item {
+    Box::new(Item {
         attrs: vec![].into(),
         id: ast::NodeId::from_u32(0),
         kind: item_kind,

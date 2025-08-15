@@ -48,7 +48,8 @@ impl<'tcx> GenericChecker<'tcx> {
                     });
                     if_chain! {
                         if let ItemKind::Impl(impl_item) = item.kind;
-                        if impl_item.polarity == ImplPolarity::Positive;
+                        if let Some(trait_impl_header) = impl_item.of_trait;
+                        if trait_impl_header.polarity == ImplPolarity::Positive;
                         if let Some(binder) = tcx.impl_trait_ref(def_id);
                         then {
                             let trait_ref = binder.skip_binder();

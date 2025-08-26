@@ -1,10 +1,12 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
 
+#[macro_use]
+pub mod utils;
+
 pub mod analysis;
 pub mod def_id;
 pub mod preprocess;
-pub mod utils;
 extern crate intervals;
 extern crate rustc_abi;
 extern crate rustc_ast;
@@ -17,6 +19,7 @@ extern crate rustc_index;
 extern crate rustc_interface;
 extern crate rustc_metadata;
 extern crate rustc_middle;
+extern crate rustc_public;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
@@ -132,7 +135,10 @@ impl Callbacks for RapCallback {
     }
     fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         rap_trace!("Execute after_analysis() of compiler callbacks");
-        start_analyzer(tcx, self);
+        rustc_public::rustc_internal::run(tcx, || {
+            start_analyzer(tcx, self);
+        })
+        .expect("Failed to run rustc_public.");
         rap_trace!("analysis done");
         Compilation::Continue
     }

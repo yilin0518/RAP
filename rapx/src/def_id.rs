@@ -1,7 +1,5 @@
 extern crate indexmap;
-extern crate rustc_public;
 
-// use crate::rap_info;
 use indexmap::IndexMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
@@ -15,9 +13,7 @@ struct Intrinsics {
 }
 
 pub fn init(tcx: TyCtxt) {
-    INIT.get_or_init(|| {
-        rustc_internal::run(tcx, || init_inner(tcx)).expect("Failed to run rustc_public.")
-    });
+    INIT.get_or_init(|| init_inner(tcx));
 }
 
 fn init_inner(tcx: TyCtxt) -> Intrinsics {
@@ -80,4 +76,9 @@ intrinsics! {
     drop: "std::mem::drop",
     drop_in_place: "std::ptr::drop_in_place",
     manually_drop: "std::mem::ManuallyDrop::<T>::drop",
+}
+
+/// rustc_public DefId to internal DefId
+pub fn to_internal<T: CrateDef>(val: &T, tcx: TyCtxt) -> DefId {
+    rustc_internal::internal(tcx, val.def_id())
 }

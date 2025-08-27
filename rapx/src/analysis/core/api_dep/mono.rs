@@ -1,7 +1,7 @@
 use super::graph::TyWrapper;
 use super::utils::{self, fn_sig_with_generic_args};
 use crate::analysis::utils::def_path::path_str_def_id;
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_trace};
 use rand::seq::{IndexedRandom, SliceRandom};
 use rand::Rng;
 use rustc_hir::def_id::DefId;

@@ -1,9 +1,9 @@
 pub mod dep_edge;
 pub mod dep_node;
 mod resolve;
+mod serialize;
 pub mod transform;
 mod ty_wrapper;
-mod serialize;
 
 use super::Config;
 use crate::analysis::core::api_dep::utils;

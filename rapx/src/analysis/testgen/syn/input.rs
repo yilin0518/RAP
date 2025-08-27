@@ -4,6 +4,8 @@ use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_type_ir::{IntTy, UintTy};
 use std::ops::Range;
 
+use crate::rap_debug;
+
 pub trait InputGen {
     fn gen_bool(&mut self) -> bool;
     fn gen_int(&mut self, int_ty: IntTy) -> i64;
@@ -13,6 +15,7 @@ pub trait InputGen {
     fn gen_str(&mut self) -> String;
 
     fn gen<'tcx>(&mut self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> String {
+        rap_debug!("gen input for {:?}", ty);
         match ty.kind() {
             TyKind::Ref(_, inner_ty, mutability) => {
                 if inner_ty.is_str() && mutability.is_not() {

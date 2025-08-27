@@ -1,9 +1,8 @@
-use crate::analysis::testgen::context::UseKind;
-use crate::rap_debug;
-
 use super::super::context::{Context, Stmt, StmtKind, Var};
 use super::input::InputGen;
 use super::{SynOption, Synthesizer};
+use crate::analysis::testgen::context::UseKind;
+use crate::rap_debug;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
 pub struct FuzzDriverSynImpl<I: InputGen> {
@@ -40,8 +39,18 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                         .join(", ")
                 )
             }
+            StmtKind::SpecialCall(path, vars) => {
+                format!(
+                    "{}({})",
+                    path,
+                    vars.iter()
+                        .map(|arg| arg.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
             StmtKind::Input => {
-                let ty = cx.type_of(stmt.place()).peel_refs();
+                let ty = cx.type_of(stmt.place());
                 rap_debug!("{} -> {}", stmt.place(), ty);
                 self.input_gen.gen(ty, cx.tcx()).to_string()
             }

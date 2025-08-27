@@ -1,8 +1,23 @@
+use rustc_hir::LangItem;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{self, FnSig, Ty, TyCtxt, TyKind};
+use rustc_span::sym;
 
+fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    match ty.kind() {
+        ty::Adt(def, _) => {
+            tcx.is_lang_item(def.did(), LangItem::String)
+                || tcx.is_diagnostic_item(sym::Vec, def.did())
+        }
+        _ => false,
+    }
+}
 
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    if is_fuzzable_std_ty(ty, tcx) {
+        return true;
+    }
+
     match ty.kind() {
         // Basical data type
         TyKind::Bool
@@ -54,6 +69,7 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
         _ => false,
     }
 }
+
 pub fn fn_sig_without_binders<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> FnSig<'tcx> {
     let early_fn_sig = tcx.fn_sig(fn_did);
     let binder_fn_sig = early_fn_sig.instantiate_identity();

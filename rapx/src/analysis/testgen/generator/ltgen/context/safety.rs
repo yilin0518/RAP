@@ -184,7 +184,10 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
                     let dropped_var: Vec<Var> = src_rids
                         .into_iter()
-                        .map(|rid| self.region_graph.get_node(rid).as_var())
+                        .map(|rid| {
+                            rap_debug!("try to find node for {rid}");
+                            self.region_graph.get_node(rid).as_var()
+                        })
                         .filter(|var| !self.cx.var_state(*var).is_dead())
                         .collect();
 

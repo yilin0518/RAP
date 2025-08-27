@@ -1,6 +1,6 @@
 use super::lifetime;
 use crate::analysis::testgen::{generator::ltgen::folder::InfcxVarFolder, utils};
-use crate::{rap_debug, rap_trace};
+use crate::{rap_debug, rap_info, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer;
 use rustc_infer::{
@@ -8,6 +8,8 @@ use rustc_infer::{
     traits::ObligationCause,
 };
 use rustc_middle::ty::{self, TyCtxt, TypeFoldable as _};
+use rustc_span::DUMMY_SP;
+use rustc_type_ir::RegionVid;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -88,10 +90,33 @@ pub fn extract_constraints<'tcx>(
         fn_did,
         generic_args
     );
+    let tmp_infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
+    let args = tmp_infcx.fresh_args_for_item(DUMMY_SP, fn_did);
+    rap_info!("args = {:?}", args);
+
     let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
     let mut folder = InfcxVarFolder::new(&infcx, tcx);
 
-    let fn_sig = utils::fn_sig_with_generic_args(fn_did, generic_args, tcx);
+    let early_fn_sig = tcx.fn_sig(fn_did);
+
+    let fresh_args =
+        tcx.mk_args_from_iter(generic_args.iter().map(|arg| arg.fold_with(&mut folder)));
+
+    // set skip_vars to true to avoid overlay the vars generated in previous step
+    folder.set_skip_vars(true);
+
+    // formal fn_sig
+    let fn_sig = early_fn_sig
+        .instantiate(tcx, fresh_args)
+        .skip_binder()
+        .fold_with(&mut folder);
+
+    // set back to false
+    folder.set_skip_vars(false);
+
+    let temp_cnt = folder.cnt();
+
+    // outer universe fn_sig
     let free_fn_sig = fn_sig.fold_with(&mut folder);
 
     rap_debug!("[extract_contraints] fn_sig = {:?}", fn_sig);
@@ -121,55 +146,44 @@ pub fn extract_constraints<'tcx>(
     lifetime::visit_structure_region_with(fn_sig.output(), None, tcx, &mut f);
 
     let region_constraint_data = infcx.take_and_reset_region_constraints();
-    let mut map = HashMap::new();
-    let mut temp_region_no = |region: ty::Region<'tcx>| -> usize {
-        if region.is_var() {
-            panic!("region is var");
+    let get_pattern_node = |vid: RegionVid| -> PatternNode {
+        let id = vid.as_usize();
+        if id < temp_cnt {
+            PatternNode::Temp(id)
+        } else {
+            PatternNode::Named(id - temp_cnt)
         }
-        let len = map.len();
-        *map.entry(region).or_insert(len)
     };
+
     let mut subgraph = EdgePatterns::default();
 
     for (constraint, _) in region_constraint_data.constraints {
         let edge = match constraint {
-            Constraint::VarSubVar(a, b) => EdgePattern(
-                PatternNode::Named(a.as_usize()),
-                PatternNode::Named(b.as_usize()),
-            ),
-            Constraint::RegSubVar(a, b) => EdgePattern(
-                PatternNode::Temp(temp_region_no(a)),
-                PatternNode::Named(b.as_usize()),
-            ),
-            Constraint::VarSubReg(a, b) => EdgePattern(
-                PatternNode::Named(a.as_usize()),
-                PatternNode::Temp(temp_region_no(b)),
-            ),
-            Constraint::RegSubReg(a, b) => EdgePattern(
-                PatternNode::Temp(temp_region_no(a)),
-                PatternNode::Temp(temp_region_no(b)),
-            ),
+            Constraint::VarSubVar(a, b) => EdgePattern(get_pattern_node(a), get_pattern_node(b)),
+            _ => {
+                panic!("unexpected constraint: {:?}", constraint);
+            }
         };
         subgraph.patterns.push(edge);
     }
 
     // extract constraints from where clauses of Fn
-    let predicates = tcx.predicates_of(fn_did);
-    predicates.predicates.iter().for_each(|(pred, _)| {
-        if let Some(outlive_pred) = pred.as_region_outlives_clause() {
+    let predicates = tcx.predicates_of(fn_did).instantiate(tcx, fresh_args);
+    predicates.predicates.iter().for_each(|clause| {
+        if let Some(outlive_pred) = clause.as_region_outlives_clause() {
             let outlive_pred = outlive_pred.skip_binder();
             // lhs : rhs
             let (lhs, rhs) = (outlive_pred.0, outlive_pred.1);
 
             // build edge from rhs to lhs
             subgraph.patterns.push(EdgePattern(
-                PatternNode::Temp(temp_region_no(rhs)),
-                PatternNode::Temp(temp_region_no(lhs)),
+                get_pattern_node(rhs.as_var()),
+                get_pattern_node(lhs.as_var()),
             ));
         }
     });
 
-    subgraph.named_region_num = folder.cnt();
-    subgraph.temp_num = map.len();
+    subgraph.named_region_num = folder.cnt() - temp_cnt;
+    subgraph.temp_num = temp_cnt;
     subgraph
 }

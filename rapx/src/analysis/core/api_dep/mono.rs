@@ -1,18 +1,20 @@
 use super::graph::TyWrapper;
 use super::utils::{self, fn_sig_with_generic_args};
 use crate::analysis::utils::def_path::path_str_def_id;
-use crate::{rap_debug, rap_trace};
+use crate::{rap_debug, rap_info, rap_trace};
+use rand::seq::{IndexedRandom, SliceRandom};
+use rand::Rng;
 use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
 use rustc_infer::infer::{DefineOpaqueTypes, TyCtxtInferExt as _};
 use rustc_infer::infer::{InferCtxt, TyCtxtInferExt};
 use rustc_infer::traits::{ImplSource, Obligation, ObligationCause};
-use rustc_middle::ty::{
-    self, GenericArgsRef, Ty, TyCtxt, TypeVisitableExt, TypingEnv,
-};
+use rustc_middle::ty::{self, GenericArgsRef, Ty, TyCtxt, TypeVisitableExt, TypingEnv};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
 use std::collections::HashSet;
+
+static MAX_STEP_SET_SIZE: usize = 1000;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Mono<'tcx> {
@@ -111,6 +113,10 @@ impl<'tcx> MonoSet<'tcx> {
         }
     }
 
+    pub fn empty() -> MonoSet<'tcx> {
+        MonoSet { monos: Vec::new() }
+    }
+
     pub fn count(&self) -> usize {
         self.monos.len()
     }
@@ -183,6 +189,14 @@ impl<'tcx> MonoSet<'tcx> {
             .retain(|args| is_args_fit_trait_bound(fn_did, &args.value, tcx));
         self
     }
+
+    pub fn random_sample<R: Rng>(&mut self, rng: &mut R) {
+        if self.monos.len() <= MAX_STEP_SET_SIZE {
+            return;
+        }
+        self.monos.shuffle(rng);
+        self.monos.truncate(MAX_STEP_SET_SIZE);
+    }
 }
 
 /// try to unfiy lhs = rhs,
@@ -197,6 +211,7 @@ fn unify_ty<'tcx>(
     cause: &ObligationCause<'tcx>,
     param_env: ty::ParamEnv<'tcx>,
 ) -> Option<Mono<'tcx>> {
+    // rap_info!("check {} = {}", lhs, rhs);
     infcx.probe(|_| {
         match infcx
             .at(cause, param_env)
@@ -214,7 +229,6 @@ fn unify_ty<'tcx>(
                         ty::GenericArgKind::Const(ct) => infcx.resolve_vars_if_possible(ct).into(),
                     })
                     .collect();
-                // infcx.resolve
                 Some(mono)
             }
             Err(e) => {
@@ -272,11 +286,33 @@ fn is_args_fit_trait_bound<'tcx>(
     true
 }
 
+fn is_fn_solvable<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> bool {
+    for pred in tcx
+        .predicates_of(fn_did)
+        .instantiate_identity(tcx)
+        .predicates
+    {
+        if let Some(pred) = pred.as_trait_clause() {
+            let trait_did = pred.skip_binder().trait_ref.def_id;
+            if tcx.is_lang_item(trait_did, LangItem::Fn)
+                || tcx.is_lang_item(trait_did, LangItem::FnMut)
+                || tcx.is_lang_item(trait_did, LangItem::FnOnce)
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 fn get_mono_set<'tcx>(
     fn_did: DefId,
     available_ty: &HashSet<TyWrapper<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
+    let mut rng = rand::rng();
+
+    // sample from reachable types
     rap_debug!("[get_mono_set] fn_did: {:?}", fn_did);
     let infcx = tcx
         .infer_ctxt()
@@ -303,27 +339,39 @@ fn get_mono_set<'tcx>(
 
     rap_trace!("[get_mono_set] initialize s: {:?}", s);
 
+    let mut cnt = 0;
+
     for input_ty in fn_sig.inputs().iter() {
+        cnt += 1;
         if !input_ty.has_infer_types() {
             continue;
         }
-        rap_trace!("[get_mono_set] input_ty: {:?}", input_ty);
-        let reachable_set = available_ty
-            .iter()
-            .fold(MonoSet::new(), |mut reachable_set, ty| {
-                if let Some(mono) = unify_ty(
-                    *input_ty,
-                    (*ty).into(),
-                    &fresh_args,
-                    &infcx,
-                    &dummy_cause,
-                    param_env,
-                ) {
-                    reachable_set.insert(mono);
-                }
-                reachable_set
-            });
-        s = s.merge(&reachable_set, tcx)
+        rap_trace!("[get_mono_set] input_ty#{}: {:?}", cnt - 1, input_ty);
+
+        let mut reachable_set =
+            available_ty
+                .iter()
+                .fold(MonoSet::new(), |mut reachable_set, ty| {
+                    if let Some(mono) = unify_ty(
+                        *input_ty,
+                        (*ty).into(),
+                        &fresh_args,
+                        &infcx,
+                        &dummy_cause,
+                        param_env,
+                    ) {
+                        reachable_set.insert(mono);
+                    }
+                    reachable_set
+                });
+        reachable_set.random_sample(&mut rng);
+        rap_debug!(
+            "[get_mono_set] size: s = {}, input = {}",
+            s.count(),
+            reachable_set.count()
+        );
+        s = s.merge(&reachable_set, tcx);
+        s.random_sample(&mut rng);
     }
 
     rap_trace!("[get_mono_set] after input types: {:?}", s);
@@ -462,11 +510,17 @@ pub fn resolve_mono_apis<'tcx>(
     available_ty: &HashSet<TyWrapper<'tcx>>,
     tcx: TyCtxt<'tcx>,
 ) -> MonoSet<'tcx> {
+    // 1. check solvable condition
+    if !is_fn_solvable(fn_did, tcx) {
+        return MonoSet::empty();
+    }
+
     // 2. get mono set from available types
     let ret = get_mono_set(fn_did, &available_ty, tcx).instantiate_unbound(tcx);
 
     // 3. check trait bound
     let ret = ret.filter_by_trait_bound(fn_did, tcx);
+
     ret
 }
 

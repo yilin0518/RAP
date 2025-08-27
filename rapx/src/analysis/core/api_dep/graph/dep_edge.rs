@@ -7,7 +7,6 @@ use super::transform::TransformKind;
 pub enum DepEdge {
     Arg(usize),
     Ret,
-    Fn2Generic,
     Transform(TransformKind),
 }
 
@@ -16,7 +15,6 @@ impl Display for DepEdge {
         match self {
             DepEdge::Arg(no) => write!(f, "{}", no),
             DepEdge::Ret => write!(f, "r"),
-            DepEdge::Fn2Generic => write!(f, ""),
             DepEdge::Transform(kind) => write!(f, "Transform({})", kind),
         }
     }
@@ -29,9 +27,7 @@ impl DepEdge {
     pub fn ret() -> DepEdge {
         DepEdge::Ret
     }
-    pub fn fn2generic() -> DepEdge {
-        DepEdge::Fn2Generic
-    }
+
     pub fn transform(kind: TransformKind) -> DepEdge {
         DepEdge::Transform(kind)
     }

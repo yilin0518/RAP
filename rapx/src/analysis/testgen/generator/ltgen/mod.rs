@@ -116,8 +116,6 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     }
 
     fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> bool {
-        let hit = self.rng.borrow_mut().random_ratio(2, 3);
-
         rap_debug!(
             "live vars: {}",
             cx.cx()
@@ -201,7 +199,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
         let tcx = self.tcx();
         let mut lt_ctxt = LtContext::new(self.tcx, &self.alias_map);
-        let (estimated, total) = self.api_graph.estimate_coverage(tcx);
+        let (estimated, total) = self.api_graph.estimate_coverage();
         let mut count = 0;
         loop {
             count += 1;

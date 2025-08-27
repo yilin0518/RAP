@@ -52,8 +52,7 @@ pub enum UseKind {
 pub enum StmtKind<'tcx> {
     Input,
     Call(ApiCall<'tcx>),
-    // Split(usize, Vec<Var>),        // (a, b) -> a, b
-    // Concat(Vec<Var>),              // a, b -> (a, b)
+    SpecialCall(String, Vec<Var>),
     Ref(Box<Var>, ty::Mutability),   // a -> &(mut) b
     Deref(Box<Var>, ty::Mutability), // &T -> &U
     Box(Box<Var>),
@@ -92,9 +91,16 @@ impl<'tcx> Stmt<'tcx> {
         self.place
     }
 
-    pub fn call(call: ApiCall, retval: Var) -> Stmt {
+    pub fn call(call: ApiCall<'tcx>, retval: Var) -> Stmt<'tcx> {
         Stmt {
             kind: StmtKind::Call(call),
+            place: retval,
+        }
+    }
+
+    pub fn special_call(path: String, args: Vec<Var>, retval: Var) -> Stmt<'tcx> {
+        Stmt {
+            kind: StmtKind::SpecialCall(path, args),
             place: retval,
         }
     }
@@ -158,7 +164,7 @@ impl<'tcx> Stmt<'tcx> {
         match self.kind() {
             StmtKind::Call(call) => {
                 let tcx = cx.tcx;
-                let fn_sig = utils::fn_sig_without_binders(call.fn_did(), tcx);
+                let fn_sig = utils::fn_sig_with_identities(call.fn_did(), tcx);
                 let var_ty = cx.type_of(self.place());
 
                 // get actual vid of input in the pattern

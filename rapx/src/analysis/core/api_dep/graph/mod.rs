@@ -3,6 +3,7 @@ pub mod dep_node;
 mod resolve;
 pub mod transform;
 mod ty_wrapper;
+mod serialize;
 
 use super::Config;
 use crate::analysis::core::api_dep::utils;
@@ -326,10 +327,19 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
     /// estimate maximum fuzzing coverage
     /// return (num_covered, num_total)
-    pub fn estimate_coverage(&self, tcx: TyCtxt<'tcx>) -> (usize, usize) {
-        let mut estimated_cover = HashSet::new();
-
+    pub fn estimate_coverage_with(
+        &self,
+        tcx: TyCtxt<'tcx>,
+        f_cover: &mut impl FnMut(DefId),
+        f_total: &mut impl FnMut(DefId),
+    ) {
         let mut reachable = vec![false; self.graph.node_count()];
+
+        for index in self.graph.node_indices() {
+            if let DepNode::Api(did, _) = self.graph[index] {
+                f_total(did);
+            }
+        }
 
         // initialize worklist with start node (indegree is zero)
         let mut worklist = VecDeque::from_iter(self.graph.node_indices().filter(|index| {
@@ -346,7 +356,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         // initialize queue with fuzzable type
         while let Some(index) = worklist.pop_front() {
             if let DepNode::Api(did, args) = self.graph[index] {
-                estimated_cover.insert((did, args));
+                f_cover(did);
             }
 
             for next in self.graph.neighbors(index) {
@@ -373,7 +383,40 @@ impl<'tcx> ApiDepGraph<'tcx> {
                 }
             }
         }
-        (estimated_cover.len(), self.num_api())
+    }
+
+    /// `estimate_coverage` treat mono API as the distinct API.
+    /// For example, if `foo<T>`, `foo<U>` are covered, this API return (2, 2).
+    pub fn estimate_coverage(&mut self) -> (usize, usize) {
+        let mut num_total = 0;
+        let mut num_estimate = 0;
+        self.estimate_coverage_with(
+            self.tcx,
+            &mut |did| {
+                num_estimate += 1;
+            },
+            &mut |did| {
+                num_total += 1;
+            },
+        );
+        (num_estimate, num_total)
+    }
+
+    /// `estimate_coverage_distinct` treat mono API as the original generic API.
+    /// For example, if `foo<T>`, `foo<U>` are covered, this API return (1, 1).
+    pub fn estimate_coverage_distinct(&mut self) -> (usize, usize) {
+        let mut total = HashSet::new();
+        let mut estimate = HashSet::new();
+        self.estimate_coverage_with(
+            self.tcx,
+            &mut |did| {
+                estimate.insert(did);
+            },
+            &mut |did| {
+                total.insert(did);
+            },
+        );
+        (estimate.len(), total.len())
     }
 
     pub fn dump_to_dot<P: AsRef<Path>>(&self, path: P, tcx: TyCtxt<'tcx>) {
@@ -382,7 +425,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
              edge_ref: petgraph::graph::EdgeReference<DepEdge>| {
                 let color = match edge_ref.weight() {
                     DepEdge::Arg(_) | DepEdge::Ret => "black",
-                    DepEdge::Fn2Generic => "grey",
                     DepEdge::Transform(_) => "darkorange",
                 };
                 format!("label=\"{}\", color = {}", edge_ref.weight(), color)

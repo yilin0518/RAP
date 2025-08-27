@@ -1,5 +1,5 @@
 use super::statistic::Statistics;
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{analysis::core::dataflow::graph::EdgeIdx, rap_debug, rap_info, rap_trace};
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{walk_block, walk_fn, FnKind, Visitor},
@@ -53,13 +53,33 @@ impl<'tcx> FnVisitor<'tcx> {
         if !is_api_public(fn_did, self.tcx) {
             return;
         }
-
+        rap_debug!("API path: {}", self.tcx.def_path_str(fn_did));
+        rap_debug!("type: {}", self.tcx.type_of(fn_did).instantiate_identity());
         let is_generic = self
             .tcx
             .generics_of(fn_did)
             .requires_monomorphization(self.tcx);
         let fn_sig = self.tcx.fn_sig(fn_did);
-        rap_debug!("fn_sig: {:?}", fn_sig);
+        rap_debug!("fn_sig: {}", fn_sig.instantiate_identity());
+        for input in fn_sig.instantiate_identity().inputs_and_output().iter() {
+            rap_debug!("param: {:?}", input);
+            let input_ty = input.skip_binder();
+            if let TyKind::Ref(r, ty, _) = input.skip_binder().kind() {
+                rap_debug!("region kind: {:?} {:?}", r.type_flags(), r.kind());
+                match r.kind() {
+                    ty::ReEarlyParam(re) => {
+                        rap_debug!("ReEarlyParam: {:?}", re);
+                    }
+                    ty::ReBound(idx, bound) => {
+                        rap_debug!("ReBound: {:?} {:?}", idx, bound);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        rap_debug!("type(debug): {:?}", self.tcx.type_of(fn_did));
+        rap_debug!("fn_sig(debug): {:?}", fn_sig);
         let late_fn_sig = self
             .tcx
             .liberate_late_bound_regions(fn_did, fn_sig.instantiate_identity());

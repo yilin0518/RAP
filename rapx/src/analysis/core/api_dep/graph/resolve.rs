@@ -179,13 +179,14 @@ pub fn partion_generic_api<'tcx>(
 
 impl<'tcx> ApiDepGraph<'tcx> {
     pub fn resolve_generic_api(&mut self) {
+        rap_info!("start resolving generic APIs");
         let generic_map = self.search_reachable_apis();
         self.prune_by_similarity(generic_map);
     }
 
     pub fn search_reachable_apis(&mut self) -> HashMap<DefId, HashSet<Mono<'tcx>>> {
         let tcx = self.tcx;
-        let max_ty_complexity = 5;
+        let max_ty_complexity = 4;
         let mut type_candidates = TypeCandidates::new(self.tcx, max_ty_complexity);
 
         type_candidates.add_prelude_tys();
@@ -201,13 +202,21 @@ impl<'tcx> ApiDepGraph<'tcx> {
         rap_debug!("[resolve_generic] generic_api = {generic_apis:?}");
 
         let mut num_iter = 0;
+        let max_iteration = 10;
 
         loop {
             num_iter += 1;
-            rap_debug!("# of iter = {num_iter}");
-
             let all_reachable_tys = type_candidates.candidates();
-            rap_debug!("# of reachble types = {}", all_reachable_tys.len());
+            rap_info!(
+                "start iter #{num_iter}, # of reachble types = {}",
+                all_reachable_tys.len()
+            );
+
+            // dump all reachable types to files, each line output a type
+            let mut file = rap_create_file(Path::new("reachable_types.txt"), "create file fail");
+            for ty in all_reachable_tys.iter() {
+                writeln!(file, "{}", ty.ty()).unwrap();
+            }
 
             let mut current_tys = HashSet::new();
             // check whether there is any non-generic api that is reachable
@@ -243,6 +252,11 @@ impl<'tcx> ApiDepGraph<'tcx> {
             }
 
             if !changed {
+                rap_info!("Terminate. Reachable types unchange in this iteration.");
+                break;
+            }
+            if num_iter >= max_iteration {
+                rap_info!("Terminate. Max iteration reached.");
                 break;
             }
         }
@@ -275,6 +289,13 @@ impl<'tcx> ApiDepGraph<'tcx> {
         self.update_transform_edges();
 
         self.dump_to_dot(Path::new("api_graph_unpruned.dot"), self.tcx);
+        let (estimate, total) = self.estimate_coverage_distinct();
+        rap_info!(
+            "estimate API coverage before pruning: {:.2} ({}/{})",
+            estimate as f64 / total as f64,
+            estimate,
+            total
+        );
 
         let mut visited = vec![false; self.graph.node_count()];
         let mut reserved = vec![false; self.graph.node_count()];
@@ -327,6 +348,13 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
         self.recache();
         rap_info!("remove {} nodes by pruning", count);
+        let (estimate, total) = self.estimate_coverage_distinct();
+        rap_info!(
+            "estimate API coverage after pruning: {:.2} ({}/{})",
+            estimate as f64 / total as f64,
+            estimate,
+            total
+        );
     }
 
     fn recache(&mut self) {

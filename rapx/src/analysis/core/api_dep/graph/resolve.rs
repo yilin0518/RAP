@@ -4,7 +4,7 @@ use super::transform::TransformKind;
 use super::ty_wrapper::TyWrapper;
 use super::Config;
 use crate::analysis::core::api_dep::mono::Mono;
-use crate::analysis::core::api_dep::utils::{is_fuzzable_ty, ty_depth};
+use crate::analysis::core::api_dep::utils::{is_fuzzable_ty, ty_complexity};
 use crate::analysis::core::api_dep::visitor::FnVisitor;
 use crate::analysis::core::api_dep::ApiDepGraph;
 use crate::analysis::core::api_dep::{mono, utils};
@@ -52,20 +52,20 @@ fn add_return_type_if_reachable<'tcx>(
 struct TypeCandidates<'tcx> {
     tcx: TyCtxt<'tcx>,
     candidates: HashSet<TyWrapper<'tcx>>,
-    max_depth: usize,
+    max_complexity: usize,
 }
 
 impl<'tcx> TypeCandidates<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, max_depth: usize) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, max_complexity: usize) -> Self {
         TypeCandidates {
             tcx,
             candidates: HashSet::new(),
-            max_depth,
+            max_complexity,
         }
     }
 
     pub fn insert(&mut self, ty: Ty<'tcx>) -> bool {
-        if ty_depth(ty) <= self.max_depth {
+        if ty_complexity(ty) <= self.max_complexity {
             self.candidates.insert(ty.into())
         } else {
             false
@@ -73,12 +73,12 @@ impl<'tcx> TypeCandidates<'tcx> {
     }
 
     pub fn insert_all(&mut self, ty: Ty<'tcx>) -> bool {
-        let depth = ty_depth(ty);
-        self.insert_all_with_depth(ty, depth)
+        let complexity = ty_complexity(ty);
+        self.insert_all_with_complexity(ty, complexity)
     }
 
-    pub fn insert_all_with_depth(&mut self, ty: Ty<'tcx>, depth: usize) -> bool {
-        if depth > self.max_depth {
+    pub fn insert_all_with_complexity(&mut self, ty: Ty<'tcx>, current_cmplx: usize) -> bool {
+        if current_cmplx > self.max_complexity {
             return false;
         }
 
@@ -86,47 +86,47 @@ impl<'tcx> TypeCandidates<'tcx> {
         let mut changed = self.candidates.insert(ty.into());
 
         // add &T
-        changed |= self.insert_all_with_depth(
+        changed |= self.insert_all_with_complexity(
             Ty::new_ref(
                 self.tcx,
                 self.tcx.lifetimes.re_erased,
                 ty,
                 ty::Mutability::Not,
             ),
-            depth + 1,
+            current_cmplx + 1,
         );
 
         // add &mut T
-        changed |= self.insert_all_with_depth(
+        changed |= self.insert_all_with_complexity(
             Ty::new_ref(
                 self.tcx,
                 self.tcx.lifetimes.re_erased,
                 ty,
                 ty::Mutability::Mut,
             ),
-            depth + 1,
+            current_cmplx + 1,
         );
 
         // add &[T]
-        changed |= self.insert_all_with_depth(
+        changed |= self.insert_all_with_complexity(
             Ty::new_ref(
                 self.tcx,
                 self.tcx.lifetimes.re_erased,
                 Ty::new_slice(self.tcx, ty),
                 ty::Mutability::Not,
             ),
-            depth + 2,
+            current_cmplx + 2,
         );
 
         // add &mut [T]
-        changed |= self.insert_all_with_depth(
+        changed |= self.insert_all_with_complexity(
             Ty::new_ref(
                 self.tcx,
                 self.tcx.lifetimes.re_erased,
                 Ty::new_slice(self.tcx, ty),
                 ty::Mutability::Mut,
             ),
-            depth + 2,
+            current_cmplx + 2,
         );
 
         changed
@@ -186,7 +186,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
     pub fn search_reachable_apis(&mut self) -> HashMap<DefId, HashSet<Mono<'tcx>>> {
         let tcx = self.tcx;
-        let max_ty_complexity = 4;
+        let max_ty_complexity = 6;
         let mut type_candidates = TypeCandidates::new(self.tcx, max_ty_complexity);
 
         type_candidates.add_prelude_tys();
@@ -235,11 +235,16 @@ impl<'tcx> ApiDepGraph<'tcx> {
             // check each generic API for new monomorphic API
             for fn_did in generic_apis.iter() {
                 let mono_set = mono::resolve_mono_apis(*fn_did, &all_reachable_tys, tcx);
+                rap_debug!(
+                    "[search_reachable_apis] {} -> {:?}",
+                    tcx.def_path_str(*fn_did),
+                    mono_set
+                );
                 for mono in mono_set.monos {
                     let fn_sig = utils::fn_sig_with_generic_args(*fn_did, &mono.value, tcx);
                     let output_ty = fn_sig.output();
                     if generic_map.entry(*fn_did).or_default().insert(mono) {
-                        if !output_ty.is_unit() && ty_depth(output_ty) <= max_ty_complexity {
+                        if !output_ty.is_unit() && ty_complexity(output_ty) <= max_ty_complexity {
                             current_tys.insert(output_ty);
                         }
                     }

@@ -244,35 +244,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         let api_node = self.get_or_create_index(DepNode::api(fn_did, args));
         let binder_fn_sig = self.tcx.fn_sig(fn_did).instantiate_identity();
 
-        // add generic param def to graph
-        // NOTE: generics_of query only return early bound generics
-        let generics = self.tcx.generics_of(fn_did);
-        let early_generic_count = generics.count();
-        // rap_debug!("early bound generic count = {}", early_generic_count);
-        // for i in 0..early_generic_count {
-        //     let generic_param_def = generics.param_at(i, self.tcx);
-        //     // rap_debug!("early bound generic#{i}: {:?}", generic_param_def);
-        //     let node_index = self.get_or_create_index(DepNode::generic_param_def(
-        //         fn_did,
-        //         i,
-        //         generic_param_def.name,
-        //         !generic_param_def.kind.is_ty_or_const(),
-        //     ));
-        //     self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
-        // }
-
-        // add late bound generic
-        // for (i, var) in binder_fn_sig.bound_vars().iter().enumerate() {
-        //     // rap_debug!("bound var#{i}: {var:?}");
-        //     let (name, is_lifetime) = get_bound_var_attr(var);
-        //     let node_index = self.get_or_create_index(DepNode::generic_param_def(
-        //         fn_did,
-        //         early_generic_count + i,
-        //         name,
-        //         is_lifetime,
-        //     ));
-        //     self.add_edge_once(api_node, node_index, DepEdge::fn2generic());
-        // }
         true
     }
 
@@ -325,8 +296,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
     }
 
-    /// estimate maximum fuzzing coverage
-    /// return (num_covered, num_total)
     pub fn estimate_coverage_with(
         &self,
         tcx: TyCtxt<'tcx>,
@@ -385,7 +354,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
         }
     }
 
-    /// `estimate_coverage` treat mono API as the distinct API.
+    /// `estimate_coverage` treat each API as the distinct API.
     /// For example, if `foo<T>`, `foo<U>` are covered, this API return (2, 2).
     pub fn estimate_coverage(&mut self) -> (usize, usize) {
         let mut num_total = 0;

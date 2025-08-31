@@ -78,7 +78,7 @@ impl<'tcx> Mono<'tcx> {
     }
 
     fn fill_unbound_var(&self, tcx: TyCtxt<'tcx>) -> Vec<Mono<'tcx>> {
-        let candidates = get_candidates(tcx);
+        let candidates = get_unbound_generic_candidates(tcx);
         let mut res = vec![self.clone()];
         rap_trace!("fill unbound: {:?}", self);
 
@@ -321,11 +321,11 @@ fn get_mono_set<'tcx>(
     let param_env = tcx.param_env(fn_did);
     let dummy_cause = ObligationCause::dummy();
     let fresh_args = infcx.fresh_args_for_item(DUMMY_SP, fn_did);
-    // This replace generic types in fn_sig to infer var, e.g. fn(Vec<T>, i32) => fn(Vec<?0>, i32)
+    // this replace generic types in fn_sig to infer var, e.g. fn(Vec<T>, i32) => fn(Vec<?0>, i32)
     let fn_sig = fn_sig_with_generic_args(fn_did, fresh_args, tcx);
     let generics = tcx.generics_of(fn_did);
 
-    // Print fresh_args for debugging
+    // print fresh_args for debugging
     for i in 0..fresh_args.len() {
         rap_trace!(
             "[get_mono_set] arg#{}: {:?} -> {:?}",
@@ -582,7 +582,9 @@ pub fn eliminate_infer_var<'tcx>(
     res
 }
 
-pub fn get_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
+/// if type parameter is unbound, e.g., `T` in `fn foo<T>()`,
+/// we use some predefined types to substitute it
+pub fn get_unbound_generic_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
     vec![
         tcx.types.bool,
         tcx.types.char,
@@ -590,11 +592,20 @@ pub fn get_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
         tcx.types.i8,
         tcx.types.i32,
         tcx.types.u32,
-        tcx.types.i64,
-        tcx.types.u64,
+        // tcx.types.i64,
+        // tcx.types.u64,
         tcx.types.f32,
-        tcx.types.f64,
-        Ty::new_slice(tcx, tcx.types.u8),
+        // tcx.types.f64,
+        Ty::new_imm_ref(
+            tcx,
+            tcx.lifetimes.re_erased,
+            Ty::new_slice(tcx, tcx.types.u8),
+        ),
+        Ty::new_mut_ref(
+            tcx,
+            tcx.lifetimes.re_erased,
+            Ty::new_slice(tcx, tcx.types.u8),
+        ),
     ]
 }
 
@@ -607,7 +618,7 @@ pub fn get_impls<'tcx>(
     let preds = tcx.predicates_of(fn_did).instantiate(tcx, args);
     for (pred, _) in preds {
         if let Some(trait_pred) = pred.as_trait_clause() {
-            let trait_ref = trait_pred.skip_binder().trait_ref;
+            let trait_ref: rustc_type_ir::TraitRef<TyCtxt<'tcx>> = trait_pred.skip_binder().trait_ref;
             // ignore Sized trait
             // if tcx.is_lang_item(trait_ref.def_id, LangItem::Sized)
             //     || tcx.def_path_str(trait_ref.def_id) == "std::default::Default"

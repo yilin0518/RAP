@@ -96,21 +96,21 @@ pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     return ty1 == ty2;
 }
 
-pub fn ty_depth<'tcx>(ty: Ty<'tcx>) -> usize {
+pub fn ty_complexity<'tcx>(ty: Ty<'tcx>) -> usize {
     match ty.kind() {
         // Reference, Array, Slice
         TyKind::Ref(_, inner_ty, _) | TyKind::Array(inner_ty, _) | TyKind::Slice(inner_ty) => {
-            ty_depth(*inner_ty) + 1
+            ty_complexity(*inner_ty) + 1
         }
 
         // Tuple
-        TyKind::Tuple(tys) => tys.iter().fold(0, |ans, ty| ans.max(ty_depth(ty))) + 1,
+        TyKind::Tuple(tys) => tys.iter().fold(0, |ans, ty| ans.max(ty_complexity(ty))) + 1,
 
         // ADT
         TyKind::Adt(_, args) => {
             args.iter().fold(0, |ans, arg| {
                 if let Some(ty) = arg.as_type() {
-                    ans.max(ty_depth(ty))
+                    ans.max(ty_complexity(ty))
                 } else {
                     ans
                 }

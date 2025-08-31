@@ -56,7 +56,7 @@ pub enum StmtKind<'tcx> {
     SliceRef(Var, ty::Mutability), // place = &[..]
     Call(ApiCall<'tcx>),
     SpecialCall(String, Vec<Var>),
-    Ref(Box<Var>, ty::Mutability),   // a -> &(mut) b
+    Ref(Box<Var>, ty::Mutability), // a -> &(mut) b
     // Deref(Box<Var>, ty::Mutability), // &T -> &U
     Exploit(Var, UseKind),
 }

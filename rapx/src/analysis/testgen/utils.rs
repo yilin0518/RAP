@@ -1,6 +1,5 @@
 pub use crate::analysis::core::api_dep::is_def_id_public;
 pub use crate::analysis::core::api_dep::is_fuzzable_ty;
-use crate::rap_trace;
 use rustc_hir::{def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
@@ -123,7 +122,11 @@ pub fn ty_check_ptr<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> PtrCheckResult {
     }
 }
 
-pub fn visit_ty_fields_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(Ty<'tcx>) -> bool) {
+pub fn visit_ty_fields_while<'tcx>(
+    ty: Ty<'tcx>,
+    tcx: TyCtxt<'tcx>,
+    f: &mut impl FnMut(Ty<'tcx>) -> bool,
+) {
     if !f(ty) {
         return;
     }

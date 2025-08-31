@@ -1,6 +1,6 @@
 use super::lifetime;
 use crate::analysis::testgen::{generator::ltgen::folder::InfcxVarFolder, utils};
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer;
 use rustc_infer::{

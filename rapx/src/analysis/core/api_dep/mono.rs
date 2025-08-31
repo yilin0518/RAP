@@ -618,7 +618,8 @@ pub fn get_impls<'tcx>(
     let preds = tcx.predicates_of(fn_did).instantiate(tcx, args);
     for (pred, _) in preds {
         if let Some(trait_pred) = pred.as_trait_clause() {
-            let trait_ref: rustc_type_ir::TraitRef<TyCtxt<'tcx>> = trait_pred.skip_binder().trait_ref;
+            let trait_ref: rustc_type_ir::TraitRef<TyCtxt<'tcx>> =
+                trait_pred.skip_binder().trait_ref;
             // ignore Sized trait
             // if tcx.is_lang_item(trait_ref.def_id, LangItem::Sized)
             //     || tcx.def_path_str(trait_ref.def_id) == "std::default::Default"

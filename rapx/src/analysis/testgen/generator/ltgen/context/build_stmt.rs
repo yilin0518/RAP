@@ -7,8 +7,7 @@ use crate::analysis::testgen::utils;
 use crate::{rap_debug, rap_trace};
 use rustc_hir::LangItem;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeFoldable};
-use rustc_span::sym::{self, Option};
-use rustc_type_ir::{TypeVisitable, TypeVisitableExt, TypeVisitor};
+use rustc_span::sym::{self};
 use std::collections::VecDeque;
 
 fn str_ref<'tcx>(region: ty::Region<'tcx>, tcx: TyCtxt<'tcx>) -> Ty<'tcx> {

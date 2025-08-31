@@ -51,13 +51,14 @@ pub enum UseKind {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum StmtKind<'tcx> {
     Input,
+    Tuple(Vec<Var>),               // place = (..)
+    Array(Vec<Var>),               // place = [..]
+    SliceRef(Var, ty::Mutability), // place = &[..]
     Call(ApiCall<'tcx>),
     SpecialCall(String, Vec<Var>),
     Ref(Box<Var>, ty::Mutability),   // a -> &(mut) b
-    Deref(Box<Var>, ty::Mutability), // &T -> &U
-    Box(Box<Var>),
-    Drop(Box<Var>),
-    Use(Var, UseKind),
+    // Deref(Box<Var>, ty::Mutability), // &T -> &U
+    Exploit(Var, UseKind),
 }
 
 impl<'tcx> StmtKind<'tcx> {
@@ -98,9 +99,9 @@ impl<'tcx> Stmt<'tcx> {
         }
     }
 
-    pub fn special_call(path: String, args: Vec<Var>, retval: Var) -> Stmt<'tcx> {
+    pub fn special_call(path: impl ToString, args: Vec<Var>, retval: Var) -> Stmt<'tcx> {
         Stmt {
-            kind: StmtKind::SpecialCall(path, args),
+            kind: StmtKind::SpecialCall(path.to_string(), args),
             place: retval,
         }
     }
@@ -112,30 +113,45 @@ impl<'tcx> Stmt<'tcx> {
         }
     }
 
-    pub fn deref_(place: Var, deref_place: Var, mutability: ty::Mutability) -> Stmt<'tcx> {
-        Stmt {
-            kind: StmtKind::Deref(Box::new(deref_place), mutability),
-            place,
-        }
-    }
+    // pub fn deref_(place: Var, deref_place: Var, mutability: ty::Mutability) -> Stmt<'tcx> {
+    //     Stmt {
+    //         kind: StmtKind::Deref(Box::new(deref_place), mutability),
+    //         place,
+    //     }
+    // }
 
     pub fn box_(place: Var, boxed: Var) -> Stmt<'tcx> {
-        Stmt {
-            kind: StmtKind::Box(Box::new(boxed)),
-            place,
-        }
+        Self::special_call("Box::new", vec![boxed], place)
     }
 
     pub fn drop_(place: Var, dropped: Var) -> Stmt<'tcx> {
+        Self::special_call("drop", vec![dropped], place)
+    }
+
+    pub fn tuple(place: Var, elems: Vec<Var>) -> Stmt<'tcx> {
         Stmt {
-            kind: StmtKind::Drop(Box::new(dropped)),
+            kind: StmtKind::Tuple(elems),
             place,
         }
     }
 
-    pub fn use_(place: Var, var: Var, use_kind: UseKind) -> Stmt<'tcx> {
+    pub fn array(place: Var, elems: Vec<Var>) -> Stmt<'tcx> {
         Stmt {
-            kind: StmtKind::Use(var, use_kind),
+            kind: StmtKind::Array(elems),
+            place,
+        }
+    }
+
+    pub fn slice_ref(place: Var, slice: Var, mutability: ty::Mutability) -> Stmt<'tcx> {
+        Stmt {
+            kind: StmtKind::SliceRef(slice, mutability),
+            place,
+        }
+    }
+
+    pub fn exploit(place: Var, var: Var, use_kind: UseKind) -> Stmt<'tcx> {
+        Stmt {
+            kind: StmtKind::Exploit(var, use_kind),
             place,
         }
     }

@@ -1,0 +1,9 @@
+[package]
+name = "gen_input"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[workspace]
+members = ["testgen_gen_input/gen_input_case_0"]

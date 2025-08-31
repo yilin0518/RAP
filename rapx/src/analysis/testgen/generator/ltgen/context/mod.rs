@@ -106,7 +106,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                     .type_implements_trait(debug_def_id, [ty], param_env)
                     .must_apply_modulo_regions()
             {
-                self.add_use_stmt(var, UseKind::Debug);
+                self.add_exploit_stmt(var, UseKind::Debug);
             }
         }
     }

@@ -25,7 +25,6 @@ impl<'tcx> Testgen<'tcx> {
 
     pub fn start(&self, test_crate: Option<&str>) {
         if matches!(self.tcx.crate_types()[0], CrateType::Executable) {
-            rap_info!("Skip executable target");
             return;
         }
 

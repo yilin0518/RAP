@@ -61,6 +61,10 @@ impl<'tcx> Context<'tcx> {
         self.var_state[&var]
     }
 
+    pub fn move_var(&mut self, var: Var) -> VarState {
+        self.set_var_state(var, VarState::Moved)
+    }
+
     pub fn set_var_state(&mut self, var: Var, state: VarState) -> VarState {
         assert!(!matches!(state, VarState::Borrowed(..)));
         self.var_state

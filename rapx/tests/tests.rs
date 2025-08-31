@@ -306,3 +306,9 @@ fn test_range_analysis() {
         );
     }
 }
+
+#[test]
+fn test_gen_input() {
+    let output = running_tests_with_arg("testgen/gen_input", "-testgen");
+    assert!(output.contains("miri run completed with return code: 0"), "Miri did not complete successfully.\nFull output:\n{}", output);
+}

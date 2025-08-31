@@ -14,6 +14,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PatternNode {
+    Static,
     Named(usize),
     Temp(usize),
 }
@@ -90,31 +91,27 @@ pub fn extract_constraints<'tcx>(
         fn_did,
         generic_args
     );
-    let tmp_infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
-    let args = tmp_infcx.fresh_args_for_item(DUMMY_SP, fn_did);
-    rap_info!("args = {:?}", args);
 
     let infcx = tcx.infer_ctxt().build(ty::TypingMode::PostAnalysis);
     let mut folder = InfcxVarFolder::new(&infcx, tcx);
 
     let early_fn_sig = tcx.fn_sig(fn_did);
+    rap_debug!("[extract_contraints] early_fn_sig = {:?}", early_fn_sig);
 
     let fresh_args =
         tcx.mk_args_from_iter(generic_args.iter().map(|arg| arg.fold_with(&mut folder)));
-
-    // set skip_vars to true to avoid overlay the vars generated in previous step
-    folder.set_skip_vars(true);
+    rap_debug!("[extract_contraints] fresh_args = {:?}", fresh_args);
 
     // formal fn_sig
-    let fn_sig = early_fn_sig
-        .instantiate(tcx, fresh_args)
-        .skip_binder()
-        .fold_with(&mut folder);
+    let fn_binder = early_fn_sig.instantiate(tcx, fresh_args);
+    let fn_sig = infcx.instantiate_binder_with_fresh_vars(
+        DUMMY_SP,
+        infer::BoundRegionConversionTime::FnCall,
+        fn_binder,
+    );
 
-    // set back to false
-    folder.set_skip_vars(false);
-
-    let temp_cnt = folder.cnt();
+    let temp_cnt = infcx.num_region_vars();
+    assert!(infcx.num_ty_vars() == 0);
 
     // outer universe fn_sig
     let free_fn_sig = fn_sig.fold_with(&mut folder);
@@ -160,6 +157,20 @@ pub fn extract_constraints<'tcx>(
     for (constraint, _) in region_constraint_data.constraints {
         let edge = match constraint {
             Constraint::VarSubVar(a, b) => EdgePattern(get_pattern_node(a), get_pattern_node(b)),
+            Constraint::RegSubVar(region, var) => {
+                if region.is_static() {
+                    EdgePattern(PatternNode::Static, get_pattern_node(var))
+                } else {
+                    panic!("unexpected constraint: {:?}", constraint);
+                }
+            }
+            Constraint::VarSubReg(var, region) => {
+                if region.is_static() {
+                    EdgePattern(get_pattern_node(var), PatternNode::Static)
+                } else {
+                    panic!("unexpected constraint: {:?}", constraint);
+                }
+            }
             _ => {
                 panic!("unexpected constraint: {:?}", constraint);
             }
@@ -183,7 +194,7 @@ pub fn extract_constraints<'tcx>(
         }
     });
 
-    subgraph.named_region_num = folder.cnt() - temp_cnt;
+    subgraph.named_region_num = infcx.num_region_vars() - temp_cnt;
     subgraph.temp_num = temp_cnt;
     subgraph
 }

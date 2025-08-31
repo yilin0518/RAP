@@ -1,5 +1,6 @@
 pub use crate::analysis::core::api_dep::is_def_id_public;
 pub use crate::analysis::core::api_dep::is_fuzzable_ty;
+use crate::rap_trace;
 use rustc_hir::{def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
@@ -122,27 +123,29 @@ pub fn ty_check_ptr<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> PtrCheckResult {
     }
 }
 
-pub fn visit_ty_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(Ty<'tcx>) -> bool) {
+pub fn visit_ty_fields_while<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>, f: &mut impl FnMut(Ty<'tcx>) -> bool) {
     if !f(ty) {
         return;
     }
     match ty.kind() {
-        TyKind::RawPtr(inner_ty, _)
-        | TyKind::Ref(_, inner_ty, _)
-        | TyKind::Array(inner_ty, _)
-        | TyKind::Slice(inner_ty) => {
-            visit_ty_while(*inner_ty, tcx, f);
+        TyKind::RawPtr(inner_ty, _) | TyKind::Ref(_, inner_ty, _) => {
+            if !f(*inner_ty) {
+                return;
+            }
+        }
+        TyKind::Array(inner_ty, _) | TyKind::Slice(inner_ty) => {
+            visit_ty_fields_while(*inner_ty, tcx, f);
         }
 
         // Tuple
         TyKind::Tuple(tys) => tys
             .iter()
-            .for_each(|inner_ty| visit_ty_while(inner_ty, tcx, f)),
+            .for_each(|inner_ty| visit_ty_fields_while(inner_ty, tcx, f)),
 
         // ADT
         TyKind::Adt(adt_def, substs) => {
             adt_def.all_fields().for_each(|field| {
-                visit_ty_while(field.ty(tcx, &substs), tcx, f);
+                visit_ty_fields_while(field.ty(tcx, &substs), tcx, f);
             });
         }
         _ => {}

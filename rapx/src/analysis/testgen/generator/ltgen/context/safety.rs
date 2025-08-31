@@ -64,12 +64,15 @@ fn destruct_ret_alias<'tcx>(
 pub fn check_possibility<'tcx>(lhs_ty: Ty<'tcx>, rhs_ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     let mut set = HashSet::new();
     let mut ret = false;
-    utils::visit_ty_while(rhs_ty, tcx, &mut |ty| {
+    utils::visit_ty_fields_while(rhs_ty, tcx, &mut |ty| {
         rap_trace!("[check_possibility] add {ty}");
         set.insert(tcx.erase_regions(ty));
         true
     });
-    utils::visit_ty_while(lhs_ty, tcx, &mut |ty| {
+    utils::visit_ty_fields_while(lhs_ty, tcx, &mut |ty| {
+        if ret {
+            return false;
+        }
         match ty.kind() {
             TyKind::RawPtr(inner_ty, _) | TyKind::Ref(_, inner_ty, _) => {
                 rap_trace!("[check_possibility] check {ty}");

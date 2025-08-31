@@ -57,16 +57,10 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
             StmtKind::Ref(var, mutability) => {
                 format!("{}{}", mutability.ref_prefix_str(), self.var_str(**var))
             }
-            StmtKind::Deref(var, mutability) => {
-                format!("{}*{}", mutability.ref_prefix_str(), self.var_str(**var))
-            }
-            StmtKind::Drop(var) => {
-                format!("drop({})", self.var_str(**var))
-            }
-            StmtKind::Box(var) => {
-                format!("Box::new({})", self.var_str(**var))
-            }
-            StmtKind::Use(var, kind) => match kind {
+            // StmtKind::Deref(var, mutability) => {
+            //     format!("{}*{}", mutability.ref_prefix_str(), self.var_str(**var))
+            // }
+            StmtKind::Exploit(var, kind) => match kind {
                 UseKind::Debug => {
                     format!(
                         "println!(\"{}: {{:?}}\",{})",
@@ -75,6 +69,31 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                     )
                 }
             },
+            StmtKind::Array(vars) => {
+                format!(
+                    "[{}]",
+                    vars.iter()
+                        .map(|arg| arg.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            StmtKind::Tuple(vars) => {
+                format!(
+                    "({})",
+                    vars.iter()
+                        .map(|arg| arg.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            StmtKind::SliceRef(inner_var, mutability) => {
+                format!(
+                    "{}{}[..]",
+                    mutability.ref_prefix_str(),
+                    self.var_str(*inner_var)
+                )
+            }
         }
     }
 
@@ -84,16 +103,11 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
 
     fn ty_str<'tcx>(&self, ty: Ty<'tcx>) -> String {
         format!("{}", ty)
-        // format!(
-        //     "{}",
-        //     FmtPrinter::print_string(tcx, Namespace::TypeNS, |fmt| fmt.pretty_print_type(ty))
-        //         .unwrap()
-        // )
     }
 
     fn need_explicit_type_annotation(&self, stmt: &Stmt<'_>) -> bool {
         match stmt.kind() {
-            StmtKind::Deref(..) => true,
+            StmtKind::Ref(_, _) => true,
             _ => false,
         }
     }

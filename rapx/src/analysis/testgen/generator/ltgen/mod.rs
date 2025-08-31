@@ -182,7 +182,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             );
             match kind {
                 TransformKind::Ref(mutability) => {
-                    cx.add_ref_stmt(var, mutability);
+                    cx.add_ref_stmt(var, mutability, None);
                 }
                 _ => {
                     panic!("not implemented yet");

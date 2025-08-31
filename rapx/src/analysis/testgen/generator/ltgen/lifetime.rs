@@ -165,6 +165,7 @@ impl RegionGraph {
 
         for pattern in patterns.patterns() {
             let get_index = |node: &PatternNode| match node {
+                PatternNode::Static => self.static_rid(),
                 PatternNode::Named(i) => subst[*i],
                 PatternNode::Temp(i) => temp[*i],
             };

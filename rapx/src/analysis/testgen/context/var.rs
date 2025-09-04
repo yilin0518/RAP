@@ -27,6 +27,18 @@ impl VarState {
     }
 }
 
+impl Display for VarState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VarState::Live => write!(f, "Live"),
+            VarState::Moved => write!(f, "Moved"),
+            VarState::Borrowed(ty::Mutability::Not) => write!(f, "Borrowed"),
+            VarState::Borrowed(ty::Mutability::Mut) => write!(f, "BorrowedMut"),
+            VarState::Dropped => write!(f, "Dropped"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Var(pub usize, pub bool); // bool is true if the var is an input var
 

@@ -39,6 +39,10 @@ impl<'tcx> Context<'tcx> {
         self.stmts.last().unwrap()
     }
 
+    pub fn vars(&self) -> impl Iterator<Item = Var> + '_ {
+        self.var_state.keys().copied()
+    }
+
     fn lift_mutability(&mut self, var: Var, mutability: ty::Mutability) {
         if matches!(mutability, ty::Mutability::Mut) {
             self.var_mut.insert(var, ty::Mutability::Mut);
@@ -61,15 +65,20 @@ impl<'tcx> Context<'tcx> {
         self.var_state[&var]
     }
 
-    pub fn move_var(&mut self, var: Var) -> VarState {
+    pub fn set_var_moved(&mut self, var: Var) -> VarState {
         self.set_var_state(var, VarState::Moved)
     }
 
     pub fn set_var_state(&mut self, var: Var, state: VarState) -> VarState {
         assert!(!matches!(state, VarState::Borrowed(..)));
-        self.var_state
+        let old_state = self
+            .var_state
             .insert(var, state)
-            .expect("var are expected always have a var state")
+            .expect("var are expected always have a var state");
+        if old_state == VarState::Moved {
+            unreachable!("try to change the varstate of moved var {var} to {state}");
+        }
+        old_state
     }
 
     pub fn set_var_borrowed(&mut self, var: Var, mutability: ty::Mutability) -> VarState {
@@ -84,15 +93,10 @@ impl<'tcx> Context<'tcx> {
             .var_state
             .iter()
             .filter_map(|(var, state)| match state {
-                VarState::Live => Some(*var),
+                VarState::Live | VarState::Borrowed(_) => Some(*var),
                 _ => None,
             });
         iter
-    }
-
-    pub fn avaiable_vars_with_ty(&self, ty: Ty<'tcx>) -> impl Iterator<Item = Var> + use<'_, 'tcx> {
-        self.available_vars()
-            .filter(move |var| utils::is_ty_eq(self.type_of(*var), ty, self.tcx))
     }
 
     pub fn all_possible_providers(&self, ty: Ty<'tcx>) -> Vec<Var> {

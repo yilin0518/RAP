@@ -320,7 +320,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
             }
         }));
 
-        rap_debug!("[estimate_coverage] worklist = {:?}", worklist);
+        rap_trace!("[estimate_coverage] initial worklist = {:?}", worklist);
 
         // initialize queue with fuzzable type
         while let Some(index) = worklist.pop_front() {
@@ -346,7 +346,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
                         }
                     }
                 } {
-                    rap_debug!("[estimate_coverage] add {:?} to worklist", next);
+                    // rap_trace!("[estimate_coverage] add {:?} to worklist", next);
                     reachable[next.index()] = true;
                     worklist.push_back(next);
                 }

@@ -1,4 +1,5 @@
 use super::lifetime;
+use crate::analysis::testgen::generator::ltgen::lifetime::visit_ty_region_with;
 use crate::analysis::testgen::{generator::ltgen::folder::InfcxVarFolder, utils};
 use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
@@ -138,9 +139,9 @@ pub fn extract_constraints<'tcx>(
     };
 
     for input in fn_sig.inputs().iter() {
-        lifetime::visit_structure_region_with(*input, None, tcx, &mut f);
+        lifetime::visit_ty_region_with(*input, None, tcx, &mut f);
     }
-    lifetime::visit_structure_region_with(fn_sig.output(), None, tcx, &mut f);
+    lifetime::visit_ty_region_with(fn_sig.output(), None, tcx, &mut f);
 
     let region_constraint_data = infcx.take_and_reset_region_constraints();
     let get_pattern_node = |vid: RegionVid| -> PatternNode {
@@ -171,8 +172,12 @@ pub fn extract_constraints<'tcx>(
                     panic!("unexpected constraint: {:?}", constraint);
                 }
             }
-            _ => {
-                panic!("unexpected constraint: {:?}", constraint);
+            Constraint::RegSubReg(a, b) => {
+                if a.is_static() && b.is_static() {
+                    EdgePattern(PatternNode::Static, PatternNode::Static)
+                } else {
+                    panic!("unexpected constraint: {:?}", constraint);
+                }
             }
         };
         subgraph.patterns.push(edge);
@@ -181,16 +186,32 @@ pub fn extract_constraints<'tcx>(
     // extract constraints from where clauses of Fn
     let predicates = tcx.predicates_of(fn_did).instantiate(tcx, fresh_args);
     predicates.predicates.iter().for_each(|clause| {
-        if let Some(outlive_pred) = clause.as_region_outlives_clause() {
-            let outlive_pred = outlive_pred.skip_binder();
-            // lhs : rhs
-            let (lhs, rhs) = (outlive_pred.0, outlive_pred.1);
+        match clause.kind().skip_binder() {
+            // T: 'a
+            ty::ClauseKind::TypeOutlives(pred) => {
+                let ty = pred.0;
+                let region = pred.1;
+                rap_debug!("pred: {:?} {:?}", ty, region);
+                visit_ty_region_with(ty, Some(region), tcx, &mut |prev, current| {
+                    subgraph.patterns.push(EdgePattern(
+                        get_pattern_node(prev.as_var()),
+                        get_pattern_node(current.as_var()),
+                    ));
+                });
+            }
+            // 'a : 'r
+            ty::ClauseKind::RegionOutlives(outlive_pred) => {
+                let outlive_pred = outlive_pred;
+                // lhs : rhs
+                let (lhs, rhs) = (outlive_pred.0, outlive_pred.1);
 
-            // build edge from rhs to lhs
-            subgraph.patterns.push(EdgePattern(
-                get_pattern_node(rhs.as_var()),
-                get_pattern_node(lhs.as_var()),
-            ));
+                // build edge from rhs to lhs
+                subgraph.patterns.push(EdgePattern(
+                    get_pattern_node(rhs.as_var()),
+                    get_pattern_node(lhs.as_var()),
+                ));
+            }
+            _ => {}
         }
     });
 

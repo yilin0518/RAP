@@ -6,7 +6,7 @@ use super::pattern::PatternProvider;
 use super::FnAliasMap;
 use crate::analysis::testgen::context::Var;
 use crate::analysis::testgen::context::{Context, UseKind};
-use crate::analysis::testgen::generator::ltgen::lifetime::visit_structure_region_with;
+use crate::analysis::testgen::generator::ltgen::lifetime::visit_ty_region_with;
 use crate::rap_debug;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::TyCtxtInferExt;
@@ -45,6 +45,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         &self.cx
     }
 
+
     pub fn into_cx(self) -> Context<'tcx> {
         self.cx
     }
@@ -79,7 +80,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         self.var_rid.insert(next_var, rid);
 
         // add structural constraint between 'var and 'a where carry by the type of var
-        visit_structure_region_with(
+        visit_ty_region_with(
             ty,
             Some(self.region_of(next_var)),
             self.tcx,

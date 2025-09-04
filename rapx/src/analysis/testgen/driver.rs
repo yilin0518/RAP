@@ -71,7 +71,7 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
     let workspace_dir;
 
     if config.is_debug_mode() {
-        workspace_dir = std::env::current_dir()?.join(format!("testgen_{}", local_crate_name));
+        workspace_dir = std::env::current_dir()?.join("testgen");
         config.max_run = 1;
     } else {
         workspace_dir = config.build_dir.join(local_crate_name.as_str());
@@ -112,11 +112,13 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         .max_iteration(config.max_iteration)
         .build();
 
+    let report_path = workspace_dir.join("miri_report.txt");
+
     let mut report_file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
-        .open(workspace_dir.join("miri_report.txt"))?;
+        .open(&report_path)?;
 
     let mut reports = Vec::new();
     let package_name = std::env::var("CARGO_PKG_NAME")?;
@@ -134,7 +136,7 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let rs_str = syn.syn(cx.cx(), tcx);
 
         // 3. Build cargo project
-        let project_name = format!("{}_case_{}", local_crate_name, run_count);
+        let project_name = format!("case{}", run_count);
         let project_path = workspace_dir.join(&project_name);
         let debug_path = project_path.as_path().join("region_graph.dot");
 
@@ -200,6 +202,8 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
             report.get_retcode()
         );
     }
+
+    rap_info!("report saved to: {}", report_path.display());
 
     Ok(())
 }

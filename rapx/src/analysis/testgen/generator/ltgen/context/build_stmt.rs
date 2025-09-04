@@ -15,7 +15,8 @@ fn str_ref<'tcx>(region: ty::Region<'tcx>, tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
 }
 
 impl<'tcx, 'a> LtContext<'tcx, 'a> {
-    /// from is exclusive
+    ///
+    /// drop all vars depended on `from`, but skip dropping `from` itself
     fn set_implicit_drop_state_from(&mut self, from: Var) {
         let mut q = VecDeque::from([self.rid_of(from).into()]);
         let mut visited = vec![false; self.region_graph.total_node_count()];
@@ -55,6 +56,11 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         }
     }
 
+    fn move_var(&mut self, var: Var) {
+        self.cx.set_var_moved(var);
+        self.set_implicit_drop_state_from(var)
+    }
+
     pub fn add_drop_stmt(&mut self, dropped: Var) {
         if !self
             .cx
@@ -63,6 +69,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         {
             let var = self.mk_var(self.tcx.types.unit, false);
             self.cx.add_stmt(Stmt::drop_(var, dropped));
+            self.explicit_droped_cnt += 1;
             self.set_implicit_drop_state_from(dropped);
         }
     }
@@ -74,7 +81,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     }
 
     pub fn add_box_stmt(&mut self, boxed: Var) -> Var {
-        self.cx.move_var(boxed);
+        self.cx.set_var_moved(boxed);
         let ty = self.cx.type_of(boxed);
         let var = self.mk_var(Ty::new_box(self.tcx, ty), false);
         self.cx.add_stmt(Stmt::box_(var, boxed));
@@ -188,7 +195,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                         if *inner_var == DUMMY_INPUT_VAR {
                             *inner_var = self.try_add_input_stmts(inner_ty, true);
                         }
-                        self.cx.move_var(*inner_var);
+                        self.cx.set_var_moved(*inner_var);
                     }
                     var = self.mk_var(ty, false);
                     self.cx.add_stmt(Stmt::tuple(var, vars));
@@ -203,7 +210,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                     let mut vars = Vec::new();
                     for _ in 0..len {
                         let inner_var = self.try_add_input_stmts(*array_ty, true);
-                        self.cx.move_var(inner_var);
+                        self.cx.set_var_moved(inner_var);
                         vars.push(inner_var);
                     }
                     var = self.mk_var(ty, false);
@@ -285,7 +292,6 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         var
     }
 
-    // FIXME: place: &'place T = &'t t or place:&'t T = &'t t?
     pub fn add_ref_stmt(
         &mut self,
         var: Var,

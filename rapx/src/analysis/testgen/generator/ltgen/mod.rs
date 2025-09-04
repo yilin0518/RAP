@@ -111,16 +111,20 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         self.tcx
     }
 
-    pub fn api_graph(&self) -> &ApiDepGraph<'tcx> {
-        &self.api_graph
-    }
-
     fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> bool {
         rap_debug!(
             "live vars: {}",
             cx.cx()
                 .available_vars()
-                .map(|var| format!("{var}"))
+                .map(|var| format!("{var}: {:?}", cx.cx().type_of(var)))
+                .join(", ")
+        );
+
+        rap_debug!(
+            "varstate: {}",
+            cx.cx()
+                .vars()
+                .map(|var| { format!("{} -> {}", var, cx.cx().var_state(var)) })
                 .join(", ")
         );
 
@@ -134,6 +138,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             "live tys: {}",
             tys.iter().map(|ty| format!("{ty}")).join(", ")
         );
+
         let nodes = self.api_graph.eligible_api_nodes_with(&tys);
         let mut transforms = Vec::new();
 
@@ -145,6 +150,9 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 .map(|(_, kind)| (var, kind));
             transforms.extend(res);
         }
+
+        rap_debug!("possible next API nodes: {:?}", nodes);
+        rap_debug!("possible next transform: {:?}", transforms);
 
         // No action can do
         if nodes.is_empty() && transforms.is_empty() {
@@ -197,7 +205,6 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     // pub fn print_brief()
 
     pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
-        let tcx = self.tcx();
         let mut lt_ctxt = LtContext::new(self.tcx, &self.alias_map);
         let (estimated, total) = self.api_graph.estimate_coverage();
         let mut count = 0;

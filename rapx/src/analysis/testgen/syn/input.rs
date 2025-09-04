@@ -15,7 +15,6 @@ pub trait InputGen {
     fn gen_str(&mut self) -> String;
 
     fn gen<'tcx>(&mut self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> String {
-        rap_debug!("gen input for {:?}", ty);
         match ty.kind() {
             TyKind::Ref(_, inner_ty, mutability) => {
                 if inner_ty.is_str() && mutability.is_not() {

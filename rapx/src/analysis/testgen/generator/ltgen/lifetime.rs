@@ -17,10 +17,10 @@ pub enum RegionNode {
 }
 
 impl RegionNode {
-    pub fn as_var(&self) -> Var {
+    pub fn as_var(&self) -> Option<Var> {
         match self {
-            RegionNode::Named(var) => *var,
-            _ => panic!("not a named node: {:?}", self),
+            RegionNode::Named(var) => Some(*var),
+            _ => None,
         }
     }
 }
@@ -240,7 +240,7 @@ impl RegionGraph {
     }
 }
 
-pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'tcx>)>(
+pub fn visit_ty_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'tcx>)>(
     ty: ty::Ty<'tcx>,
     prev: Option<ty::Region<'tcx>>,
     tcx: TyCtxt<'tcx>,
@@ -251,17 +251,17 @@ pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'
             if let Some(prev_region) = prev {
                 f(prev_region, *region);
             }
-            visit_structure_region_with(*inner_ty, Some(*region), tcx, f);
+            visit_ty_region_with(*inner_ty, Some(*region), tcx, f);
         }
 
         ty::TyKind::Array(inner_ty, _) | ty::TyKind::Slice(inner_ty) => {
-            visit_structure_region_with(*inner_ty, prev, tcx, f);
+            visit_ty_region_with(*inner_ty, prev, tcx, f);
         }
 
         // Tuple
         ty::TyKind::Tuple(tys) => {
             for ty in tys.iter() {
-                visit_structure_region_with(ty, prev, tcx, f);
+                visit_ty_region_with(ty, prev, tcx, f);
             }
         }
 
@@ -275,7 +275,7 @@ pub fn visit_structure_region_with<'tcx, F: FnMut(ty::Region<'tcx>, ty::Region<'
                         }
                     }
                     ty::GenericArgKind::Type(inner_ty) => {
-                        visit_structure_region_with(inner_ty, prev, tcx, f);
+                        visit_ty_region_with(inner_ty, prev, tcx, f);
                     }
                     _ => {}
                 }

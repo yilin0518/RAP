@@ -91,11 +91,7 @@ pub fn check_possibility<'tcx>(lhs_ty: Ty<'tcx>, rhs_ty: Ty<'tcx>, tcx: TyCtxt<'
 }
 
 impl<'tcx, 'a> LtContext<'tcx, 'a> {
-    /// This function returns a set that indicates rids the var may point to
-    pub fn detect_potential_point_to(
-        &self,
-        stmt: &Stmt<'tcx>,
-    ) -> Option<HashMap<Var, HashSet<Rid>>> {
+    pub fn detect_missing_point_to(&self, stmt: &Stmt<'tcx>) -> Option<HashMap<Var, HashSet<Rid>>> {
         let mut ret = HashMap::new();
         let tcx = self.tcx;
 
@@ -120,7 +116,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
             // if rhs_ty does not bind with any lifetime,
             // this maybe imply that lhs is a reference of rhs (e.g., lhs=&rhs.f)
             // the coresponding lifetime binding 'lhs->'rhs should be added
-            // FIXME: the field-sensitive alias analysis is not exactly possible,
+            // FIXME: the field-sensitive alias analysis is not exactly accurate,
             // so we may miss some 'lhs -> 'rhs lifetime bindings
             if rhs_ty_rids.is_empty() && check_possibility(lhs_ty, rhs_ty, tcx) {
                 rhs_ty_rids.push(self.rid_of(rhs_var));
@@ -174,7 +170,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
         let mut success = false;
 
-        if let Some(vec) = self.detect_potential_point_to(&stmt) {
+        if let Some(vec) = self.detect_missing_point_to(&stmt) {
             for (var, rids) in vec {
                 rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
                 for rid in rids {
@@ -187,11 +183,12 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
                     let dropped_var: Vec<Var> = src_rids
                         .into_iter()
-                        .map(|rid| {
-                            rap_debug!("try to find node for {rid}");
-                            self.region_graph.get_node(rid).as_var()
+                        .filter_map(|rid| {
+                            self.region_graph
+                                .get_node(rid)
+                                .as_var()
+                                .filter(|var| !self.cx.var_state(*var).is_dead())
                         })
-                        .filter(|var| !self.cx.var_state(*var).is_dead())
                         .collect();
 
                     if !dropped_var.is_empty() {

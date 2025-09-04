@@ -8,6 +8,7 @@ fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
         ty::Adt(def, _) => {
             tcx.is_lang_item(def.did(), LangItem::String)
                 || tcx.is_diagnostic_item(sym::Vec, def.did())
+                || tcx.is_diagnostic_item(sym::Arc, def.did())
         }
         _ => false,
     }

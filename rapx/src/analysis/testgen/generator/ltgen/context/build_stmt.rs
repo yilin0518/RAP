@@ -5,6 +5,7 @@ use crate::analysis::testgen::generator::ltgen::folder::RidExtractFolder;
 use crate::analysis::testgen::generator::ltgen::lifetime::RegionNode;
 use crate::analysis::testgen::utils;
 use crate::{rap_debug, rap_trace};
+use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeFoldable};
 use rustc_span::sym::{self};
@@ -23,11 +24,13 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         visited[self.rid_of(from).index()] = true;
         while let Some(rid) = q.pop_front() {
             if let RegionNode::Named(var) = self.region_graph.get_node(rid) {
-                if from != var && self.cx.var_state(var).is_dead() {
+                if self.cx.var_state(var).is_dead() {
                     continue;
                 }
-                self.cx.set_var_state(var, VarState::Dropped);
-                rap_debug!("implicitly set var {} dropped", var);
+                if from != var {
+                    self.cx.set_var_state(var, VarState::Dropped);
+                    rap_debug!("implicitly set var {} dropped", var);
+                }
             }
             for next_idx in self
                 .region_graph
@@ -58,10 +61,11 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
     fn move_var(&mut self, var: Var) {
         self.cx.set_var_moved(var);
-        self.set_implicit_drop_state_from(var)
+        // self.set_implicit_drop_state_from(var)
     }
 
     pub fn add_drop_stmt(&mut self, dropped: Var) {
+        self.set_implicit_drop_state_from(dropped);
         if !self
             .cx
             .set_var_state(dropped, VarState::Dropped)
@@ -70,7 +74,6 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
             let var = self.mk_var(self.tcx.types.unit, false);
             self.cx.add_stmt(Stmt::drop_(var, dropped));
             self.explicit_droped_cnt += 1;
-            self.set_implicit_drop_state_from(dropped);
         }
     }
 
@@ -81,27 +84,56 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     }
 
     pub fn add_box_stmt(&mut self, boxed: Var) -> Var {
-        self.cx.set_var_moved(boxed);
+        self.move_var(boxed);
         let ty = self.cx.type_of(boxed);
         let var = self.mk_var(Ty::new_box(self.tcx, ty), false);
         self.cx.add_stmt(Stmt::box_(var, boxed));
         var
     }
 
-    /// deref should explicitly annotate the type of deref var
-    /// &'a T -> &'a U
-    // pub fn add_deref_stmt(
-    //     &mut self,
-    //     derefed: Var,
-    //     ty: Ty<'tcx>,
-    //     mutability: ty::Mutability,
-    // ) -> Var {
-    //     self.borrow_var(derefed, mutability);
-    //     let ref_ty = Ty::new_ref(self.tcx, self.region_of(derefed), ty, mutability);
-    //     let var = self.mk_var(ref_ty, false);
-    //     self.cx.add_stmt(Stmt::deref_(var, derefed, mutability));
-    //     var
-    // }
+    pub fn try_add_input_stmts_for_std_item(
+        &mut self,
+        ty: Ty<'tcx>,
+        item_did: DefId,
+        args: ty::GenericArgsRef<'tcx>,
+    ) -> Option<Var> {
+        if self.tcx.is_lang_item(item_did, LangItem::String) {
+            let inner_var =
+                self.try_add_input_stmts(str_ref(self.tcx.lifetimes.re_static, self.tcx), true);
+            let var = self.mk_var(ty, false);
+            self.move_var(inner_var);
+            self.cx.add_stmt(Stmt::special_call(
+                "String::from".to_owned(),
+                vec![inner_var],
+                var,
+            ));
+            Some(var)
+        } else if self.tcx.is_diagnostic_item(sym::Vec, item_did) {
+            let inner_ty = args.type_at(0);
+            let inner_var = self.try_add_input_stmts(Ty::new_array(self.tcx, inner_ty, 3), true); // FIXME: vec length is fixed to 3
+            let var = self.mk_var(ty, false);
+            self.move_var(inner_var);
+            self.cx.add_stmt(Stmt::special_call(
+                "Vec::from".to_owned(),
+                vec![inner_var],
+                var,
+            ));
+            Some(var)
+        } else if self.tcx.is_diagnostic_item(sym::Arc, item_did) {
+            let inner_ty = args.type_at(0);
+            let inner_var = self.try_add_input_stmts(inner_ty, true);
+            let var = self.mk_var(ty, false);
+            self.move_var(inner_var);
+            self.cx.add_stmt(Stmt::special_call(
+                "std::sync::Arc::new".to_owned(),
+                vec![inner_var],
+                var,
+            ));
+            Some(var)
+        } else {
+            None
+        }
+    }
 
     /// try directly add input stmt to generate an instance of ty.
     /// This could fail since some types cannot be directly obtained from input,
@@ -116,26 +148,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
         let var;
         match ty.kind() {
             ty::Adt(def, args) => {
-                if self.tcx.is_lang_item(def.did(), LangItem::String) {
-                    let inner_var = self
-                        .try_add_input_stmts(str_ref(self.tcx.lifetimes.re_static, self.tcx), true);
-                    var = self.mk_var(ty, false);
-                    self.cx.add_stmt(Stmt::special_call(
-                        "String::from".to_owned(),
-                        vec![inner_var],
-                        var,
-                    ));
-                    return var;
-                } else if self.tcx.is_diagnostic_item(sym::Vec, def.did()) {
-                    let inner_ty = args.type_at(0);
-                    let inner_var =
-                        self.try_add_input_stmts(Ty::new_array(self.tcx, inner_ty, 3), true); // FIXME: vec length is fixed to 3
-                    var = self.mk_var(ty, false);
-                    self.cx.add_stmt(Stmt::special_call(
-                        "Vec::from".to_owned(),
-                        vec![inner_var],
-                        var,
-                    ));
+                if let Some(var) = self.try_add_input_stmts_for_std_item(ty, def.did(), args) {
                     return var;
                 }
                 var = DUMMY_INPUT_VAR;
@@ -195,7 +208,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                         if *inner_var == DUMMY_INPUT_VAR {
                             *inner_var = self.try_add_input_stmts(inner_ty, true);
                         }
-                        self.cx.set_var_moved(*inner_var);
+                        self.move_var(*inner_var);
                     }
                     var = self.mk_var(ty, false);
                     self.cx.add_stmt(Stmt::tuple(var, vars));
@@ -210,7 +223,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                     let mut vars = Vec::new();
                     for _ in 0..len {
                         let inner_var = self.try_add_input_stmts(*array_ty, true);
-                        self.cx.set_var_moved(inner_var);
+                        self.move_var(inner_var);
                         vars.push(inner_var);
                     }
                     var = self.mk_var(ty, false);
@@ -258,13 +271,10 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                 continue;
             }
 
-            // if var: Copy, simply copy the var
-            if utils::is_ty_impl_copy(self.cx.type_of(arg), tcx) {
-                continue;
-            }
-
             // if the var is not copy, the ownership of the var is moved into the call
-            self.cx.set_var_state(arg, VarState::Moved);
+            if !utils::is_ty_impl_copy(self.cx.type_of(arg), tcx) {
+                self.cx.set_var_state(arg, VarState::Moved);
+            }
         }
 
         let var = self.mk_var(output_ty, false);

@@ -4,8 +4,8 @@ mod safety;
 use super::lifetime::{RegionGraph, Rid};
 use super::pattern::PatternProvider;
 use super::FnAliasMap;
-use crate::analysis::testgen::context::Var;
 use crate::analysis::testgen::context::{Context, UseKind};
+use crate::analysis::testgen::context::{Var, VarState};
 use crate::analysis::testgen::generator::ltgen::lifetime::visit_ty_region_with;
 use crate::rap_debug;
 use rustc_hir::def_id::DefId;
@@ -44,7 +44,6 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     pub fn cx(&self) -> &Context<'tcx> {
         &self.cx
     }
-
 
     pub fn into_cx(self) -> Context<'tcx> {
         self.cx
@@ -102,7 +101,8 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
         for var in vars {
             let ty = self.cx.type_of(var);
-            if ty != self.tcx.types.unit
+            if self.cx.var_state(var) != VarState::borrowed_mut()
+                && ty != self.tcx.types.unit
                 && infcx
                     .type_implements_trait(debug_def_id, [ty], param_env)
                     .must_apply_modulo_regions()

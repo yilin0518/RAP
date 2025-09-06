@@ -46,26 +46,11 @@ pub fn extract_rids<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> Vec<Rid> {
 pub struct InfcxVarFolder<'tcx, 'a> {
     infcx: &'a InferCtxt<'tcx>,
     tcx: TyCtxt<'tcx>,
-    skip_vars: bool,
-    cnt: usize,
 }
 
 impl<'tcx, 'a> InfcxVarFolder<'tcx, 'a> {
     pub fn new(infcx: &'a InferCtxt<'tcx>, tcx: TyCtxt<'tcx>) -> InfcxVarFolder<'tcx, 'a> {
-        InfcxVarFolder {
-            infcx,
-            tcx,
-            skip_vars: false,
-            cnt: 0,
-        }
-    }
-
-    pub fn set_skip_vars(&mut self, skip: bool) {
-        self.skip_vars = skip;
-    }
-
-    pub fn cnt(&self) -> usize {
-        self.cnt
+        InfcxVarFolder { infcx, tcx }
     }
 }
 
@@ -73,12 +58,7 @@ impl<'tcx, 'a> ty::TypeFolder<TyCtxt<'tcx>> for InfcxVarFolder<'tcx, 'a> {
     fn cx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
-    fn fold_region(&mut self, region: ty::Region<'tcx>) -> ty::Region<'tcx> {
-        if self.skip_vars && matches!(region.kind(), ty::RegionKind::ReVar(_)) {
-            return region;
-        }
-
-        self.cnt += 1;
+    fn fold_region(&mut self, _: ty::Region<'tcx>) -> ty::Region<'tcx> {
         self.infcx.next_region_var(infer::MiscVariable(DUMMY_SP))
     }
 }

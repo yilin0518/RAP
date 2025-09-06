@@ -53,6 +53,9 @@ pub fn dump_alias_map(
     tcx: TyCtxt<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for (did, aliases) in alias_map {
+        if tcx.is_closure_like(*did) {
+            continue;
+        }
         writeln!(
             os,
             "{} : {} = {}",
@@ -99,7 +102,6 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut alias_analysis = alias::mop::MopAlias::new(tcx);
     let alias_map = alias_analysis.start();
-
     let alias_file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)

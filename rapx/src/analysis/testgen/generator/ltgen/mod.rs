@@ -6,11 +6,14 @@ mod pattern;
 mod select;
 
 use crate::analysis::core::alias::FnRetAlias;
+use crate::analysis::core::api_dep::DepNode;
 use crate::analysis::core::api_dep::{graph::TransformKind, ApiDepGraph};
+use crate::analysis::testgen::context::Var;
 use crate::analysis::testgen::utils::{self};
 use crate::{rap_debug, rap_info};
 use context::LtContext;
 use itertools::Itertools;
+use rand::distr::weighted::WeightedIndex;
 use rand::rngs::ThreadRng;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
@@ -20,6 +23,12 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 
 type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum Action<'tcx> {
+    Api(DepNode<'tcx>),
+    Transform(Var, TransformKind),
+}
 
 pub struct LtGenBuilder<'tcx, 'a, R: Rng> {
     tcx: TyCtxt<'tcx>,
@@ -111,7 +120,36 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         self.tcx
     }
 
-    fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> bool {
+    fn weight_of_actions(&self, actions: &[Action<'tcx>]) -> Vec<f32> {
+        vec![1.0; actions.len()]
+    }
+
+    fn eligable_actions(&self, cx: &LtContext<'tcx, 'a>) -> Vec<Action<'tcx>> {
+        let mut actions = Vec::new();
+
+        let tys: Vec<_> = cx
+            .cx()
+            .available_vars()
+            .map(|var| cx.cx().type_of(var))
+            .collect();
+
+        for node in self.api_graph.eligible_api_nodes_with(&tys) {
+            actions.push(Action::Api(node));
+        }
+
+        for var in cx.cx().available_vars() {
+            let res = self
+                .api_graph
+                .eligible_transform_with(&[cx.cx().type_of(var)])
+                .into_iter()
+                .map(|(_, kind)| Action::Transform(var, kind));
+            actions.extend(res);
+        }
+
+        actions
+    }
+
+    fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> Option<Action<'tcx>> {
         rap_debug!(
             "live vars: {}",
             cx.cx()
@@ -139,67 +177,19 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             tys.iter().map(|ty| format!("{ty}")).join(", ")
         );
 
-        let nodes = self.api_graph.eligible_api_nodes_with(&tys);
-        let mut transforms = Vec::new();
-
-        for var in cx.cx().available_vars() {
-            let res = self
-                .api_graph
-                .eligible_transform_with(&[cx.cx().type_of(var)])
-                .into_iter()
-                .map(|(_, kind)| (var, kind));
-            transforms.extend(res);
-        }
-
-        rap_debug!("possible next API nodes: {:?}", nodes);
-        rap_debug!("possible next transform: {:?}", transforms);
+        let actions = self.eligable_actions(&cx);
+        rap_debug!("# eligible actions = {}", actions.len());
+        rap_debug!("eligible actions: {:?}", actions);
 
         // No action can do
-        if nodes.is_empty() && transforms.is_empty() {
-            return false;
+        if actions.is_empty() {
+            return None;
         }
 
-        let num_total = nodes.len() + transforms.len();
-        rap_debug!(
-            "# eligible APIs = {}, # transforms = {}",
-            nodes.len(),
-            transforms.len()
-        );
-        let no = self.rng.borrow_mut().random_range(0..num_total);
-        if no < nodes.len() {
-            let (fn_did, args) = nodes[no].as_api();
-            rap_debug!(
-                "[next] select API call: {}",
-                self.tcx.def_path_str_with_args(fn_did, args)
-            );
-            if let Some(call) = self.get_eligable_call(fn_did, args, cx) {
-                self.covered_api.insert(call.fn_did());
-                cx.add_call_stmt(call);
-                if self.rng.borrow_mut().random_ratio(1, 2) && cx.try_inject_drop() {
-                    rap_debug!("successfully inject drop");
-                }
-                return true;
-            }
-        } else {
-            let (var, kind) = transforms[no - nodes.len()];
-            rap_debug!(
-                "[next] select transform: {}: {} {}",
-                var,
-                cx.cx().type_of(var),
-                kind
-            );
-            match kind {
-                TransformKind::Ref(mutability) => {
-                    cx.add_ref_stmt(var, mutability, None);
-                }
-                _ => {
-                    panic!("not implemented yet");
-                }
-            }
-            return true;
-        }
-
-        false
+        let weights = self.weight_of_actions(&actions);
+        let dist = WeightedIndex::new(&weights).unwrap();
+        let index = self.rng.borrow_mut().sample(dist);
+        Some(actions[index])
     }
 
     // pub fn print_brief()
@@ -220,7 +210,44 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 break;
             }
 
-            self.next(&mut lt_ctxt);
+            if let Some(action) = self.next(&mut lt_ctxt) {
+                match action {
+                    Action::Api(node) => {
+                        let (fn_did, args) = node.as_api();
+                        rap_debug!(
+                            "[next] select API call: {}",
+                            self.tcx.def_path_str_with_args(fn_did, args)
+                        );
+                        if let Some(call) = self.get_eligable_call(fn_did, args, &mut lt_ctxt) {
+                            self.covered_api.insert(call.fn_did());
+                            lt_ctxt.add_call_stmt(call);
+                            if self.rng.borrow_mut().random_ratio(1, 2) && lt_ctxt.try_inject_drop()
+                            {
+                                rap_debug!("successfully inject drop");
+                            }
+                        }
+                    }
+                    Action::Transform(var, kind) => {
+                        rap_debug!(
+                            "[next] select transform: {}: {} {}",
+                            var,
+                            lt_ctxt.cx().type_of(var),
+                            kind
+                        );
+                        match kind {
+                            TransformKind::Ref(mutability) => {
+                                lt_ctxt.add_ref_stmt(var, mutability, None);
+                            }
+                            _ => {
+                                panic!("not implemented yet");
+                            }
+                        }
+                    }
+                }
+            } else {
+                rap_info!("no eligable action, generation terminate");
+                break;
+            }
 
             rap_info!(
                 "complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{}",

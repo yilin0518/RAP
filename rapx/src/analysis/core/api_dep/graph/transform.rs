@@ -14,8 +14,7 @@ static ALL_TRANSFORMKIND: [TransformKind; 2] = [
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub enum TransformKind {
     Ref(ty::Mutability),
-    Deref,
-    Box,
+    Unwrap, // unwrap Option<T>, Result<T, E>
 }
 
 impl TransformKind {
@@ -28,8 +27,7 @@ impl Display for TransformKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TransformKind::Ref(mutability) => write!(f, "{}T", mutability.ref_prefix_str()),
-            TransformKind::Deref => write!(f, "Deref"),
-            TransformKind::Box => write!(f, "Box"),
+            TransformKind::Unwrap => write!(f, "Unwrap"),
         }
     }
 }

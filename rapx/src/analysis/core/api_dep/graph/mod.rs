@@ -3,6 +3,7 @@ pub mod dep_node;
 mod resolve;
 mod serialize;
 pub mod transform;
+pub mod avail;
 mod ty_wrapper;
 
 use super::Config;
@@ -182,56 +183,6 @@ impl<'tcx> ApiDepGraph<'tcx> {
         if !self.graph.contains_edge(src, dst) {
             self.graph.add_edge(src, dst, edge);
         }
-    }
-
-    pub fn eligible_api_nodes_with(&self, tys: &[Ty<'tcx>]) -> Vec<&DepNode<'tcx>> {
-        let check_ty = |ty: Ty<'tcx>| {
-            if utils::is_fuzzable_ty(ty, self.tcx) {
-                return true;
-            }
-            if tys.iter().any(|avail_ty| {
-                if utils::is_ty_eq(*avail_ty, ty, self.tcx) {
-                    return true;
-                }
-                false
-            }) {
-                return true;
-            }
-            return false;
-        };
-        self.graph
-            .node_indices()
-            .filter_map(|index| {
-                if let DepNode::Api(fn_did, args) = self.graph[index] {
-                    if self
-                        .graph
-                        .neighbors_directed(index, Direction::Incoming)
-                        .all(|neighbor| check_ty(self.graph[neighbor].as_ty().ty()))
-                    {
-                        return Some(&self.graph[index]);
-                    }
-                }
-                None
-            })
-            .collect()
-    }
-
-    pub fn eligible_transform_with(
-        &self,
-        tys: &[Ty<'tcx>],
-    ) -> Vec<(TyWrapper<'tcx>, TransformKind)> {
-        let mut set = HashSet::new();
-        for ty in tys {
-            if let Some(node) = self.get_index(DepNode::Ty((*ty).into())) {
-                for edge in self.graph.edges(node) {
-                    if let Some(kind) = edge.weight().as_transform_kind() {
-                        let target_ty = self.graph[edge.target()].as_ty();
-                        set.insert((target_ty, kind));
-                    }
-                }
-            }
-        }
-        set.into_iter().collect()
     }
 
     pub fn add_generic_api(&mut self, fn_did: DefId) -> bool {

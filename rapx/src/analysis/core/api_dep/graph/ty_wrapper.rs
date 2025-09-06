@@ -20,16 +20,6 @@ impl<'tcx> TyWrapper<'tcx> {
         self.ty
     }
 
-    // pub fn into_deref(&self, tcx: TyCtxt<'tcx>) -> Option<TyWrapper<'tcx>> {
-    //     let param_env = ParamEnv::reveal_all();
-    //     let deref_trait = tcx.lang_items().deref_trait()?;
-    //     let infcx = tcx.infer_ctxt().build();// Deref have no generic args
-    //     let deref_trait = ty::TraitRef::identity(tcx, deref_trait);
-    //     let ob = Obligation::new(tcx, ObligationCause::dummy(), param_env, deref_trait);
-    //     infcx.evaluate_obligation(ob);
-    //     None
-    // }
-
     pub fn into_ref(&self, tcx: TyCtxt<'tcx>) -> TyWrapper<'tcx> {
         Ty::new_ref(tcx, tcx.lifetimes.re_erased, self.ty, ty::Mutability::Not).into()
     }
@@ -47,11 +37,8 @@ impl<'tcx> TyWrapper<'tcx> {
                 };
                 ty
             }
-            TransformKind::Box => {
-                todo!()
-            }
-            TransformKind::Deref => {
-                todo!()
+            _ => {
+                todo!();
             }
         }
     }

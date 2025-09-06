@@ -13,7 +13,7 @@ enum IntrinsicKind {
     Borrow,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum DepNode<'tcx> {
     Api(DefId, ty::GenericArgsRef<'tcx>),
     Ty(TyWrapper<'tcx>),

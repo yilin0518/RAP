@@ -4,8 +4,6 @@ use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_type_ir::{IntTy, UintTy};
 use std::ops::Range;
 
-use crate::rap_debug;
-
 pub trait InputGen {
     fn gen_bool(&mut self) -> bool;
     fn gen_int(&mut self, int_ty: IntTy) -> i64;

@@ -1,9 +1,9 @@
+pub mod avail;
 pub mod dep_edge;
 pub mod dep_node;
 mod resolve;
 mod serialize;
 pub mod transform;
-pub mod avail;
 mod ty_wrapper;
 
 use super::Config;

@@ -48,6 +48,9 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 
         // ADT
         TyKind::Adt(adt_def, substs) => {
+            if adt_def.variant_list_has_applicable_non_exhaustive() {
+                return false;
+            }
             if adt_def.is_struct() {
                 // 检查所有字段是否为 pub 且类型可 Fuzz
                 adt_def.all_fields().all(|field| {

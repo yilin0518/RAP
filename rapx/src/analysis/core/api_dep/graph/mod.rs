@@ -96,7 +96,7 @@ impl<'tcx> ApiDepGraph<'tcx> {
 
     pub fn api_at(&self, idx: usize) -> (DefId, ty::GenericArgsRef<'tcx>) {
         let index = self.api_nodes[idx];
-        self.graph[index].as_api()
+        self.graph[index].expect_api()
     }
 
     fn tcx(&self) -> TyCtxt<'tcx> {

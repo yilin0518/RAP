@@ -1,34 +1,27 @@
 pub mod context;
 mod folder;
 mod lifetime;
-mod mono;
 mod pattern;
 mod select;
 
 use crate::analysis::core::alias::FnRetAlias;
 use crate::analysis::core::api_dep::DepNode;
 use crate::analysis::core::api_dep::{graph::TransformKind, ApiDepGraph};
-use crate::analysis::testgen::context::Var;
 use crate::analysis::testgen::utils::{self};
-use crate::{rap_debug, rap_info};
+use crate::{rap_debug, rap_info, rap_trace};
 use context::LtContext;
 use itertools::Itertools;
 use rand::distr::weighted::WeightedIndex;
 use rand::rngs::ThreadRng;
+use rand::seq::IndexedRandom;
 use rand::{self, Rng};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum Action<'tcx> {
-    Api(DepNode<'tcx>),
-    Transform(Var, TransformKind),
-}
 
 pub struct LtGenBuilder<'tcx, 'a, R: Rng> {
     tcx: TyCtxt<'tcx>,
@@ -93,6 +86,7 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
     alias_map: &'a FnAliasMap,
     api_graph: ApiDepGraph<'tcx>,
     covered_api: HashSet<DefId>,
+    reached_map: HashMap<DepNode<'tcx>, usize>,
 }
 
 impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
@@ -113,43 +107,36 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             alias_map,
             api_graph,
             covered_api: HashSet::new(),
+            reached_map: HashMap::new(),
         }
     }
 
-    fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
+    fn weight_of_nodes(&self, nodes: &[DepNode<'tcx>]) -> Vec<f32> {
+        nodes
+            .iter()
+            .map(|node| {
+                let num_of_reach = *self.reached_map.get(node).unwrap_or(&0);
+                1.0 / (1 + num_of_reach) as f32
+            })
+            .collect()
     }
 
-    fn weight_of_actions(&self, actions: &[Action<'tcx>]) -> Vec<f32> {
-        vec![1.0; actions.len()]
-    }
-
-    fn eligable_actions(&self, cx: &LtContext<'tcx, 'a>) -> Vec<Action<'tcx>> {
-        let mut actions = Vec::new();
-
+    fn eligable_nodes(&self, cx: &LtContext<'tcx, 'a>) -> Vec<DepNode<'tcx>> {
         let tys: Vec<_> = cx
             .cx()
             .available_vars()
             .map(|var| cx.cx().type_of(var))
             .collect();
 
-        for node in self.api_graph.eligible_api_nodes_with(&tys) {
-            actions.push(Action::Api(node));
-        }
+        rap_debug!(
+            "live tys: {}",
+            tys.iter().map(|ty| format!("{ty}")).join(", ")
+        );
 
-        for var in cx.cx().available_vars() {
-            let res = self
-                .api_graph
-                .eligible_transform_with(&[cx.cx().type_of(var)])
-                .into_iter()
-                .map(|(_, kind)| Action::Transform(var, kind));
-            actions.extend(res);
-        }
-
-        actions
+        self.api_graph.eligible_nodes_with(&tys)
     }
 
-    fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> Option<Action<'tcx>> {
+    fn next(&mut self, cx: &mut LtContext<'tcx, 'a>) -> Option<DepNode<'tcx>> {
         rap_debug!(
             "live vars: {}",
             cx.cx()
@@ -166,30 +153,28 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 .join(", ")
         );
 
-        let tys: Vec<_> = cx
-            .cx()
-            .available_vars()
-            .map(|var| cx.cx().type_of(var))
-            .collect();
-
-        rap_debug!(
-            "live tys: {}",
-            tys.iter().map(|ty| format!("{ty}")).join(", ")
-        );
-
-        let actions = self.eligable_actions(&cx);
-        rap_debug!("# eligible actions = {}", actions.len());
-        rap_debug!("eligible actions: {:?}", actions);
+        let nodes = self.eligable_nodes(&cx);
+        rap_debug!("# eligible actions = {}", nodes.len());
+        rap_debug!("eligible actions: {:?}", nodes);
 
         // No action can do
-        if actions.is_empty() {
+        if nodes.is_empty() {
             return None;
         }
 
-        let weights = self.weight_of_actions(&actions);
+        let weights = self.weight_of_nodes(&nodes);
         let dist = WeightedIndex::new(&weights).unwrap();
+        rap_trace!(
+            "weights: {}",
+            nodes
+                .iter()
+                .zip(weights.iter())
+                .map(|(node, weight)| { format!("{:?}: {:.2}", node, weight) })
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         let index = self.rng.borrow_mut().sample(dist);
-        Some(actions[index])
+        Some(nodes[index])
     }
 
     // pub fn print_brief()
@@ -212,8 +197,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
 
             if let Some(action) = self.next(&mut lt_ctxt) {
                 match action {
-                    Action::Api(node) => {
-                        let (fn_did, args) = node.as_api();
+                    DepNode::Api(fn_did, args) => {
                         rap_debug!(
                             "[next] select API call: {}",
                             self.tcx.def_path_str_with_args(fn_did, args)
@@ -227,7 +211,32 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                             }
                         }
                     }
-                    Action::Transform(var, kind) => {
+                    DepNode::Ty(ty) => {
+                        let transforms = self.api_graph.eligible_transforms_to(ty.ty());
+                        rap_debug!("ty = {}", ty.ty());
+                        rap_debug!(
+                            "transforms = {}",
+                            transforms
+                                .iter()
+                                .map(|(ty, kind)| format!("{} -> {}", ty.ty(), kind))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+
+                        let mut var_transforms = Vec::new();
+                        for var in lt_ctxt.cx().available_vars() {
+                            for (ty, kind) in transforms.iter() {
+                                if utils::is_ty_eq(lt_ctxt.cx().type_of(var), ty.ty(), self.tcx) {
+                                    var_transforms.push((var, *kind));
+                                }
+                            }
+                        }
+
+                        rap_debug!("[next] transforms: {var_transforms:?}");
+
+                        let (var, kind) =
+                            var_transforms.choose(self.rng.get_mut()).unwrap().clone();
+
                         rap_debug!(
                             "[next] select transform: {}: {} {}",
                             var,

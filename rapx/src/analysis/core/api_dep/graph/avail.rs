@@ -16,50 +16,52 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use std::collections::HashSet;
 
 impl<'tcx> ApiDepGraph<'tcx> {
-    pub fn eligible_api_nodes_with(&self, tys: &[Ty<'tcx>]) -> Vec<DepNode<'tcx>> {
+    pub fn eligible_nodes_with(&self, tys: &[Ty<'tcx>]) -> Vec<DepNode<'tcx>> {
         let check_ty = |ty: Ty<'tcx>| {
-            if utils::is_fuzzable_ty(ty, self.tcx) {
-                return true;
-            }
-            if tys.iter().any(|avail_ty| {
-                if utils::is_ty_eq(*avail_ty, ty, self.tcx) {
-                    return true;
-                }
-                false
-            }) {
-                return true;
-            }
-            return false;
+            tys.iter()
+                .any(|avail_ty| utils::is_ty_eq(*avail_ty, ty, self.tcx))
         };
+
         self.graph
             .node_indices()
-            .filter_map(|index| {
-                if let DepNode::Api(fn_did, args) = self.graph[index] {
+            .filter_map(|index| match self.graph[index] {
+                DepNode::Api(fn_did, args)
                     if self
                         .graph
                         .neighbors_directed(index, Direction::Incoming)
-                        .all(|neighbor| check_ty(self.graph[neighbor].as_ty().ty()))
-                    {
-                        return Some(self.graph[index]);
-                    }
+                        .all(|neighbor| {
+                            let ty = self.graph[neighbor].expect_ty().ty();
+                            utils::is_fuzzable_ty(ty, self.tcx) || check_ty(ty)
+                        }) =>
+                {
+                    Some(self.graph[index])
                 }
-                None
+                DepNode::Ty(ty)
+                    if self
+                        .graph
+                        .neighbors_directed(index, Direction::Incoming)
+                        .any(|neighbor| {
+                            if let Some(ty) = self.graph[neighbor].as_ty() {
+                                check_ty(ty.ty())
+                            } else {
+                                false
+                            }
+                        }) =>
+                {
+                    Some(self.graph[index])
+                }
+                _ => None,
             })
             .collect()
     }
 
-    pub fn eligible_transform_with(
-        &self,
-        tys: &[Ty<'tcx>],
-    ) -> Vec<(TyWrapper<'tcx>, TransformKind)> {
+    pub fn eligible_transforms_to(&self, ty: Ty<'tcx>) -> Vec<(TyWrapper<'tcx>, TransformKind)> {
         let mut set = HashSet::new();
-        for ty in tys {
-            if let Some(node) = self.get_index(DepNode::Ty((*ty).into())) {
-                for edge in self.graph.edges(node) {
-                    if let Some(kind) = edge.weight().as_transform_kind() {
-                        let target_ty = self.graph[edge.target()].as_ty();
-                        set.insert((target_ty, kind));
-                    }
+        if let Some(node) = self.get_index(DepNode::Ty(ty.into())) {
+            for edge in self.graph.edges_directed(node, Direction::Incoming) {
+                if let Some(kind) = edge.weight().as_transform_kind() {
+                    let source_ty = self.graph[edge.source()].expect_ty();
+                    set.insert((source_ty, kind));
                 }
             }
         }

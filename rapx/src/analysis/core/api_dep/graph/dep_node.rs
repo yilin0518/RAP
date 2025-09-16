@@ -40,20 +40,25 @@ impl<'tcx> DepNode<'tcx> {
         matches!(self, DepNode::Api(..))
     }
 
-    pub fn as_ty(&self) -> TyWrapper<'tcx> {
+    pub fn as_ty(&self) -> Option<TyWrapper<'tcx>> {
         match self {
-            DepNode::Ty(ty) => *ty,
-            _ => {
-                panic!("{self:?} is not a ty")
-            }
+            DepNode::Ty(ty) => Some(*ty),
+            _ => None,
         }
     }
 
-    pub fn as_api(&self) -> (DefId, ty::GenericArgsRef<'tcx>) {
+    pub fn expect_ty(&self) -> TyWrapper<'tcx> {
+        match self {
+            DepNode::Ty(ty) => *ty,
+            _ => panic!("{self:?} is not a ty"),
+        }
+    }
+
+    pub fn expect_api(&self) -> (DefId, ty::GenericArgsRef<'tcx>) {
         match self {
             DepNode::Api(did, args) => (*did, args),
             _ => {
-                panic!("{self:?} is not a ty")
+                panic!("{self:?} is not an api")
             }
         }
     }

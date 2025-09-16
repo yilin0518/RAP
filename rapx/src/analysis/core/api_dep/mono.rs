@@ -138,7 +138,6 @@ impl<'tcx> MonoSet<'tcx> {
     }
 
     pub fn merge(&mut self, other: &MonoSet<'tcx>, tcx: TyCtxt<'tcx>) -> MonoSet<'tcx> {
-        rap_trace!("[MonoSet::merge] self: {:?} other: {:?}", self, other);
         let mut res = MonoSet::new();
 
         for args in self.monos.iter() {
@@ -149,7 +148,6 @@ impl<'tcx> MonoSet<'tcx> {
                 }
             }
         }
-        rap_trace!("[MonoSet::merge] result: {:?}", res);
         res
     }
 
@@ -218,7 +216,7 @@ fn unify_ty<'tcx>(
             .eq(DefineOpaqueTypes::Yes, lhs, rhs)
         {
             Ok(infer_ok) => {
-                rap_trace!("[infer_ok] {} = {} : {:?}", lhs, rhs, infer_ok);
+                // rap_trace!("[infer_ok] {} = {} : {:?}", lhs, rhs, infer_ok);
                 let mono = identity
                     .iter()
                     .map(|arg| match arg.kind() {
@@ -425,9 +423,9 @@ fn solve_unbound_type_generics<'tcx>(
     rap_debug!("[solve_unbound] did = {did:?}, mset={mset:?}");
     for pred in preds.predicates.iter() {
         if let Some(trait_pred) = pred.as_trait_clause() {
-            rap_trace!("[solve_unbound] pred: {:?}", trait_pred);
-
             let trait_pred = trait_pred.skip_binder();
+
+            rap_trace!("[solve_unbound] pred: {:?}", trait_pred);
 
             let trait_def_id = trait_pred.trait_ref.def_id;
             // ignore Sized trait
@@ -443,13 +441,18 @@ fn solve_unbound_type_generics<'tcx>(
                 .all_impls(trait_def_id)
                 .chain(tcx.inherent_impls(trait_def_id).iter().map(|did| *did))
             {
-                // only consider local implement
-
+                // format: <arg0 as Trait<arg1, arg2>>
                 let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();
 
-                if !impl_did.is_local() {
+                rap_trace!("impl_trait_ref: {}", impl_trait_ref);
+                // filter irrelevant implementation. We only consider implementation if:
+                // 1. it is local
+                // 2. it is not local, but its' self_ty is a primitive
+                if !impl_did.is_local() && !impl_trait_ref.self_ty().is_primitive() {
                     continue;
                 }
+                // rap_trace!("impl_trait_ref: {}", impl_trait_ref);
+
                 if let Some(mono) = unify_trait(
                     trait_pred.trait_ref,
                     impl_trait_ref,

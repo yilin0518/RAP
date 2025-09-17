@@ -2,7 +2,7 @@ use super::super::folder::extract_rids;
 use super::super::lifetime::Rid;
 use super::super::utils;
 use super::LtContext;
-use crate::analysis::core::alias_analysis::{AAFact, AAResult};
+use crate::analysis::core::alias_analysis::AAFact;
 use crate::analysis::testgen::context::{Stmt, Var};
 use crate::{rap_debug, rap_trace};
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};

@@ -1,5 +1,5 @@
 use super::lifetime::Rid;
-use rustc_infer::infer::{self, InferCtxt, RegionVariableOrigin};
+use rustc_infer::infer::{InferCtxt, RegionVariableOrigin};
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
 use rustc_span::DUMMY_SP;
 

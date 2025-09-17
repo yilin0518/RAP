@@ -7,7 +7,6 @@ mod utils;
 use crate::analysis::testgen::driver::driver_main;
 use crate::{rap_error, rap_info};
 use rustc_middle::ty::TyCtxt;
-use rustc_session::config::CrateType;
 
 /// Automatic Test Generator for detecting lifetime-related bugs
 pub struct Testgen<'tcx> {

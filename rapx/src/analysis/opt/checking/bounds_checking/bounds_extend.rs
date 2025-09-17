@@ -3,10 +3,12 @@ use once_cell::sync::OnceCell;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 
-use crate::analysis::core::dataflow::graph::{Graph, GraphNode, NodeOp};
-use crate::analysis::utils::def_path::DefPath;
-use crate::utils::log::{
-    relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code,
+use crate::{
+    analysis::{
+        core::dataflow::{graph::*, *},
+        utils::def_path::DefPath,
+    },
+    utils::log::{relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code},
 };
 use annotate_snippets::{Level, Renderer, Snippet};
 

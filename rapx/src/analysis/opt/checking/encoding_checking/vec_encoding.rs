@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 
+use crate::analysis::{
+    core::dataflow::{graph::*, *},
+    utils::def_path::DefPath,
+};
 use once_cell::sync::OnceCell;
-
-use rustc_middle::mir::Local;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::Local, ty::TyCtxt};
 use rustc_span::Span;
 
 use super::{report_encoding_bug, value_is_from_const};
-use crate::analysis::core::dataflow::graph::{DFSStatus, Direction, Graph, GraphNode, NodeOp};
-use crate::analysis::utils::def_path::DefPath;
 
 static DEFPATHS: OnceCell<DefPaths> = OnceCell::new();
 

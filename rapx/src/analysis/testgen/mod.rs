@@ -23,18 +23,7 @@ impl<'tcx> Testgen<'tcx> {
         self.tcx
     }
 
-    pub fn start(&self, test_crate: Option<&str>) {
-        if matches!(self.tcx.crate_types()[0], CrateType::Executable) {
-            return;
-        }
-
-        if let Some(test_crate) = test_crate {
-            let package_name =
-                std::env::var("CARGO_PKG_NAME").expect("cannot capture env var `CARGO_PKG_NAME`");
-            if package_name != test_crate {
-                return;
-            }
-        }
+    pub fn start(&self) {
         match driver_main(self.tcx) {
             Ok(_) => rap_info!("testgen completed successfully"),
             Err(e) => rap_error!("testgen failed:\n{}", e),

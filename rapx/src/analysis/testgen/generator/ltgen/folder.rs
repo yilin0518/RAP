@@ -1,5 +1,5 @@
 use super::lifetime::Rid;
-use rustc_infer::infer::{self, InferCtxt};
+use rustc_infer::infer::{self, InferCtxt, RegionVariableOrigin};
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable};
 use rustc_span::DUMMY_SP;
 
@@ -59,6 +59,7 @@ impl<'tcx, 'a> ty::TypeFolder<TyCtxt<'tcx>> for InfcxVarFolder<'tcx, 'a> {
         self.tcx
     }
     fn fold_region(&mut self, _: ty::Region<'tcx>) -> ty::Region<'tcx> {
-        self.infcx.next_region_var(infer::MiscVariable(DUMMY_SP))
+        self.infcx
+            .next_region_var(RegionVariableOrigin::Misc(DUMMY_SP))
     }
 }

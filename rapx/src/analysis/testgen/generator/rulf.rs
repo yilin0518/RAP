@@ -28,7 +28,7 @@ impl Rulf {
     }
     fn find_api_starts<'tcx>(
         &self,
-        graph: &api_dep::ApiDepGraph<'tcx>,
+        graph: &api_dep::ApiDependencyGraph<'tcx>,
         tcx: TyCtxt<'tcx>,
     ) -> Vec<api_dep::DepNode<'tcx>> {
         let mut api_starts = Vec::new();
@@ -55,7 +55,7 @@ impl Rulf {
     pub fn rulf_algorithm<'tcx, R: Rng>(
         &mut self,
         tcx: TyCtxt<'tcx>,
-        graph: &mut api_dep::ApiDepGraph<'tcx>,
+        graph: &mut api_dep::ApiDependencyGraph<'tcx>,
         max_depth: usize,
         cx: &mut ContextBase<'tcx>,
         rng: &mut R,
@@ -293,7 +293,7 @@ impl Rulf {
 
     fn backward_search<'tcx, R: Rng>(
         &self,
-        graph: &mut api_dep::ApiDepGraph<'tcx>,
+        graph: &mut api_dep::ApiDependencyGraph<'tcx>,
         target_api: &api_dep::DepNode<'tcx>,
         cx: &mut ContextBase<'tcx>,
         type_to_api_calls: &mut HashMap<Ty<'tcx>, Vec<Vec<DefId>>>,
@@ -559,7 +559,7 @@ impl Rulf {
 
     pub fn max_coverage<'tcx>(
         &self,
-        graph: &mut api_dep::ApiDepGraph<'tcx>,
+        graph: &mut api_dep::ApiDependencyGraph<'tcx>,
         tcx: TyCtxt<'tcx>,
     ) -> Option<(i32, i32)> {
         // collect all API nodes

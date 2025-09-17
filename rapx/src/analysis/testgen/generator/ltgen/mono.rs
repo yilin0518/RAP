@@ -162,7 +162,7 @@ impl<'tcx> MonoSet<'tcx> {
         for mono in &mut self.monos {
             mono.value
                 .iter_mut()
-                .for_each(|arg| *arg = tcx.erase_regions(*arg))
+                .for_each(|arg| *arg = tcx.erase_and_anonymize_regions(*arg))
         }
     }
 

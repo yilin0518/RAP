@@ -5,17 +5,16 @@ pub mod vec_encoding;
 
 use std::collections::HashSet;
 
-use crate::analysis::core::dataflow::graph::{
-    DFSStatus, Direction, EdgeIdx, EdgeOp, Graph, NodeOp,
-};
-use crate::analysis::opt::OptCheck;
-use crate::utils::log::{
-    relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code,
+use crate::{
+    analysis::{
+        core::dataflow::{graph::*, *},
+        opt::OptCheck,
+    },
+    utils::log::{relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code},
 };
 use annotate_snippets::{Level, Renderer, Snippet};
 
-use rustc_middle::mir::Local;
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::Local, ty::TyCtxt};
 use rustc_span::Span;
 
 use array_encoding::ArrayEncodingCheck;

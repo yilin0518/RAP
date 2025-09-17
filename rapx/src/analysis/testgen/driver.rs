@@ -1,10 +1,12 @@
-use crate::analysis::core::alias::FnMap;
-use crate::analysis::core::{alias, api_dep};
+use crate::analysis::core::alias_analysis::{AAResultMap, AliasAnalysis};
+use crate::analysis::core::api_dependency::ApiDependencyAnalysis;
+use crate::analysis::core::{alias_analysis, api_dependency};
 use crate::analysis::testgen::generator::ltgen::LtGenBuilder;
 use crate::analysis::testgen::syn::impls::FuzzDriverSynImpl;
 use crate::analysis::testgen::syn::input::RandomGen;
 use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption, TestResult};
 use crate::analysis::testgen::syn::{SynOption, Synthesizer};
+use crate::analysis::Analysis;
 use crate::{rap_error, rap_info, rap_warn};
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
@@ -48,7 +50,7 @@ impl LtGenConfig {
 }
 
 pub fn dump_alias_map(
-    alias_map: &FnMap,
+    alias_map: &AAResultMap,
     mut os: impl Write,
     tcx: TyCtxt<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -92,24 +94,32 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut run_count = 0;
 
-    let api_dep_graph = api_dep::ApiDep::new(tcx).start(api_dep::Config {
-        pub_only: true,
-        resolve_generic: true,
-        ignore_const_generic: true,
-    });
+    let mut api_analyzer = api_dependency::ApiDependencyAnalyzer::new(
+        tcx,
+        api_dependency::Config {
+            pub_only: true,
+            resolve_generic: true,
+            ignore_const_generic: true,
+        },
+    );
+    api_analyzer.run();
+    let api_dep_graph = api_analyzer.get_api_dependency_graph();
 
     api_dep_graph.dump_to_dot(workspace_dir.join("api_graph.dot"), tcx);
 
-    let mut alias_analysis = alias::mop::MopAlias::new(tcx);
-    let alias_map = alias_analysis.start();
+    let mut alias_analyzer = alias_analysis::default::AliasAnalyzer::new(tcx);
+    alias_analyzer.run();
+    let alias_map = alias_analyzer.get_all_fn_alias();
+
     let alias_file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
         .open(workspace_dir.join("alias_file.txt"))?;
-    dump_alias_map(alias_map, alias_file, tcx)?;
 
-    let mut ltgen = LtGenBuilder::new(tcx, alias_map, api_dep_graph)
+    dump_alias_map(&alias_map, alias_file, tcx)?;
+
+    let mut ltgen = LtGenBuilder::new(tcx, &alias_map, api_dep_graph)
         .max_complexity(config.max_complexity)
         .max_iteration(config.max_iteration)
         .build();

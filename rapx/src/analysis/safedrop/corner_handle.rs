@@ -1,5 +1,5 @@
 use super::graph::*;
-use crate::analysis::utils::intrinsic_id::*;
+use crate::def_id::*;
 use rustc_span::def_id::DefId;
 
 impl<'tcx> SafeDropGraph<'tcx> {
@@ -17,7 +17,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         //     let mut c = || {x+1;};
         //     c.call_mut(());
         // }
-        if def_id.index.as_usize() == CALL_MUT || def_id.index.as_usize() == CLONE {
+        if def_id == call_mut() || def_id == clone() {
             return true;
         }
 

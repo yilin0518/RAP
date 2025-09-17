@@ -1,6 +1,6 @@
 pub const RAPX_HELP: &str = r#"
 Usage:
-    cargo rapx [rapx options] -- [cargo check options]
+    cargo rapx [rapx options or rustc options] -- [cargo check options]
 
 RAPx Options:
 
@@ -9,19 +9,21 @@ Application:
     -M or -mleak    memory leakage detection.
     -O or -opt      automatically detect code optimization chances.
     -I or -infer    (under development) infer the safety properties required by unsafe APIs.
-    -V or -verify    (under development) verify if the safety requirements of unsafe API are satisfied.
+    -V or -verify   (under development) verify if the safety requirements of unsafe API are satisfied.
 
 Analysis:
-    -alias          perform alias analysis (meet-over-paths)
+    -alias          perform alias analysis (meet-over-paths by default)
     -adg            generate API dependency graphs
-    -callgraph      generate callgraphs
-    -dataflow       (not supported yet) generate dataflow graphs
-    -heap           analyze if the type holds a piece of memory on heap
     -audit          (under development) generate unsafe code audit units
+    -callgraph      generate callgraphs
+    -dataflow       generate dataflow graphs
+    -ownedheap      analyze if the type holds a piece of memory on heap
+    -pathcond       extract path constraints
+    -range          perform range analysis
 
 General command: 
-    -help:     show help information
-    -version:  show the version of RAPx
+    -help           show help information
+    -version        show the version of RAPx
 
 Random Test Generation
     -testgen       generate testcases based on the API dependency graph
@@ -58,7 +60,7 @@ Environment Variables (Values are case insensitive):
 "#;
 
 pub const RAPX_VERSION: &str = r#"
-rapx version 0.21
-released at 2025-05-16
+rapx version 0.5.3
+released at 2025-08-17
 developped by artisan-lab @ Fudan university 
 "#;

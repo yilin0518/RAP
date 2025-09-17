@@ -1,10 +1,4 @@
-
-pub struct SSAstmt;
-pub struct ESSAstmt;
-
-#[used]
-static _SSAstmt: Option<SSAstmt> = None;
-static _ESSAstmt: Option<ESSAstmt> = None;
+//test ssa_transform
 fn main() {
     let mut k = 0;
 

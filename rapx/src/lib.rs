@@ -4,7 +4,8 @@
 #[macro_use]
 pub mod utils;
 pub mod analysis;
-
+pub mod def_id;
+pub mod preprocess;
 extern crate intervals;
 extern crate rustc_abi;
 extern crate rustc_ast;
@@ -12,38 +13,52 @@ extern crate rustc_data_structures;
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_hir;
+extern crate rustc_hir_pretty;
 extern crate rustc_index;
 extern crate rustc_infer;
 extern crate rustc_interface;
 extern crate rustc_metadata;
 extern crate rustc_middle;
+extern crate rustc_public;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_trait_selection;
 extern crate rustc_traits;
 extern crate rustc_type_ir;
-extern crate stable_mir;
-
-use analysis::core::alias::mop::MopAlias;
-use analysis::core::api_dep::{self, ApiDep};
-use analysis::core::call_graph::CallGraph;
-use analysis::core::dataflow::DataFlow;
-use analysis::core::heap_item::TypeAnalysis;
-use analysis::core::range_analysis::{RangeAnalysis, SSATrans};
-use analysis::opt::Opt;
-use analysis::rcanary::rCanary;
-use analysis::safedrop::SafeDrop;
-use analysis::scan::ScanAnalysis;
-use analysis::senryx::{CheckLevel, SenryxCheck};
-use analysis::testgen::Testgen;
-use analysis::unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck};
-use analysis::utils::show_mir::ShowMir;
+extern crate thin_vec;
+use crate::analysis::scan::ScanAnalysis;
+use crate::analysis::testgen::Testgen;
+use analysis::{
+    core::{
+        alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
+        api_dependency::ApiDependencyAnalyzer,
+        callgraph::{default::CallGraphAnalyzer, CallGraphAnalysis, CallGraphDisplay},
+        dataflow::{
+            default::DataFlowAnalyzer, Arg2RetMapWrapper, DataFlowAnalysis, DataFlowGraphMapWrapper,
+        },
+        ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResultMapWrapper, OwnedHeapAnalysis},
+        range_analysis::{
+            default::RangeAnalyzer, PathConstraintMapWrapper, RAResultMapWrapper, RangeAnalysis,
+        },
+        ssa_transform::SSATrans,
+    },
+    opt::Opt,
+    rcanary::rCanary,
+    safedrop::SafeDrop,
+    senryx::{CheckLevel, SenryxCheck},
+    test::Test,
+    unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck},
+    utils::show_mir::ShowMir,
+    Analysis,
+};
+use rustc_ast::ast;
 use rustc_driver::{Callbacks, Compilation};
-use rustc_interface::interface::Compiler;
-use rustc_interface::Config;
-use rustc_middle::ty::TyCtxt;
-use rustc_middle::util::Providers;
+use rustc_interface::{
+    interface::{self, Compiler},
+    Config,
+};
+use rustc_middle::{ty::TyCtxt, util::Providers};
 use rustc_session::search_paths::PathKind;
 use std::path::PathBuf;
 use std::{env, sync::Arc};
@@ -52,26 +67,28 @@ use std::{env, sync::Arc};
 // set per default, for maximal validation power.
 pub static RAP_DEFAULT_ARGS: &[&str] = &["-Zalways-encode-mir", "-Zmir-opt-level=0"];
 
-pub type Elapsed = (i64, i64);
+/// This is the data structure to handle rapx options as a rustc callback.
 
 #[derive(Debug, Clone, Hash)]
 pub struct RapCallback {
+    alias: bool,
+    api_dependency: bool,
+    callgraph: bool,
+    dataflow: usize,
+    ownedheap: bool,
+    range: usize,
+    ssa: bool,
+    test: bool,
+    infer: bool,
+    opt: usize,
     rcanary: bool,
     safedrop: bool,
-    verify: bool,
-    infer: bool,
+    show_mir: bool,
     unsafety_isolation: usize,
-    mop: bool,
-    callgraph: bool,
-    api_dep: bool,
+    verify: bool,
+    verify_std: bool,
     scan: bool,
     testgen: bool,
-    show_mir: bool,
-    dataflow: usize,
-    opt: usize,
-    heap_item: bool,
-    ssa: bool,
-    range: bool,
     test_crate: Option<String>,
 }
 
@@ -79,22 +96,24 @@ pub struct RapCallback {
 impl Default for RapCallback {
     fn default() -> Self {
         Self {
+            alias: false,
+            api_dependency: false,
+            callgraph: false,
+            dataflow: 0,
+            ownedheap: false,
+            range: 0,
+            ssa: false,
+            test: false,
+            infer: false,
+            opt: usize::MAX,
             rcanary: false,
             safedrop: false,
-            verify: false,
-            infer: false,
-            unsafety_isolation: 0,
-            mop: false,
-            callgraph: false,
-            api_dep: false,
-            testgen: false,
-            scan: false,
             show_mir: false,
-            dataflow: 0,
-            opt: usize::MAX,
-            heap_item: false,
-            ssa: false,
-            range: false,
+            unsafety_isolation: 0,
+            verify: false,
+            verify_std: false,
+            scan: false,
+            testgen: false,
             test_crate: None,
         }
     }
@@ -116,46 +135,168 @@ impl Callbacks for RapCallback {
         });
     }
 
+    fn after_crate_root_parsing(
+        &mut self,
+        _compiler: &interface::Compiler,
+        _krate: &mut ast::Crate,
+    ) -> Compilation {
+        preprocess::ssa_preprocess::create_ssa_struct(_krate);
+        Compilation::Continue
+    }
     fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         rap_trace!("Execute after_analysis() of compiler callbacks");
-        start_analyzer(tcx, self.clone());
-        rap_trace!("analysis done");
+        if self.is_building_test_crate() {
+            rustc_public::rustc_internal::run(tcx, || {
+                start_analyzer(tcx, self);
+            })
+            .expect("Failed to run rustc_public.");
+            rap_trace!("analysis done");
+        } else {
+            let package_name =
+                std::env::var("CARGO_PKG_NAME").expect("cannot capture env var `CARGO_PKG_NAME`");
+            rap_trace!("skip analyzing package `{}`", package_name);
+        }
+
         Compilation::Continue
     }
 }
 
 impl RapCallback {
-    pub fn enable_rcanary(&mut self) {
-        self.rcanary = true;
+    fn is_building_test_crate(&self) -> bool {
+        match &self.test_crate {
+            None => true,
+            Some(test_crate) => {
+                let test_crate: &str = test_crate;
+                let package_name = std::env::var("CARGO_PKG_NAME")
+                    .expect("cannot capture env var `CARGO_PKG_NAME`");
+                package_name == test_crate
+            }
+        }
     }
 
-    pub fn is_rcanary_enabled(&self) -> bool {
-        self.rcanary
-    }
-
-    pub fn enable_mop(&mut self, arg: String) {
-        self.mop = true;
+    /// Enable alias analysis. The parameter is used to config the threshold of alias analysis.
+    /// Currently, we mainly use it to control the depth of field-sensitive analysis.
+    /// -alias0: set field depth limit to 10; do not distinguish different flows within a each
+    /// strongly-connected component.
+    /// -alias1: set field depth limit to 20 (this is default setting).
+    /// -alias2: set field depth limit to 30.
+    pub fn enable_alias(&mut self, arg: String) {
+        self.alias = true;
         match arg.as_str() {
             "-alias" => {
-                env::set_var("MOP", "1");
+                env::set_var("ALIAS", "1");
             }
             "-alias0" => {
-                env::set_var("MOP", "0");
+                env::set_var("ALIAS", "0");
             }
             "-alias1" => {
-                env::set_var("MOP", "1");
+                env::set_var("ALIAS", "1");
             }
             "-alias2" => {
-                env::set_var("MOP", "2");
+                env::set_var("ALIAS", "2");
             }
             _ => {}
         }
     }
 
-    pub fn is_mop_enabled(&self) -> bool {
-        self.mop
+    /// Test if alias analysis is enabled.
+    pub fn is_alias_enabled(&self) -> bool {
+        self.alias
     }
 
+    /// Enable API-dependency graph generation.
+    pub fn enable_api_dependency(&mut self) {
+        self.api_dependency = true;
+    }
+
+    /// Test if API-dependency graph generation is enabled.
+    pub fn is_api_dependency_enabled(&self) -> bool {
+        self.api_dependency
+    }
+
+    /// Enable call-graph analysis.
+    pub fn enable_callgraph(&mut self) {
+        self.callgraph = true;
+    }
+
+    /// Test if call-graph analysis is enabled.
+    pub fn is_callgraph_enabled(&self) -> bool {
+        self.callgraph
+    }
+
+    /// Enable owned heap analysis.
+    pub fn enable_ownedheap(&mut self) {
+        self.ownedheap = true;
+    }
+
+    /// Test if owned-heap analysis is enabled.
+    pub fn is_ownedheap_enabled(&self) -> bool {
+        self.ownedheap
+    }
+
+    /// Enable dataflow analysis.
+    pub fn enable_dataflow(&mut self, x: usize) {
+        self.dataflow = x;
+    }
+
+    /// Test if dataflow analysis is enabled.
+    pub fn is_dataflow_enabled(&self) -> usize {
+        self.dataflow
+    }
+
+    /// Enable range analysis.
+    pub fn enable_range_analysis(&mut self, x: usize) {
+        self.range = x;
+    }
+
+    /// Test if range analysis is enabled.
+    pub fn is_range_analysis_enabled(&self) -> bool {
+        self.range > 0
+    }
+
+    /// Enable test of features provided by the core analysis traits.
+    pub fn enable_test(&mut self) {
+        self.test = true;
+    }
+
+    /// Check if test is enabled.
+    pub fn is_test_enabled(&self) -> bool {
+        self.test
+    }
+
+    /// Enable ssa transformation
+    pub fn enable_ssa_transform(&mut self) {
+        self.ssa = true;
+    }
+
+    /// Test if ssa transformation is enabled.
+    pub fn is_ssa_transform_enabled(&self) -> bool {
+        self.ssa
+    }
+
+    /// Enable optimization analysis for performance bug detection.
+    pub fn enable_opt(&mut self, x: usize) {
+        self.opt = x;
+    }
+
+    /// Test if optimization analysis is enabled.
+    pub fn is_opt_enabled(&self) -> usize {
+        self.opt
+    }
+
+    /// Enable rcanary for memory leakage detection.
+    pub fn enable_rcanary(&mut self) {
+        self.rcanary = true;
+    }
+
+    /// Test if rcanary is enabled.
+    pub fn is_rcanary_enabled(&self) -> bool {
+        self.rcanary
+    }
+
+    /// Enable safedrop for use-after-free bug detection.
+    /// Similar to alias analysis, the second parameter is to control the depth threshold for
+    /// field-sensitive analysis.
     pub fn enable_safedrop(&mut self, arg: String) {
         self.safedrop = true;
         match arg.as_str() {
@@ -183,12 +324,19 @@ impl RapCallback {
         }
     }
 
-    pub fn set_test_crate(&mut self, name: String) {
-        self.test_crate = Some(name);
-    }
-
+    /// Test if safedrop is enabled.
     pub fn is_safedrop_enabled(&self) -> bool {
         self.safedrop
+    }
+
+    /// Enable mir display.
+    pub fn enable_show_mir(&mut self) {
+        self.show_mir = true;
+    }
+
+    /// Test if mir display is enabled.
+    pub fn is_show_mir_enabled(&self) -> bool {
+        self.show_mir
     }
 
     pub fn enable_unsafety_isolation(&mut self, x: usize) {
@@ -199,36 +347,20 @@ impl RapCallback {
         self.unsafety_isolation
     }
 
-    pub fn enable_scan(&mut self) {
-        self.scan = true;
-    }
-
-    pub fn enable_api_dep(&mut self) {
-        self.api_dep = true;
-    }
-
-    pub fn enable_testgen(&mut self) {
-        self.testgen = true;
-    }
-
-    pub fn is_api_dep_enabled(&self) -> bool {
-        self.api_dep
-    }
-
-    pub fn is_testgen_enabled(&self) -> bool {
-        self.testgen
-    }
-
-    pub fn is_scan_enabled(&self) -> bool {
-        self.scan
-    }
-
     pub fn enable_verify(&mut self) {
         self.verify = true;
     }
 
     pub fn is_verify_enabled(&self) -> bool {
         self.verify
+    }
+
+    pub fn enable_verify_std(&mut self) {
+        self.verify_std = true;
+    }
+
+    pub fn is_verify_std_enabled(&self) -> bool {
+        self.verify_std
     }
 
     pub fn enable_infer(&mut self) {
@@ -239,90 +371,143 @@ impl RapCallback {
         self.infer
     }
 
-    pub fn enable_callgraph(&mut self) {
-        self.callgraph = true;
+    pub fn enable_scan(&mut self) {
+        self.scan = true;
     }
 
-    pub fn is_callgraph_enabled(&self) -> bool {
-        self.callgraph
+    pub fn is_scan_enabled(&self) -> bool {
+        self.scan
     }
 
-    pub fn enable_show_mir(&mut self) {
-        self.show_mir = true;
+    pub fn enable_testgen(&mut self) {
+        self.testgen = true;
     }
 
-    pub fn is_show_mir_enabled(&self) -> bool {
-        self.show_mir
+    pub fn is_testgen_enable(&self) -> bool {
+        self.testgen
     }
 
-    pub fn enable_dataflow(&mut self, x: usize) {
-        self.dataflow = x;
-    }
-
-    pub fn is_dataflow_enabled(&self) -> usize {
-        self.dataflow
-    }
-
-    pub fn enable_opt(&mut self, x: usize) {
-        self.opt = x;
-    }
-
-    pub fn is_opt_enabled(&self) -> usize {
-        self.opt
-    }
-
-    pub fn enable_heap_item(&mut self) {
-        self.heap_item = true;
-    }
-
-    pub fn is_heap_item_enabled(&self) -> bool {
-        self.heap_item
-    }
-    pub fn enable_ssa_transform(&mut self) {
-        self.ssa = true;
-    }
-    pub fn is_ssa_transform_enabled(&self) -> bool {
-        self.ssa
-    }
-    pub fn enable_range_analysis(&mut self) {
-        self.range = true;
-    }
-    pub fn is_range_analysis_enabled(&self) -> bool {
-        self.range
+    pub fn set_test_crate(&mut self, crate_name: impl ToString) {
+        self.test_crate = Some(crate_name.to_string())
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
-pub enum RapPhase {
-    Cleanup,
-    Cargo,
-    Rustc,
-    LLVM, // unimplemented yet
-}
+/// Start the analysis with the features enabled.
+pub fn start_analyzer(tcx: TyCtxt, callback: &RapCallback) {
+    def_id::init(tcx);
+    if callback.is_alias_enabled() {
+        let mut analyzer = AliasAnalyzer::new(tcx);
+        analyzer.run();
+        let alias = analyzer.get_local_fn_alias();
+        rap_info!("{}", AAResultMapWrapper(alias));
+    }
 
-pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
+    if callback.is_api_dependency_enabled() {
+        let mut analyzer = ApiDependencyAnalyzer::new(
+            tcx,
+            analysis::core::api_dependency::Config {
+                pub_only: true,
+                resolve_generic: true,
+                ignore_const_generic: true,
+            },
+        );
+        analyzer.run();
+    }
+
+    if callback.is_callgraph_enabled() {
+        let mut analyzer = CallGraphAnalyzer::new(tcx);
+        analyzer.run();
+        let callgraph = analyzer.get_callgraph();
+        rap_info!(
+            "{}",
+            CallGraphDisplay {
+                graph: &callgraph,
+                tcx
+            }
+        );
+        //analyzer.display();
+    }
+
+    match callback.is_dataflow_enabled() {
+        1 => {
+            let mut analyzer = DataFlowAnalyzer::new(tcx, false);
+            analyzer.run();
+            let result = analyzer.get_all_arg2ret();
+            rap_info!("{}", Arg2RetMapWrapper(result));
+        }
+        2 => {
+            let mut analyzer = DataFlowAnalyzer::new(tcx, true);
+            analyzer.run();
+            let result = analyzer.get_all_dataflow();
+            rap_info!("{}", DataFlowGraphMapWrapper(result));
+        }
+        _ => {}
+    }
+
+    if callback.is_ownedheap_enabled() {
+        let mut analyzer = OwnedHeapAnalyzer::new(tcx);
+        analyzer.run();
+        let result = analyzer.get_all_items();
+        rap_info!("{}", OHAResultMapWrapper(result));
+    }
+
+    if callback.is_range_analysis_enabled() {
+        match callback.range {
+            1 => {
+                let mut analyzer = RangeAnalyzer::<i128>::new(tcx, false);
+                analyzer.run();
+                let result = analyzer.get_all_fn_ranges();
+                rap_info!("{}", RAResultMapWrapper(result));
+            }
+            2 => {
+                let mut analyzer = RangeAnalyzer::<i128>::new(tcx, true);
+                analyzer.run();
+                let result = analyzer.get_all_fn_ranges();
+                rap_info!("{}", RAResultMapWrapper(result));
+            }
+            3 => {
+                let mut analyzer = RangeAnalyzer::<i128>::new(tcx, false);
+                analyzer.start_path_constraints_analysis();
+                let result = analyzer.get_all_path_constraints();
+                rap_info!("{}", PathConstraintMapWrapper(result));
+            }
+            _ => {}
+        }
+    }
+
+    if callback.is_test_enabled() {
+        let test = Test::new(tcx);
+        test.start();
+    }
+
+    match callback.is_opt_enabled() {
+        0 => Opt::new(tcx, 0).start(),
+        1 => Opt::new(tcx, 1).start(),
+        2 => Opt::new(tcx, 2).start(),
+        _ => {}
+    }
+
     let _rcanary: Option<rCanary> = if callback.is_rcanary_enabled() {
-        let mut rcx = rCanary::new(tcx);
+        let mut heap = OwnedHeapAnalyzer::new(tcx);
+        heap.run();
+        let adt_owner = heap.get_all_items();
+        let mut rcx = rCanary::new(tcx, adt_owner);
         rcx.start();
         Some(rcx)
     } else {
         None
     };
 
-    if callback.is_mop_enabled() {
-        MopAlias::new(tcx).start();
-    }
-
     if callback.is_safedrop_enabled() {
         SafeDrop::new(tcx).start();
     }
 
-    if callback.is_heap_item_enabled() {
-        let rcx_boxed = Box::new(rCanary::new(tcx));
-        let rcx = Box::leak(rcx_boxed);
-        let mut type_analysis = TypeAnalysis::new(rcx);
-        type_analysis.start();
-        type_analysis.output();
+    if callback.is_show_mir_enabled() {
+        ShowMir::new(tcx).start();
+    }
+
+    if callback.is_ssa_transform_enabled() {
+        SSATrans::new(tcx, false).start();
     }
 
     let x = callback.is_unsafety_isolation_enabled();
@@ -339,55 +524,20 @@ pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
         SenryxCheck::new(tcx, 2).start(check_level, true);
     }
 
+    if callback.is_verify_std_enabled() {
+        SenryxCheck::new(tcx, 2).start_analyze_std_func();
+    }
+
     if callback.is_infer_enabled() {
         let check_level = CheckLevel::Medium;
         SenryxCheck::new(tcx, 2).start(check_level, false);
     }
 
-    if callback.is_show_mir_enabled() {
-        ShowMir::new(tcx).start();
-    }
-
-    if callback.is_api_dep_enabled() {
-        ApiDep::new(tcx).start(api_dep::Config {
-            pub_only: true,
-            resolve_generic: true,
-            ignore_const_generic: true,
-        });
+    if callback.is_testgen_enable() {
+        Testgen::new(tcx).start();
     }
 
     if callback.is_scan_enabled() {
         ScanAnalysis::new(tcx).start();
-    }
-
-    if callback.is_testgen_enabled() {
-        Testgen::new(tcx).start(callback.test_crate.as_ref().map(|x| x.as_ref()));
-    }
-
-    match callback.is_dataflow_enabled() {
-        1 => DataFlow::new(tcx, false).start(),
-        2 => DataFlow::new(tcx, true).start(),
-        _ => {}
-    }
-
-    if callback.is_callgraph_enabled() {
-        CallGraph::new(tcx).start();
-    }
-
-    match callback.is_opt_enabled() {
-        0 => Opt::new(tcx, 0).start(),
-        1 => Opt::new(tcx, 1).start(),
-        2 => Opt::new(tcx, 2).start(),
-        _ => {}
-    }
-    if callback.is_ssa_transform_enabled() {
-        SSATrans::new(tcx, false).start();
-    }
-    if callback.is_range_analysis_enabled() {
-        let mut analysis = RangeAnalysis::<i32>::new(tcx, false);
-        analysis.start(None);
-        // analysis
-        //     .get_range(rustc_middle::mir::Local::from_u32(12))
-        //     .map(|range| println!("Range for local 12: {}", range));
     }
 }

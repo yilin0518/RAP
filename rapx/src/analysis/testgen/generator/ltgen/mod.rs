@@ -4,9 +4,8 @@ mod lifetime;
 mod pattern;
 mod select;
 
-use crate::analysis::core::alias::FnRetAlias;
-use crate::analysis::core::api_dep::DepNode;
-use crate::analysis::core::api_dep::{graph::TransformKind, ApiDepGraph};
+use crate::analysis::core::alias_analysis::AAResultMap;
+use crate::analysis::core::api_dependency::{graph::TransformKind, ApiDependencyGraph, DepNode};
 use crate::analysis::testgen::utils::{self};
 use crate::{rap_debug, rap_info, rap_trace};
 use context::LtContext;
@@ -15,28 +14,25 @@ use rand::distr::weighted::WeightedIndex;
 use rand::rngs::ThreadRng;
 use rand::seq::IndexedRandom;
 use rand::{self, Rng};
-use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-
-type FnAliasMap = FxHashMap<DefId, FnRetAlias>;
 
 pub struct LtGenBuilder<'tcx, 'a, R: Rng> {
     tcx: TyCtxt<'tcx>,
     rng: R,
     max_complexity: usize,
     max_iteration: usize,
-    alias_map: &'a FnAliasMap,
-    api_graph: ApiDepGraph<'tcx>,
+    alias_map: &'a AAResultMap,
+    api_graph: ApiDependencyGraph<'tcx>,
 }
 
 impl<'tcx, 'a> LtGenBuilder<'tcx, 'a, ThreadRng> {
     pub fn new(
         tcx: TyCtxt<'tcx>,
-        alias_map: &'a FnAliasMap,
-        api_graph: ApiDepGraph<'tcx>,
+        alias_map: &'a AAResultMap,
+        api_graph: ApiDependencyGraph<'tcx>,
     ) -> LtGenBuilder<'tcx, 'a, ThreadRng> {
         LtGenBuilder {
             tcx,
@@ -83,8 +79,8 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
     max_complexity: usize,
     max_iteration: usize,
     pub_api: Vec<DefId>,
-    alias_map: &'a FnAliasMap,
-    api_graph: ApiDepGraph<'tcx>,
+    alias_map: &'a AAResultMap,
+    api_graph: ApiDependencyGraph<'tcx>,
     covered_api: HashSet<DefId>,
     reached_map: HashMap<DepNode<'tcx>, usize>,
 }
@@ -92,11 +88,11 @@ pub struct LtGen<'tcx, 'a, R: Rng> {
 impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
     fn new(
         tcx: TyCtxt<'tcx>,
-        alias_map: &'a FnAliasMap,
+        alias_map: &'a AAResultMap,
         rng: R,
         max_complexity: usize,
         max_iteration: usize,
-        api_graph: ApiDepGraph<'tcx>,
+        api_graph: ApiDependencyGraph<'tcx>,
     ) -> Self {
         LtGen {
             pub_api: utils::get_all_pub_apis(tcx),

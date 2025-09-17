@@ -2,7 +2,7 @@ use super::super::folder::extract_rids;
 use super::super::lifetime::Rid;
 use super::super::utils;
 use super::LtContext;
-use crate::analysis::core::alias::RetAlias;
+use crate::analysis::core::alias_analysis::{AAFact, AAResult};
 use crate::analysis::testgen::context::{Stmt, Var};
 use crate::{rap_debug, rap_trace};
 use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
@@ -37,21 +37,21 @@ fn get_fn_arg_ty_at<'tcx>(no: usize, fn_sig: ty::FnSig<'tcx>) -> Ty<'tcx> {
 
 fn destruct_ret_alias<'tcx>(
     fn_sig: ty::FnSig<'tcx>,
-    ret_alias: &RetAlias,
+    ret_alias: &AAFact,
     tcx: TyCtxt<'tcx>,
 ) -> (Ty<'tcx>, Ty<'tcx>) {
-    let lhs_no = ret_alias.left_index;
-    let rhs_no = ret_alias.right_index;
+    let lhs_no = ret_alias.lhs_no();
+    let rhs_no = ret_alias.rhs_no();
 
     (
         ty_project_to(
             get_fn_arg_ty_at(lhs_no, fn_sig),
-            &ret_alias.left_field_seq,
+            &ret_alias.lhs_fields(),
             tcx,
         ),
         ty_project_to(
             get_fn_arg_ty_at(rhs_no, fn_sig),
-            &ret_alias.right_field_seq,
+            &ret_alias.rhs_fields(),
             tcx,
         ),
     )
@@ -66,7 +66,7 @@ pub fn check_possibility<'tcx>(lhs_ty: Ty<'tcx>, rhs_ty: Ty<'tcx>, tcx: TyCtxt<'
     let mut ret = false;
     utils::visit_ty_fields_while(rhs_ty, tcx, &mut |ty| {
         rap_trace!("[check_possibility] add {ty}");
-        set.insert(tcx.erase_regions(ty));
+        set.insert(tcx.erase_and_anonymize_regions(ty));
         true
     });
     utils::visit_ty_fields_while(lhs_ty, tcx, &mut |ty| {
@@ -141,8 +141,8 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
             rap_debug!("alias: {}", alias);
             // ths alias is symmetric, that is, if (a,b) exists, then (b,a) must exist
             let (lhs_ty, rhs_ty) = destruct_ret_alias(fn_sig, alias, self.tcx);
-            let lhs_var = stmt.as_call_arg_at(alias.left_index);
-            let rhs_var = stmt.as_call_arg_at(alias.right_index);
+            let lhs_var = stmt.as_call_arg_at(alias.lhs_no());
+            let rhs_var = stmt.as_call_arg_at(alias.rhs_no());
             check_potential_region_leak(lhs_var, lhs_ty, rhs_var, rhs_ty);
         }
         if ret.is_empty() {

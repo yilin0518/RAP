@@ -1,6 +1,9 @@
 /*
  * This is a buggy case: create_vec() returns a dangling pointer
  */
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
 
 //fn unsafe create_vec() -> *mut Vec<i32> {// marking the function as unsafe is also inappropriate
 fn create_vec() -> *mut Vec<i32> {

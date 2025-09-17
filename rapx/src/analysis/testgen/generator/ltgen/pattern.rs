@@ -4,13 +4,9 @@ use crate::analysis::testgen::{generator::ltgen::folder::InfcxVarFolder, utils};
 use crate::{rap_debug, rap_trace};
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer;
-use rustc_infer::{
-    infer::{region_constraints::Constraint, TyCtxtInferExt as _},
-    traits::ObligationCause,
-};
+use rustc_infer::{infer::TyCtxtInferExt as _, traits::ObligationCause};
 use rustc_middle::ty::{self, TyCtxt, TypeFoldable as _};
 use rustc_span::DUMMY_SP;
-use rustc_type_ir::RegionVid;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -144,8 +140,11 @@ pub fn extract_constraints<'tcx>(
     lifetime::visit_ty_region_with(fn_sig.output(), None, tcx, &mut f);
 
     let region_constraint_data = infcx.take_and_reset_region_constraints();
-    let get_pattern_node = |vid: RegionVid| -> PatternNode {
-        let id = vid.as_usize();
+    let get_pattern_node = |region: ty::Region<'tcx>| -> PatternNode {
+        if region.is_static() {
+            return PatternNode::Static;
+        }
+        let id = region.as_var().as_usize();
         if id < temp_cnt {
             PatternNode::Temp(id)
         } else {
@@ -156,30 +155,10 @@ pub fn extract_constraints<'tcx>(
     let mut subgraph = EdgePatterns::default();
 
     for (constraint, _) in region_constraint_data.constraints {
-        let edge = match constraint {
-            Constraint::VarSubVar(a, b) => EdgePattern(get_pattern_node(a), get_pattern_node(b)),
-            Constraint::RegSubVar(region, var) => {
-                if region.is_static() {
-                    EdgePattern(PatternNode::Static, get_pattern_node(var))
-                } else {
-                    panic!("unexpected constraint: {:?}", constraint);
-                }
-            }
-            Constraint::VarSubReg(var, region) => {
-                if region.is_static() {
-                    EdgePattern(get_pattern_node(var), PatternNode::Static)
-                } else {
-                    panic!("unexpected constraint: {:?}", constraint);
-                }
-            }
-            Constraint::RegSubReg(a, b) => {
-                if a.is_static() && b.is_static() {
-                    EdgePattern(PatternNode::Static, PatternNode::Static)
-                } else {
-                    panic!("unexpected constraint: {:?}", constraint);
-                }
-            }
-        };
+        let edge = EdgePattern(
+            get_pattern_node(constraint.sub),
+            get_pattern_node(constraint.sup),
+        );
         subgraph.patterns.push(edge);
     }
 
@@ -194,8 +173,8 @@ pub fn extract_constraints<'tcx>(
                 rap_debug!("pred: {:?} {:?}", ty, region);
                 visit_ty_region_with(ty, Some(region), tcx, &mut |prev, current| {
                     subgraph.patterns.push(EdgePattern(
-                        get_pattern_node(prev.as_var()),
-                        get_pattern_node(current.as_var()),
+                        get_pattern_node(prev),
+                        get_pattern_node(current),
                     ));
                 });
             }
@@ -206,10 +185,9 @@ pub fn extract_constraints<'tcx>(
                 let (lhs, rhs) = (outlive_pred.0, outlive_pred.1);
 
                 // build edge from rhs to lhs
-                subgraph.patterns.push(EdgePattern(
-                    get_pattern_node(rhs.as_var()),
-                    get_pattern_node(lhs.as_var()),
-                ));
+                subgraph
+                    .patterns
+                    .push(EdgePattern(get_pattern_node(rhs), get_pattern_node(lhs)));
             }
             _ => {}
         }

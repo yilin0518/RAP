@@ -1,5 +1,4 @@
-pub use crate::analysis::core::api_dep::is_def_id_public;
-pub use crate::analysis::core::api_dep::is_fuzzable_ty;
+pub use crate::analysis::core::api_dependency::{is_def_id_public, is_fuzzable_ty};
 use rustc_hir::{def_id::DefId, BodyOwnerKind};
 use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
@@ -37,8 +36,8 @@ pub fn is_ty_impl_copy<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 }
 
 pub fn is_ty_eq<'tcx>(ty1: Ty<'tcx>, ty2: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
-    let ty1 = tcx.erase_regions(ty1);
-    let ty2 = tcx.erase_regions(ty2);
+    let ty1 = tcx.erase_and_anonymize_regions(ty1);
+    let ty2 = tcx.erase_and_anonymize_regions(ty2);
     return ty1 == ty2;
 }
 

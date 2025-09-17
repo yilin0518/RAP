@@ -3,7 +3,7 @@ mod safety;
 
 use super::lifetime::{RegionGraph, Rid};
 use super::pattern::PatternProvider;
-use super::FnAliasMap;
+use crate::analysis::core::alias_analysis::AAResultMap;
 use crate::analysis::testgen::context::{Context, UseKind};
 use crate::analysis::testgen::context::{Var, VarState};
 use crate::analysis::testgen::generator::ltgen::lifetime::visit_ty_region_with;
@@ -20,14 +20,14 @@ pub struct LtContext<'tcx, 'a> {
     var_rid: HashMap<Var, Rid>,
     region_graph: RegionGraph,
     pat_provider: PatternProvider<'tcx>,
-    alias_map: &'a FnAliasMap,
+    alias_map: &'a AAResultMap,
     covered_api: HashSet<DefId>,
     explicit_droped_cnt: usize,
     lack_of_alias: Vec<DefId>,
 }
 
 impl<'tcx, 'a> LtContext<'tcx, 'a> {
-    pub fn new(tcx: TyCtxt<'tcx>, alias_map: &'a FnAliasMap) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, alias_map: &'a AAResultMap) -> Self {
         Self {
             tcx,
             cx: Context::new(tcx),

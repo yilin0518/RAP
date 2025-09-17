@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+
 use std::marker::PhantomData;
 
 struct Proxy1<T> {

@@ -1,5 +1,5 @@
 use super::statistic::Statistics;
-use crate::{analysis::core::dataflow::graph::EdgeIdx, rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_info, rap_trace};
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{walk_block, walk_fn, FnKind, Visitor},

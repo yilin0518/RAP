@@ -7,81 +7,17 @@ use std::{default, fmt};
 use bounds::Bound;
 use intervals::*;
 use num_traits::{Bounded, Num, Zero};
-use z3::ast::Int;
+use rustc_middle::mir::{BinOp, UnOp};
 // use std::ops::Range;
 use std::ops::{Add, Mul, Sub};
 
-use crate::rap_trace;
+use crate::{
+    analysis::core::range_analysis::{Range, RangeType},
+    rap_trace,
+};
 
 use super::domain::*;
-use once_cell::sync::Lazy;
 
-static STR_MIN: Lazy<String> = Lazy::new(|| "Min".to_string());
-static STR_MAX: Lazy<String> = Lazy::new(|| "Max".to_string());
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum RangeType {
-    Unknown,
-    Regular,
-    Empty,
-}
-impl fmt::Display for RangeType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            RangeType::Unknown => "Unknown",
-            RangeType::Regular => "Regular",
-            RangeType::Empty => "Empty",
-        };
-        write!(f, "{}", s)
-    }
-}
-#[derive(Debug, PartialEq, Clone)]
-pub struct Range<T>
-where
-    T: PartialOrd + Clone,
-{
-    pub rtype: RangeType,
-    pub range: Closed<T>,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-enum UserType {
-    Unknown,
-    I32(i32),
-    I64(i64),
-    Usize(usize),
-    Empty,
-}
-impl<T> fmt::Display for Range<T>
-where
-    T: IntervalArithmetic,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let lower = if self.range.left.0 == T::min_value() {
-            &*STR_MIN
-        } else if self.range.left.0 == T::max_value() {
-            &*STR_MAX
-        } else {
-            return write!(
-                f,
-                "{} [{}, {}]",
-                self.rtype, self.range.left.0, self.range.right.0
-            );
-        };
-
-        let upper = if self.range.right.0 == T::min_value() {
-            &*STR_MIN
-        } else if self.range.right.0 == T::max_value() {
-            &*STR_MAX
-        } else {
-            return write!(
-                f,
-                "{} [{}, {}]",
-                self.rtype, self.range.left.0, self.range.right.0
-            );
-        };
-        write!(f, "{} [{}, {}]", self.rtype, lower, upper)
-    }
-}
 // fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 //     let lower: &Lazy<String> = if self.range.left.0 == T::min_value() {
 //         &STR_MIN
@@ -268,9 +204,16 @@ where
             );
         } else {
             let result = self.range.clone().intersect(other.range.clone());
+            let result = self.range.clone().intersect(other.range.clone());
+            let mut range = Range::default(T::min_value());
 
-            let range = Range::init(result.unwrap());
-            range
+            if let Some(r) = result {
+                range = Range::init(r);
+                range
+            } else {
+                range
+            }
+
             // let left = std::cmp::max_by(self.get_lower(), other.get_lower(), |a, b| {
             //     a.partial_cmp(b).unwrap()
             // });
@@ -330,7 +273,7 @@ where
 pub struct Meet;
 
 impl Meet {
-    pub fn widen<'tcx, T: IntervalArithmetic + fmt::Debug>(
+    pub fn widen<'tcx, T: IntervalArithmetic + ConstConvert + fmt::Debug>(
         op: &mut BasicOpKind<'tcx, T>,
         constant_vector: &[T],
         vars: &mut VarNodes<'tcx, T>,
@@ -389,7 +332,7 @@ impl Meet {
 
         old_interval != new_sink_interval
     }
-    pub fn narrow<'tcx, T: IntervalArithmetic + Clone + PartialOrd + std::fmt::Debug>(
+    pub fn narrow<'tcx, T: IntervalArithmetic + ConstConvert + fmt::Debug>(
         op: &mut BasicOpKind<'tcx, T>,
         vars: &mut VarNodes<'tcx, T>,
     ) -> bool {

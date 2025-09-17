@@ -1,19 +1,16 @@
 use super::bug_records::*;
-use super::types::*;
-use crate::analysis::core::heap_item::AdtOwner;
-use crate::analysis::utils::intrinsic_id::*;
+use crate::{
+    analysis::{core::alias_analysis::default::types::*, core::ownedheap_analysis::OHAResultMap},
+    def_id::*,
+};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{
     BasicBlock, Body, Const, Operand, Place, Rvalue, StatementKind, Terminator, TerminatorKind,
     UnwindAction,
 };
-use rustc_middle::ty;
-use rustc_middle::ty::{TyCtxt, TypingEnv};
-use rustc_span::def_id::DefId;
-use rustc_span::Span;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::vec::Vec;
+use rustc_middle::ty::{self, TyCtxt, TypingEnv};
+use rustc_span::{def_id::DefId, Span};
+use std::{cell::RefCell, cmp::min, vec::Vec};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AssignType {
@@ -171,7 +168,7 @@ pub struct SafeDropGraph<'tcx> {
     pub alias_set: Vec<usize>,
     pub dead_record: Vec<bool>,
     // analysis of heap item
-    pub adt_owner: AdtOwner,
+    pub adt_owner: OHAResultMap,
     pub child_scc: FxHashMap<
         usize,
         (
@@ -189,7 +186,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         body: &Body<'tcx>,
         tcx: TyCtxt<'tcx>,
         def_id: DefId,
-        adt_owner: AdtOwner,
+        adt_owner: OHAResultMap,
     ) -> SafeDropGraph<'tcx> {
         // handle variables
         let locals = &body.local_decls;
@@ -396,11 +393,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     fn_span: _,
                 } => {
                     if let Operand::Constant(c) = func {
-                        if let ty::FnDef(id, ..) = c.ty().kind() {
-                            if id.index.as_usize() == DROP
-                                || id.index.as_usize() == DROP_IN_PLACE
-                                || id.index.as_usize() == MANUALLYDROP
-                                || id.index.as_usize() == DEALLOC
+                        if let &ty::FnDef(id, ..) = c.ty().kind() {
+                            if id == drop()
+                                || id == drop_in_place()
+                                || id == manually_drop()
+                                || id == dealloc()
                             {
                                 cur_bb.drops.push(terminator.clone());
                             }

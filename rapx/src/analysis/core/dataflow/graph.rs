@@ -3,79 +3,16 @@ use std::collections::HashSet;
 
 use rustc_hir::def_id::DefId;
 use rustc_index::IndexVec;
-use rustc_middle::mir::{
-    AggregateKind, BorrowKind, Const, Local, Operand, Place, PlaceElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+use rustc_middle::{
+    mir::{
+        AggregateKind, BorrowKind, Const, Local, Operand, Place, PlaceElem, Rvalue, Statement,
+        StatementKind, Terminator, TerminatorKind,
+    },
+    ty::TyKind,
 };
-use rustc_middle::ty::TyKind;
 use rustc_span::{Span, DUMMY_SP};
 
-use crate::utils::log::relative_pos_range;
-
-#[derive(Clone, Debug)]
-pub enum NodeOp {
-    //warning: the fields are related to the version of the backend rustc version
-    Nop,
-    Err,
-    Const(String, String),
-    //Rvalue
-    Use,
-    Repeat,
-    Ref,
-    ThreadLocalRef,
-    AddressOf,
-    Len,
-    Cast,
-    BinaryOp,
-    CheckedBinaryOp,
-    NullaryOp,
-    UnaryOp,
-    Discriminant,
-    Aggregate(AggKind),
-    ShallowInitBox,
-    CopyForDeref,
-    RawPtr,
-    //TerminatorKind
-    Call(DefId),
-    CallOperand, // the first in_edge is the func
-}
-
-#[derive(Clone, Debug)]
-pub enum EdgeOp {
-    Nop,
-    //Operand
-    Move,
-    Copy,
-    Const,
-    //Mutability
-    Immut,
-    Mut,
-    //Place
-    Deref,
-    Field(String),
-    Downcast(String),
-    Index,
-    ConstIndex,
-    SubSlice,
-    SubType,
-}
-
-#[derive(Clone)]
-pub struct GraphEdge {
-    pub src: Local,
-    pub dst: Local,
-    pub op: EdgeOp,
-    pub seq: usize,
-}
-
-#[derive(Clone)]
-pub struct GraphNode {
-    pub ops: Vec<NodeOp>,
-    pub span: Span, //the corresponding code span
-    pub seq: usize, //the sequence number, edges with the same seq number are added in the same batch within a statement or terminator
-    pub out_edges: Vec<EdgeIdx>,
-    pub in_edges: Vec<EdgeIdx>,
-}
+use crate::{analysis::core::dataflow::*, utils::log::relative_pos_range};
 
 impl GraphNode {
     pub fn new() -> Self {
@@ -89,9 +26,7 @@ impl GraphNode {
     }
 }
 
-pub type EdgeIdx = usize;
-pub type GraphNodes = IndexVec<Local, GraphNode>;
-pub type GraphEdges = IndexVec<EdgeIdx, GraphEdge>;
+#[derive(Clone)]
 pub struct Graph {
     pub def_id: DefId,
     pub span: Span,
@@ -100,6 +35,17 @@ pub struct Graph {
     pub edges: GraphEdges,
     pub n_locals: usize,
     pub closures: HashSet<DefId>,
+}
+
+impl From<Graph> for DataFlowGraph {
+    fn from(graph: Graph) -> Self {
+        let param_ret_deps = graph.param_return_deps();
+        DataFlowGraph {
+            nodes: graph.nodes,
+            edges: graph.edges,
+            param_ret_deps: param_ret_deps,
+        }
+    }
 }
 
 impl Graph {
@@ -363,7 +309,7 @@ impl Graph {
     // For the later, if only one op meets the condition, we still take it into consideration.
     pub fn collect_equivalent_locals(&self, local: Local, strict: bool) -> HashSet<Local> {
         let mut set = HashSet::new();
-        let mut root = local;
+        let root = Cell::new(local);
         let reduce_func = if strict {
             DFSStatus::and
         } else {
@@ -377,8 +323,14 @@ impl Graph {
                     match op {
                         NodeOp::Nop | NodeOp::Use | NodeOp::Ref => {
                             //Nop means an orphan node or a parameter
-                            root = idx;
+                            root.set(idx);
                             DFSStatus::Continue
+                        }
+                        NodeOp::Call(_) => {
+                            //We are moving towards upside. Thus we can record the call node and stop dfs.
+                            //We stop because the return value does not equal to parameters
+                            root.set(idx);
+                            DFSStatus::Stop
                         }
                         _ => DFSStatus::Stop,
                     }
@@ -398,6 +350,15 @@ impl Graph {
                         set.insert(idx);
                         DFSStatus::Continue
                     }
+                    NodeOp::Call(_) => {
+                        if idx == root.get() {
+                            set.insert(idx);
+                            DFSStatus::Continue
+                        } else {
+                            // We are moving towards downside. Thus we stop dfs right now.
+                            DFSStatus::Stop
+                        }
+                    }
                     _ => DFSStatus::Stop,
                 })
                 .reduce(reduce_func)
@@ -415,7 +376,7 @@ impl Graph {
         );
         seen.clear();
         self.dfs(
-            root,
+            root.get(),
             Direction::Downside,
             &mut find_equivalent_operator,
             &mut Self::equivalent_edge_validator,
@@ -506,13 +467,13 @@ impl Graph {
         edge_validator: &mut G,
         traverse_all: bool,
         seen: &mut HashSet<Local>,
-    ) -> DFSStatus
+    ) -> (DFSStatus, bool)
     where
         F: FnMut(&Graph, Local) -> DFSStatus,
         G: FnMut(&Graph, EdgeIdx) -> DFSStatus,
     {
         if seen.contains(&now) {
-            return DFSStatus::Stop;
+            return (DFSStatus::Stop, false);
         }
         seen.insert(now);
         macro_rules! traverse {
@@ -520,7 +481,7 @@ impl Graph {
                 for edge_idx in self.nodes[now].$edges.iter() {
                     let edge = &self.edges[*edge_idx];
                     if matches!(edge_validator(self, *edge_idx), DFSStatus::Continue) {
-                        let result = self.dfs(
+                        let (dfs_status, result) = self.dfs(
                             edge.$field,
                             direction,
                             node_operator,
@@ -528,8 +489,9 @@ impl Graph {
                             traverse_all,
                             seen,
                         );
-                        if matches!(result, DFSStatus::Stop) && !traverse_all {
-                            return DFSStatus::Stop;
+
+                        if matches!(dfs_status, DFSStatus::Stop) && result && !traverse_all {
+                            return (DFSStatus::Stop, true);
                         }
                     }
                 }
@@ -549,9 +511,9 @@ impl Graph {
                     traverse!(out_edges, dst);
                 }
             };
-            DFSStatus::Continue
+            (DFSStatus::Continue, false)
         } else {
-            DFSStatus::Stop
+            (DFSStatus::Stop, true)
         }
     }
 
@@ -644,14 +606,4 @@ impl DFSStatus {
             DFSStatus::Stop
         }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum AggKind {
-    Array,
-    Tuple,
-    Adt(DefId),
-    Closure(DefId),
-    Coroutine(DefId),
-    RawPtr,
 }

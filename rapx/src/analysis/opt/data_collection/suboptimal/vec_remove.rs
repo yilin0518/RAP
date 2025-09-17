@@ -2,17 +2,16 @@ use annotate_snippets::{Level, Renderer, Snippet};
 
 use once_cell::sync::OnceCell;
 
+use crate::{
+    analysis::{
+        core::dataflow::{graph::*, *},
+        opt::OptCheck,
+        utils::def_path::DefPath,
+    },
+    utils::log::{relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code},
+};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
-
-use crate::analysis::core::dataflow::graph::GraphNode;
-use crate::analysis::core::dataflow::graph::{Graph, NodeOp};
-use crate::analysis::opt::OptCheck;
-use crate::analysis::utils::def_path::DefPath;
-
-use crate::utils::log::{
-    relative_pos_range, span_to_filename, span_to_line_number, span_to_source_code,
-};
 
 struct DefPaths {
     vec_remove: DefPath,

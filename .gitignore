@@ -1,5 +1,7 @@
 .idea/
 .vscode/
 target/
-rapx.txt
+**/*.txt
 tests/**/Cargo.lock
+**/*.dot
+**/*.png

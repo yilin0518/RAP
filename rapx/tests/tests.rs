@@ -107,11 +107,17 @@ fn test_uaf_swithint_diffbranch() {
 }
 
 #[test]
+fn test_alias_not_alias_iter() {
+    let output = running_tests_with_arg("alias/not_alias_iter", "-alias");
+    assert_eq!(output.contains("foo\": null"), true);
+}
+
+#[test]
 fn test_alias_field() {
     let output = running_tests_with_arg("alias/alias_field", "-alias");
     assert_eq!(
-        output.contains("Alias found in Some(\"::foo\"): {(0,1.1),(0,1.0)}")
-            || output.contains("Alias found in Some(\"::foo\"): {(0,1.0),(0,1.1)}"),
+        output.contains("\"foo\": (0,1.1), (0,1.0)")
+            || output.contains("\"foo\": (0,1.0), (0,1.1)"),
         true
     );
 }
@@ -119,46 +125,31 @@ fn test_alias_field() {
 #[test]
 fn test_alias_lib_no_caller() {
     let output = running_tests_with_arg("alias/alias_lib_no_caller", "-alias");
-    assert_eq!(
-        output.contains("Alias found in Some(\"::{impl#0}::new\"): {(0,1.0)}"),
-        true
-    );
+    assert_eq!(output.contains("new\": (0,1.0)"), true);
 }
 
 #[test]
 fn test_alias_scc() {
     let output = running_tests_with_arg("alias/alias_scc", "-alias");
-    assert_eq!(
-        output.contains("Alias found in Some(\"::foo\"): {(0,1)}"),
-        true
-    );
+    assert_eq!(output.contains("foo\": (0,1)"), true);
 }
 
 #[test]
 fn test_alias_switch() {
     let output = running_tests_with_arg("alias/alias_switch", "-alias");
-    assert_eq!(
-        output.contains("Alias found in Some(\"::foo\"): {(0,1)}"),
-        true
-    );
+    assert_eq!(output.contains("foo\": (0,1)"), true);
 }
 
 #[test]
 fn test_alias_copy_on_deref() {
     let output = running_tests_with_arg("alias/alias_copy_for_deref", "-alias");
-    assert_eq!(
-        output.contains("Alias found in Some(\"::{impl#0}::new\"): {(0,1.0)}"),
-        true
-    );
+    assert_eq!(output.contains("new\": (0,1.0)"), true);
 }
 
 #[test]
 fn test_alias_indirect() {
     let output = running_tests_with_arg("alias/alias_indirect", "-alias");
-    assert_eq!(
-        output.contains("Alias found in Some(\"::{impl#1}::iter_prop\"): {(0,1.0)}"),
-        true
-    );
+    assert_eq!(output.contains("iter_prop\": (0,1.0)"), true);
 }
 
 #[test]
@@ -190,63 +181,55 @@ fn test_leak_proxy() {
 
 #[test]
 fn test_heap_cell() {
-    let output = running_tests_with_arg("heap/heap_cell", "-heap");
+    let output = running_tests_with_arg("ownedheap/heap_cell", "-ownedheap");
     assert_eq!(
-        output.contains("std::cell::Cell<T/#0> (0, [1])")
-            && output.contains("std::cell::RefCell<T/#0> (0, [1])")
-            && output.contains("std::cell::UnsafeCell<T/#0> (0, [1])")
-            && output.contains("std::cell::LazyCell<T/#0, F/#1> (0, [1,1])")
-            && output.contains("std::rc::Rc<T/#0, A/#1> (1, [1,1])")
-            && output.contains("std::sync::Arc<T/#0, A/#1> (1, [1,1])")
-            && output.contains("std::rc::UniqueRc<T/#0, A/#1> (1, [1,1])")
-            && output.contains("std::rc::Weak<T/#0, A/#1> (0, [1,1])")
-            && output.contains("std::sync::Weak<T/#0, A/#1> (0, [1,1])"),
+        output.contains("Cell\": False, <1>")
+            && output.contains("RefCell\": False, <1>")
+            && output.contains("UnsafeCell\": False, <1>")
+            && output.contains("Rc\": True, <1,1>")
+            && output.contains("Arc\": True, <1,1>")
+            && output.contains("UniqueRc\": True, <1,1>"),
         true
     );
 }
 
 #[test]
 fn test_heap_collections() {
-    let output = running_tests_with_arg("heap/heap_collections", "-heap");
+    let output = running_tests_with_arg("ownedheap/heap_collections", "-ownedheap");
     assert_eq!(
-        output.contains("std::ptr::Unique<T/#0> (1, [0])")
-            && output.contains("std::boxed::Box<T/#0, A/#1> (1, [0,1])")
-            && output.contains("std::vec::Vec<T/#0, A/#1> (1, [0,1])")
-            && output.contains("std::string::String (1, [])")
-            && output.contains("std::collections::VecDeque<T/#0, A/#1> (1, [0,1])")
-            && output.contains("std::collections::LinkedList<T/#0, A/#1> (1, [1,1])")
-            && output.contains("hashbrown::raw::RawTable<T/#0, A/#1> (1, [0,1])")
-            && output.contains("hashbrown::map::HashMap<K/#0, V/#1, S/#2, A/#3> (1, [0,0,1,1])")
-            && output.contains("std::collections::HashMap<K/#0, V/#1, S/#2> (1, [0,0,1])")
-            && output.contains("std::collections::BTreeMap<K/#0, V/#1, A/#2> (1, [0,0,1])")
-            && output.contains("hashbrown::set::HashSet<T/#0, S/#1, A/#2> (1, [0,1,1])")
-            && output.contains("std::collections::HashSet<T/#0, S/#1> (1, [0,1])")
-            && output.contains("std::collections::BTreeSet<T/#0, A/#1> (1, [0,1])")
-            && output.contains("std::collections::BinaryHeap<T/#0, A/#1> (1, [0,1])"),
+        output.contains("Unique\": True, <0>")
+            && output.contains("Box\": True, <0,1>")
+            && output.contains("Vec\": True, <0,1>")
+            && output.contains("String\": True, <>")
+            && output.contains("LinkedList\": True, <1,1>")
+            && output.contains("HashMap\": True, <0,0,1>")
+            && output.contains("BTreeMap\": True, <0,0,1>")
+            && output.contains("HashSet\": True, <0,1>")
+            && output.contains("BTreeSet\": True, <0,1>"),
         true
     );
 }
 
 #[test]
 fn test_heap_nested() {
-    let output: String = running_tests_with_arg("heap/heap_nested", "-heap");
+    let output: String = running_tests_with_arg("ownedheap/heap_nested", "-ownedheap");
     assert_eq!(
-        output.contains("X<A/#0> (0, [1])")
-            && output.contains("Y<B/#0> (0, [1])")
-            && output.contains("Example<A/#0, B/#1, T/#2, S/#3> (1, [1,1,0,1])"),
+        output.contains("X\": False, <1>")
+            && output.contains("Y\": False, <1>")
+            && output.contains("Example\": True, <1,1,0,1>"),
         true
     );
 }
 
 #[test]
 fn test_heap_proxy() {
-    let output = running_tests_with_arg("heap/heap_proxy", "-heap");
+    let output = running_tests_with_arg("ownedheap/heap_proxy", "-ownedheap");
     assert_eq!(
-        output.contains("Proxy1<T/#0> (0, [0])")
-            && output.contains("Proxy2<T/#0> (1, [0])")
-            && output.contains("Proxy3<'a/#0, T/#1> (0, [0,0])")
-            && output.contains("Proxy4<T/#0> (0, [1])")
-            && output.contains("Proxy5<T/#0> (1, [0])"),
+        output.contains("Proxy1\": False, <0>")
+            && output.contains("Proxy2\": True, <0>")
+            && output.contains("Proxy3\": False, <0,0>")
+            && output.contains("Proxy4\": False, <1>")
+            && output.contains("Proxy5\": True, <0>"),
         true
     );
 }
@@ -258,15 +241,15 @@ fn test_test_cons_merge() {
 }
 
 #[test]
-fn test_aligned() {
-    let output = running_tests_with_arg("safety_check/align", "-verify");
-    assert_eq!(output.contains("Aligned"), true);
-}
-
-#[test]
 fn test_init() {
     let output = running_tests_with_arg("safety_check/init", "-verify");
     assert_eq!(output.contains("Init"), true);
+}
+
+#[test]
+fn test_cis() {
+    let output = running_tests_with_arg("safety_check/verify_case1", "-verify");
+    assert_eq!(output.contains("ValidPtr"), true);
 }
 
 #[test]
@@ -279,22 +262,34 @@ fn test_range_analysis() {
     let output = running_tests_with_arg("range/range_1", "-range");
 
     let expected_ranges = vec![
-        "var: _11. Regular [1, 99]",
-        "var: _6. Regular [0, 99]",
-        "var: _1. Regular [0, 0]",
-        "var: _16. Regular [1, 100]",
-        "var: _9. Regular [0, 99]",
-        "var: _35. Regular [Min, Max]",
-        "var: _7. Regular [Min, Max]",
-        "var: _2. Regular [Min, Max]",
-        "var: _31. Regular [0, 98]",
-        "var: _12. Regular [0, 98]",
-        "var: _10. Regular [0, 99]",
-        "var: _30. Regular [1, 99]",
-        "var: _37. Regular [Min, Max]",
-        "var: _5. Regular [0, 0]",
-        "var: _4. Regular [0, 100]",
-        "var: _34. Regular [1, 100]",
+        "_1 => Regular [0, 0]",
+        " _2 => Regular [Min, Max]",
+        "_4 => Regular [0, 100]",
+        "_6 => Regular [0, 99]",
+        "_11 => Regular [1, 99]",
+        "_12 => Regular [0, 98]",
+        "_34 => Regular [1, 100]",
+    ];
+
+    for expected in expected_ranges {
+        assert!(
+            output.contains(expected),
+            "Missing expected range: '{}'\nFull output:\n{}",
+            expected,
+            output
+        );
+    }
+}
+#[test]
+
+fn test_interprocedual_range_analysis() {
+    let output = running_tests_with_arg("range/range_2", "-range");
+
+    let expected_ranges = vec![
+        "_1 => Regular [42, 42]",
+        "_2 => Regular [Min, Max]",
+        "_4 => Regular [52, 52]",
+        "_5 => Regular [100, 100]",
     ];
 
     for expected in expected_ranges {

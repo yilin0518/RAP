@@ -145,17 +145,19 @@ impl Callbacks for RapCallback {
     }
     fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
         rap_trace!("Execute after_analysis() of compiler callbacks");
-        if self.is_building_test_crate() {
-            rustc_public::rustc_internal::run(tcx, || {
+
+        rustc_public::rustc_internal::run(tcx, || {
+            def_id::init(tcx);
+            if self.is_building_test_crate() {
                 start_analyzer(tcx, self);
-            })
-            .expect("Failed to run rustc_public.");
-            rap_trace!("analysis done");
-        } else {
-            let package_name =
-                std::env::var("CARGO_PKG_NAME").expect("cannot capture env var `CARGO_PKG_NAME`");
-            rap_trace!("skip analyzing package `{}`", package_name);
-        }
+            } else {
+                let package_name = std::env::var("CARGO_PKG_NAME")
+                    .expect("cannot capture env var `CARGO_PKG_NAME`");
+                rap_trace!("skip analyzing package `{}`", package_name);
+            }
+        })
+        .expect("Failed to run rustc_public.");
+        rap_trace!("analysis done");
 
         Compilation::Continue
     }
@@ -394,7 +396,6 @@ impl RapCallback {
 
 /// Start the analysis with the features enabled.
 pub fn start_analyzer(tcx: TyCtxt, callback: &RapCallback) {
-    def_id::init(tcx);
     if callback.is_alias_enabled() {
         let mut analyzer = AliasAnalyzer::new(tcx);
         analyzer.run();
@@ -538,6 +539,6 @@ pub fn start_analyzer(tcx: TyCtxt, callback: &RapCallback) {
     }
 
     if callback.is_scan_enabled() {
-        ScanAnalysis::new(tcx).start();
+        ScanAnalysis::new(tcx).run();
     }
 }

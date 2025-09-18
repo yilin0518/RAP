@@ -28,7 +28,7 @@ fn main() {
     let re_test_crate = Regex::new(r"-test-crate=(\S*)").unwrap();
 
     for arg in env::args() {
-        if let Some((full, [test_crate_name])) =
+        if let Some((_full, [test_crate_name])) =
             re_test_crate.captures(&arg).map(|caps| caps.extract())
         {
             compiler.set_test_crate(test_crate_name.to_owned());

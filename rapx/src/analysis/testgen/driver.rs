@@ -72,6 +72,7 @@ pub fn dump_alias_map(
 pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = LtGenConfig::load()?;
     let local_crate_name = tcx.crate_name(LOCAL_CRATE);
+    rap_info!("run on crate: {}", local_crate_name);
 
     let workspace_dir;
 

@@ -44,6 +44,7 @@ pub struct ApiDependencyGraph<'tcx> {
     tcx: TyCtxt<'tcx>,
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct Statistics {
     pub api_count: usize,
     pub type_count: usize,

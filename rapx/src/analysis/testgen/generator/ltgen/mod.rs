@@ -149,7 +149,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 .join(", ")
         );
 
-        let nodes = self.eligable_nodes(&cx);
+        let nodes = self.eligable_nodes(cx);
         rap_debug!("# eligible actions = {}", nodes.len());
         rap_debug!("eligible actions: {:?}", nodes);
 

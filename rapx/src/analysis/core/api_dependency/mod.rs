@@ -73,7 +73,7 @@ impl<'tcx> Analysis for ApiDependencyAnalyzer<'tcx> {
             config,
         );
 
-        let mut api_graph = ApiDependencyGraph::new(self.tcx);
+        let api_graph = &mut self.api_graph;
         api_graph.build(config);
 
         let (estimate, total) = api_graph.estimate_coverage();

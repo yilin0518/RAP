@@ -27,7 +27,7 @@ General command:
     -version                     show the version of RAPx
     -test-crate=<package_name>   specify the tested package in the workspace
 
-Random Test Generation
+Random Test Generation:
     -testgen       generate testcases based on the API dependency graph
 
 

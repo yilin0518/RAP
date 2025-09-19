@@ -37,23 +37,15 @@ fn get_fn_arg_ty_at<'tcx>(no: usize, fn_sig: ty::FnSig<'tcx>) -> Ty<'tcx> {
 
 fn destruct_ret_alias<'tcx>(
     fn_sig: ty::FnSig<'tcx>,
-    ret_alias: &AAFact,
+    fact: &AAFact,
     tcx: TyCtxt<'tcx>,
 ) -> (Ty<'tcx>, Ty<'tcx>) {
-    let lhs_no = ret_alias.lhs_no();
-    let rhs_no = ret_alias.rhs_no();
+    let lhs_no = fact.lhs_no();
+    let rhs_no = fact.rhs_no();
 
     (
-        ty_project_to(
-            get_fn_arg_ty_at(lhs_no, fn_sig),
-            &ret_alias.lhs_fields(),
-            tcx,
-        ),
-        ty_project_to(
-            get_fn_arg_ty_at(rhs_no, fn_sig),
-            &ret_alias.rhs_fields(),
-            tcx,
-        ),
+        ty_project_to(get_fn_arg_ty_at(lhs_no, fn_sig), &fact.lhs_fields(), tcx),
+        ty_project_to(get_fn_arg_ty_at(rhs_no, fn_sig), &fact.rhs_fields(), tcx),
     )
 }
 
@@ -91,7 +83,7 @@ pub fn check_possibility<'tcx>(lhs_ty: Ty<'tcx>, rhs_ty: Ty<'tcx>, tcx: TyCtxt<'
 }
 
 impl<'tcx, 'a> LtContext<'tcx, 'a> {
-    pub fn detect_missing_point_to(&self, stmt: &Stmt<'tcx>) -> Option<HashMap<Var, HashSet<Rid>>> {
+    pub fn detect_vulnerable_paths(&self, stmt: &Stmt<'tcx>) -> Option<HashMap<Var, HashSet<Rid>>> {
         let mut ret = HashMap::new();
         let tcx = self.tcx;
 
@@ -101,7 +93,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
         rap_debug!("analysis alias for: {:?} {:?}", call.fn_did, fn_sig);
 
-        let mut check_potential_region_leak = |lhs_var, lhs_ty, rhs_var, rhs_ty| {
+        let mut add_potential_paths = |lhs_var, lhs_ty, rhs_var, rhs_ty| {
             rap_debug!(
                 "[check_potential_region_leak] lhs_var = {}: {}, rhs_var = {}: {}",
                 lhs_var,
@@ -118,32 +110,31 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
             // the coresponding lifetime binding 'lhs->'rhs should be added
             // FIXME: the field-sensitive alias analysis is not exactly accurate,
             // so we may miss some 'lhs -> 'rhs lifetime bindings
-            if rhs_ty_rids.is_empty() && check_possibility(lhs_ty, rhs_ty, tcx) {
+            if rhs_ty_rids.is_empty() {
                 rhs_ty_rids.push(self.rid_of(rhs_var));
             }
-            let lhs_rid = self.rid_of(lhs_var);
             let entry: &mut HashSet<Rid> = ret.entry(lhs_var).or_default();
 
             // add all unsafe regions into entry
             rhs_ty_rids.into_iter().for_each(|rid| {
-                if !self.region_graph().prove(lhs_rid, rid) {
-                    entry.insert(rid);
-                }
+                entry.insert(rid);
             });
         };
 
-        for alias in self
+        for fact in self
             .alias_map
             .get(&call.fn_did())
             .expect(&format!("{:?} do not have alias infomation", call.fn_did()))
             .aliases()
         {
-            rap_debug!("alias: {}", alias);
-            // ths alias is symmetric, that is, if (a,b) exists, then (b,a) must exist
-            let (lhs_ty, rhs_ty) = destruct_ret_alias(fn_sig, alias, self.tcx);
-            let lhs_var = stmt.as_call_arg_at(alias.lhs_no());
-            let rhs_var = stmt.as_call_arg_at(alias.rhs_no());
-            check_potential_region_leak(lhs_var, lhs_ty, rhs_var, rhs_ty);
+            rap_debug!("alias fact: {}", fact);
+            let (lhs_ty, rhs_ty) = destruct_ret_alias(fn_sig, fact, self.tcx);
+            let lhs_var = stmt.call_inputs_and_output_var_at(fact.lhs_no());
+            let rhs_var = stmt.call_inputs_and_output_var_at(fact.rhs_no());
+            add_potential_paths(lhs_var, lhs_ty, rhs_var, rhs_ty);
+            if fact.lhs_no() != 0 {
+                add_potential_paths(rhs_var, rhs_ty, lhs_var, lhs_ty);
+            }
         }
         if ret.is_empty() {
             return None;
@@ -160,6 +151,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
         let fn_did = stmt.as_apicall().fn_did();
 
+        // if the function do not exist alias relationship, we assume it is safe
         if !self.alias_map.contains_key(&fn_did) {
             self.lack_of_alias.push(fn_did);
             return false;
@@ -170,39 +162,46 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
         let mut success = false;
 
-        if let Some(vec) = self.detect_missing_point_to(&stmt) {
+        if let Some(vec) = self.detect_vulnerable_paths(&stmt) {
             for (var, rids) in vec {
-                rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
-                for rid in rids {
-                    let mut src_rids = Vec::new();
-                    self.region_graph.for_each_source(rid, &mut |rid| {
-                        if !self.region_graph.is_static(rid) {
-                            src_rids.push(rid)
-                        }
-                    });
+                // we should prove `rid_of(var) -> rid` in the region graph for each rid
+                let unproved = rids
+                    .iter()
+                    .filter(|rid| !self.region_graph.prove(self.rid_of(var), **rid))
+                    .copied()
+                    .collect::<Vec<_>>();
 
-                    let dropped_var: Vec<Var> = src_rids
-                        .into_iter()
-                        .filter_map(|rid| {
-                            self.region_graph
-                                .get_node(rid)
-                                .as_var()
-                                .filter(|var| !self.cx.var_state(*var).is_dead())
-                        })
-                        .collect();
-
-                    if !dropped_var.is_empty() {
-                        success = true;
-                    }
-
-                    for var in dropped_var.iter() {
-                        self.add_drop_stmt(*var);
-                    }
-                    rap_debug!("[unsafe] drop var: {:?}", dropped_var);
+                if unproved.is_empty() {
+                    continue;
                 }
+
+                rap_debug!("[unsafe] variable {} lack of binding with {:?}", var, rids);
+
+                unproved.iter().for_each(|rid| {
+                    success |= self.drop_source_from_rids(*rid);
+                });
             }
         }
 
         success
+    }
+
+    fn drop_source_from_rids(&mut self, rid: Rid) -> bool {
+        let mut dropped_var = Vec::new();
+
+        self.region_graph.for_each_source(rid, &mut |rid| {
+            if let Some(var) = self.region_graph.get_node(rid).as_var() {
+                if !self.cx.var_state(var).is_dead() {
+                    dropped_var.push(var);
+                }
+            }
+        });
+
+        for var in dropped_var.iter() {
+            self.add_drop_stmt(*var);
+        }
+
+        rap_debug!("[unsafe] drop var: {:?}", dropped_var);
+        !dropped_var.is_empty()
     }
 }

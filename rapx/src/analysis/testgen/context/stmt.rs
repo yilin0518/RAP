@@ -150,7 +150,7 @@ impl<'tcx> Stmt<'tcx> {
         }
     }
 
-    pub fn as_call_arg_at(&self, no: usize) -> Var {
+    pub fn call_inputs_and_output_var_at(&self, no: usize) -> Var {
         match self.kind() {
             StmtKind::Call(call) => {
                 if no == 0 {

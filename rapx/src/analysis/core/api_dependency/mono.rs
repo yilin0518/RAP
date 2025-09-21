@@ -612,6 +612,18 @@ pub fn get_unbound_generic_candidates<'tcx>(tcx: TyCtxt<'tcx>) -> Vec<ty::Ty<'tc
     ]
 }
 
+// calculate the complexity of monomorphic solution,
+// complexity = sum of complexity of each type argument
+pub fn get_mono_complexity<'tcx>(args: &GenericArgsRef<'tcx>) -> usize {
+    args.iter().fold(0, |acc, arg| {
+        if let Some(ty) = arg.as_type() {
+            acc + utils::ty_complexity(ty)
+        } else {
+            acc
+        }
+    })
+}
+
 pub fn get_impls<'tcx>(
     tcx: TyCtxt<'tcx>,
     fn_did: DefId,

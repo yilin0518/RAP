@@ -117,7 +117,6 @@ impl RegionGraph {
     pub fn add_edge_by_region(&mut self, from: ty::Region<'_>, to: ty::Region<'_>) {
         let from = region_to_rid(from);
         let to = region_to_rid(to);
-        rap_trace!("[region_graph] add edge: {:?} -> {:?}", from, to);
         self.add_edge(from, to);
     }
 
@@ -189,7 +188,7 @@ impl RegionGraph {
     }
 
     pub fn add_edge(&mut self, from: Rid, to: Rid) {
-        rap_debug!("[region_graph] add edge: {} -> {}", from, to);
+        rap_trace!("[region_graph] add edge: {} -> {}", from, to);
         self.inner.update_edge(from.into(), to.into(), ());
     }
 

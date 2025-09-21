@@ -95,9 +95,11 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
         let mut add_potential_paths = |lhs_var, lhs_ty, rhs_var, rhs_ty| {
             rap_debug!(
-                "[check_potential_region_leak] lhs_var = {}: {}, rhs_var = {}: {}",
+                "[add_potential_paths] ({}) lhs_var = {}: {}, ({}) rhs_var = {}: {}",
+                self.rid_of(lhs_var),
                 lhs_var,
                 lhs_ty,
+                self.rid_of(rhs_var),
                 rhs_var,
                 rhs_ty
             );

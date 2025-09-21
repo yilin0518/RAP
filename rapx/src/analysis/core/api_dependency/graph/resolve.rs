@@ -3,7 +3,7 @@ use super::dep_node::{desc_str, DepNode};
 use super::transform::TransformKind;
 use super::ty_wrapper::TyWrapper;
 use super::Config;
-use crate::analysis::core::api_dependency::mono::Mono;
+use crate::analysis::core::api_dependency::mono::{get_mono_complexity, Mono};
 use crate::analysis::core::api_dependency::utils::{is_fuzzable_ty, ty_complexity};
 use crate::analysis::core::api_dependency::visitor::FnVisitor;
 use crate::analysis::core::api_dependency::ApiDependencyGraph;
@@ -191,7 +191,6 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
 
         type_candidates.add_prelude_tys();
 
-        // let mut num_reachable = 0;
         let mut generic_map: HashMap<DefId, HashSet<Mono>> = HashMap::new();
 
         // initialize unreachable non generic API
@@ -219,9 +218,10 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
             }
 
             let mut current_tys = HashSet::new();
-            // check whether there is any non-generic api that is reachable
+
+            // check whether there is any non-generic reachable in this iteration.
             // if the api is reachable, add output type to reachble_tys,
-            // and remove fn_did from the set.
+            // and remove it from the set.
             unreachable_non_generic_api.retain(|fn_did| {
                 !add_return_type_if_reachable(
                     *fn_did,
@@ -294,6 +294,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         self.update_transform_edges();
 
         self.dump_to_dot(Path::new("api_graph_unpruned.dot"), self.tcx);
+
         let (estimate, total) = self.estimate_coverage_distinct();
         rap_info!(
             "estimate API coverage before pruning: {:.2} ({}/{})",
@@ -422,31 +423,31 @@ fn select_minimal_set_cover<'tcx, 'a>(
 ) {
     rap_debug!("select minimal set for: {}", tcx.def_path_str(fn_did));
     let mut impl_vec = Vec::new();
+    let mut cmplx_vec = Vec::new();
     for (args, _) in monos.iter() {
-        let impls = mono::get_impls(tcx, fn_did, args);
-        impl_vec.push(impls);
+        impl_vec.push(mono::get_impls(tcx, fn_did, args));
+        cmplx_vec.push(get_mono_complexity(args));
     }
 
     let mut selected_cnt = 0;
     let mut complete = HashSet::new();
     loop {
         let mut current_max = 0;
+        let mut current_cmplx = usize::MAX;
         let mut idx = 0;
         for i in 0..impl_vec.len() {
-            let impls = &impl_vec[i];
-            let size = impls.iter().fold(0, |cnt, did| {
-                if !complete.contains(did) {
-                    cnt + 1
-                } else {
-                    cnt
-                }
-            });
-            if size > current_max {
+            let size = impl_vec[i]
+                .iter()
+                .fold(0, |cnt, did| cnt + (!complete.contains(did)) as usize);
+
+            if size > current_max || (size == current_max && cmplx_vec[i] < current_cmplx) {
                 current_max = size;
+                current_cmplx = cmplx_vec[i];
                 idx = i;
             }
         }
-        if current_max == 0 {
+        // though maybe all impls is empty, we have to select at least one
+        if current_max == 0 && selected_cnt > 0 {
             break;
         }
         selected_cnt += 1;
@@ -457,9 +458,9 @@ fn select_minimal_set_cover<'tcx, 'a>(
         });
     }
 
-    if selected_cnt == 0 {
-        let idx = rng.random_range(0..impl_vec.len());
-        rap_debug!("random select: {:?}", monos[idx].0);
-        monos[idx].1 = true;
-    }
+    // if selected_cnt == 0 {
+    //     let idx = rng.random_range(0..impl_vec.len());
+    //     rap_debug!("random select: {:?}", monos[idx].0);
+    //     monos[idx].1 = true;
+    // }
 }

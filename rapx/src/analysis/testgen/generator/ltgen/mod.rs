@@ -160,7 +160,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
 
         let weights = self.weight_of_nodes(&nodes);
         let dist = WeightedIndex::new(&weights).unwrap();
-        rap_trace!(
+        rap_debug!(
             "weights: {}",
             nodes
                 .iter()
@@ -170,6 +170,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 .join(", ")
         );
         let index = self.rng.borrow_mut().sample(dist);
+        *self.reached_map.entry(nodes[index].clone()).or_default() += 1;
         Some(nodes[index])
     }
 

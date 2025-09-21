@@ -87,8 +87,6 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         // 1. collect APIs
         tcx.hir_visit_all_item_likes_in_crate(&mut fn_visitor);
         self.all_apis = fn_visitor.apis().into_iter().collect();
-        // add auxillary API from std
-        // self.add_auxiliary_api();
 
         // 2. resolve generic API to monomorphic API
         if config.resolve_generic {

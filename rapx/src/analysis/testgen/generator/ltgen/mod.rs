@@ -7,7 +7,7 @@ mod select;
 use crate::analysis::core::alias_analysis::AAResultMap;
 use crate::analysis::core::api_dependency::{graph::TransformKind, ApiDependencyGraph, DepNode};
 use crate::analysis::testgen::utils::{self};
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_info};
 use context::LtContext;
 use itertools::Itertools;
 use rand::distr::weighted::WeightedIndex;

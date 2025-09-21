@@ -4,8 +4,6 @@ use rustc_infer::infer::TyCtxtInferExt as _;
 use rustc_middle::ty::{self, FnSig, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::STDLIB_STABLE_CRATES;
 use rustc_trait_selection::infer::InferCtxtExt;
-use rustc_type_ir::TypeVisitableExt;
-use std::collections::VecDeque;
 
 /// return all DefId of all pub APIs
 pub fn get_all_pub_apis(tcx: TyCtxt<'_>) -> Vec<DefId> {

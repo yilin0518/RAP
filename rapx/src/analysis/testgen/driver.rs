@@ -74,13 +74,10 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
     let local_crate_name = tcx.crate_name(LOCAL_CRATE);
     rap_info!("run on crate: {}", local_crate_name);
 
-    let workspace_dir;
+    let workspace_dir = std::env::current_dir()?.join("testgen");
 
     if config.is_debug_mode() {
-        workspace_dir = std::env::current_dir()?.join("testgen");
         config.max_run = 1;
-    } else {
-        workspace_dir = config.build_dir.join(local_crate_name.as_str());
     }
 
     if (config.is_debug_mode() || config.can_override()) && fs::exists(&workspace_dir)? {

@@ -71,7 +71,7 @@ pub fn has_const_generics(generics: &ty::Generics, tcx: TyCtxt<'_>) -> bool {
 impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
     fn visit_fn<'v>(
         &mut self,
-        _fk: FnKind<'v>,
+        fk: FnKind<'v>,
         _fd: &'v FnDecl<'v>,
         _b: BodyId,
         _span: Span,
@@ -94,6 +94,11 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
         // if config.ignore_const_generic is true,
         // skip functions with const generics
         if self.config.ignore_const_generic && has_const_generics(generics, self.tcx) {
+            return;
+        }
+
+        if self.config.include_unsafe && fk.header().unwrap().safety().is_unsafe() {
+            rap_trace!("skip unsafe fn: {}", self.tcx.def_path_str(fn_did));
             return;
         }
 

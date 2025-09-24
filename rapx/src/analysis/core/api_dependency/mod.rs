@@ -22,6 +22,7 @@ pub struct Config {
     pub pub_only: bool,
     pub resolve_generic: bool,
     pub ignore_const_generic: bool,
+    pub include_unsafe: bool,
 }
 
 pub fn is_def_id_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
@@ -94,11 +95,13 @@ impl<'tcx> Analysis for ApiDependencyAnalyzer<'tcx> {
         );
         let dot_path = format!("api_graph_{}_{}.dot", local_crate_name, local_crate_type);
         let json_path = format!("api_graph_{}_{}.json", local_crate_name, local_crate_type);
+        let api_file_path = format!("apis_{}_{}.log", local_crate_name, local_crate_type);
         rap_info!("Dump API dependency graph to {}", dot_path);
-        api_graph.dump_to_dot(dot_path, self.tcx);
+        api_graph.dump_to_dot(dot_path);
         api_graph
             .dump_to_json(&json_path)
             .expect("failed to dump API graph to JSON");
+        api_graph.dump_apis(api_file_path);
         rap_info!("Dump API dependency graph to {}", json_path);
     }
 

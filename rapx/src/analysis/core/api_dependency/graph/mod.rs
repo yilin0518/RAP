@@ -9,6 +9,7 @@ mod ty_wrapper;
 use super::utils;
 use super::visitor::FnVisitor;
 use super::Config;
+use crate::analysis::core::api_dependency::is_fuzzable_ty;
 use crate::analysis::utils::def_path::path_str_def_id;
 use crate::rap_debug;
 use crate::rap_trace;
@@ -314,7 +315,8 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         (estimate.len(), total.len())
     }
 
-    pub fn dump_to_dot<P: AsRef<Path>>(&self, path: P, tcx: TyCtxt<'tcx>) {
+    pub fn dump_to_dot<P: AsRef<Path>>(&self, path: P) {
+        let tcx = self.tcx;
         let get_edge_attr =
             |graph: &Graph<DepNode<'tcx>, DepEdge>,
              edge_ref: petgraph::graph::EdgeReference<DepEdge>| {
@@ -343,5 +345,34 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         let mut file = rap_create_file(path, "can not create dot file");
         write!(&mut file, "{:?}", dot).expect("fail when writing data to dot file");
         // println!("{:?}", dot);
+    }
+
+    pub fn dump_apis<P: AsRef<Path>>(&self, path: P) {
+        let tcx = self.tcx;
+        let mut file = rap_create_file(path, "can not create api file");
+
+        self.graph
+            .node_indices()
+            .for_each(|index| match self.graph[index] {
+                DepNode::Api(did, args) => {
+                    writeln!(
+                        file,
+                        "API,\t{},\tis_fuzzable = {}",
+                        tcx.def_path_str_with_args(did, args),
+                        utils::is_fuzzable_api(did, args, tcx)
+                    )
+                    .expect("fail when writing data to api file");
+                }
+                DepNode::Ty(ty) => {
+                    let ty = ty.ty();
+                    writeln!(
+                        file,
+                        "TYPE,\t{},\tis_fuzzable = {}",
+                        ty,
+                        is_fuzzable_ty(ty, tcx)
+                    )
+                    .expect("fail when writing data to api file");
+                }
+            });
     }
 }

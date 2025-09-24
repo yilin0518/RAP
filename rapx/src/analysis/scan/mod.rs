@@ -9,7 +9,6 @@ use crate::{
     analysis::{scan::visitor::FnVisitor, Analysis},
     rap_info,
 };
-use itertools::Itertools;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 

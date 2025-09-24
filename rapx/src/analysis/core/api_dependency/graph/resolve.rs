@@ -293,7 +293,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         // add transform edges
         self.update_transform_edges();
 
-        self.dump_to_dot(Path::new("api_graph_unpruned.dot"), self.tcx);
+        self.dump_to_dot(Path::new("api_graph_unpruned.dot"));
 
         let (estimate, total) = self.estimate_coverage_distinct();
         rap_info!(

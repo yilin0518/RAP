@@ -1,6 +1,6 @@
 use rustc_hir::def_id::DefId;
 use rustc_hir::LangItem;
-use rustc_middle::ty::{self, FnSig, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{self, FnSig, GenericArgsRef, Ty, TyCtxt, TyKind};
 use rustc_span::sym;
 
 fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
@@ -15,6 +15,11 @@ fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 }
 
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    let is_alloc_err = format!("{}", ty) == "alloc::AllocErr";
+    if is_alloc_err {
+        rap_info!("alloc_err: ty = {:?}", ty);
+    }
+
     if is_fuzzable_std_ty(ty, tcx) {
         return true;
     }
@@ -48,7 +53,14 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 
         // ADT
         TyKind::Adt(adt_def, substs) => {
-            if adt_def.variant_list_has_applicable_non_exhaustive() {
+            if is_alloc_err {
+                rap_info!("adt_def = {:?}", adt_def);
+                rap_info!(
+                    "non-exhaustive = {:?}",
+                    adt_def.is_variant_list_non_exhaustive()
+                );
+            }
+            if adt_def.is_variant_list_non_exhaustive() {
                 return false;
             }
             if adt_def.is_struct() {
@@ -74,10 +86,13 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     }
 }
 
-pub fn fn_sig_without_binders<'tcx>(fn_did: DefId, tcx: TyCtxt<'tcx>) -> FnSig<'tcx> {
-    let early_fn_sig = tcx.fn_sig(fn_did);
-    let binder_fn_sig = early_fn_sig.instantiate_identity();
-    tcx.liberate_late_bound_regions(fn_did, binder_fn_sig)
+pub fn is_fuzzable_api<'tcx>(fn_did: DefId, args: GenericArgsRef<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    let fn_sig = fn_sig_with_generic_args(fn_did, args, tcx);
+    fn_sig
+        .inputs()
+        .iter()
+        .copied()
+        .all(|ty| is_fuzzable_ty(ty, tcx))
 }
 
 pub fn fn_sig_with_generic_args<'tcx>(

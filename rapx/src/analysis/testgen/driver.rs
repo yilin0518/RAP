@@ -11,16 +11,15 @@ use crate::{rap_error, rap_info, rap_warn};
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
-use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::{fs, io};
 use toml;
 
 #[derive(Deserialize, Debug)]
 pub struct LtGenConfig {
     pub max_complexity: usize,
     pub max_iteration: usize,
-    pub build_dir: PathBuf,
     pub max_run: usize,
     #[serde(default = "default_mode")]
     pub mode: String,
@@ -33,14 +32,33 @@ fn default_mode() -> String {
 }
 
 impl LtGenConfig {
-    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let config_path = std::env::home_dir()
-            .expect("Cannot find homedir")
-            .join(".ltgenconfig");
-        let contents = fs::read_to_string(config_path)?;
-        let config: LtGenConfig = toml::from_str(&contents)?;
+    pub fn load() -> io::Result<Self> {
+        let mut current_dir = std::env::current_dir()?;
+
+        loop {
+            let config_path = current_dir.join(".ltgenconfig");
+            if config_path.exists() {
+                rap_debug!("load config file from: {}", config_path.display());
+                return Self::load_from(config_path);
+            }
+
+            if !current_dir.pop() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Could not find .ltgenconfig in any parent directory",
+                ));
+            }
+        }
+    }
+
+    pub fn load_from<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let path = path.as_ref();
+        let contents = fs::read_to_string(&path)?;
+        let config: LtGenConfig = toml::from_str(&contents)
+            .expect(&format!("cannot parse the content of {}", path.display()));
         Ok(config)
     }
+
     pub fn is_debug_mode(&self) -> bool {
         self.mode == "debug"
     }

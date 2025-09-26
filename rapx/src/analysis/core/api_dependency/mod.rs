@@ -15,7 +15,7 @@ pub use graph::ApiDependencyGraph;
 pub use graph::{DepEdge, DepNode};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_middle::ty::TyCtxt;
-pub use utils::is_fuzzable_ty;
+pub use utils::{is_def_id_public, is_fuzzable_ty};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Default)]
 pub struct Config {
@@ -23,19 +23,6 @@ pub struct Config {
     pub resolve_generic: bool,
     pub ignore_const_generic: bool,
     pub include_unsafe: bool,
-}
-
-pub fn is_def_id_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
-    let fn_def_id: DefId = fn_def_id.into();
-    let local_id = fn_def_id.expect_local();
-    rap_trace!(
-        "vis: {:?} (path: {}) => {:?}",
-        fn_def_id,
-        tcx.def_path_str(fn_def_id),
-        tcx.effective_visibilities(()).effective_vis(local_id)
-    );
-    tcx.effective_visibilities(()).is_directly_public(local_id)
-        || tcx.effective_visibilities(()).is_exported(local_id)
 }
 
 pub trait ApiDependencyAnalysis<'tcx> {

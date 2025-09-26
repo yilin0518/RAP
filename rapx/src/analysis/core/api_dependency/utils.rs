@@ -3,6 +3,20 @@ use rustc_hir::LangItem;
 use rustc_middle::ty::{self, FnSig, GenericArgsRef, Ty, TyCtxt, TyKind};
 use rustc_span::sym;
 
+pub fn is_def_id_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
+    let fn_def_id: DefId = fn_def_id.into();
+    let local_id = fn_def_id.expect_local();
+    rap_trace!(
+        "vis: {:?} (path: {}) => {:?}",
+        fn_def_id,
+        tcx.def_path_str(fn_def_id),
+        tcx.effective_visibilities(()).effective_vis(local_id)
+    );
+
+    tcx.effective_visibilities(()).is_directly_public(local_id)
+        || tcx.effective_visibilities(()).is_exported(local_id)
+}
+
 fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     match ty.kind() {
         ty::Adt(def, _) => {
@@ -15,11 +29,6 @@ fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 }
 
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
-    let is_alloc_err = format!("{}", ty) == "alloc::AllocErr";
-    if is_alloc_err {
-        rap_info!("alloc_err: ty = {:?}", ty);
-    }
-
     if is_fuzzable_std_ty(ty, tcx) {
         return true;
     }
@@ -53,13 +62,6 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
 
         // ADT
         TyKind::Adt(adt_def, substs) => {
-            if is_alloc_err {
-                rap_info!("adt_def = {:?}", adt_def);
-                rap_info!(
-                    "non-exhaustive = {:?}",
-                    adt_def.is_variant_list_non_exhaustive()
-                );
-            }
             if adt_def.is_variant_list_non_exhaustive() {
                 return false;
             }

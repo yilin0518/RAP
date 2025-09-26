@@ -27,7 +27,7 @@ fn is_api_public(fn_def_id: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
         tcx.effective_visibilities(()).effective_vis(local_id)
     );
     tcx.effective_visibilities(()).is_directly_public(local_id)
-    // || tcx.effective_visibilities(()).is_exported(local_id)
+        || tcx.effective_visibilities(()).is_exported(local_id)
 }
 
 impl<'tcx> FnVisitor<'tcx> {
@@ -55,6 +55,13 @@ impl<'tcx> FnVisitor<'tcx> {
         }
         rap_debug!("API path: {}", self.tcx.def_path_str(fn_did));
         rap_debug!("type: {}", self.tcx.type_of(fn_did).instantiate_identity());
+        rap_debug!(
+            "visibility: {:?}",
+            self.tcx
+                .effective_visibilities(())
+                .effective_vis(fn_did.as_local().unwrap())
+                .unwrap()
+        );
         let is_generic = self
             .tcx
             .generics_of(fn_did)

@@ -10,10 +10,10 @@ mod utils;
 mod visitor;
 
 use crate::analysis::Analysis;
-use crate::{rap_debug, rap_info, rap_trace};
+use crate::{rap_debug, rap_info};
 pub use graph::ApiDependencyGraph;
 pub use graph::{DepEdge, DepNode};
-use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 pub use utils::{is_def_id_public, is_fuzzable_ty};
 

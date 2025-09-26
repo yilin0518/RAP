@@ -12,7 +12,7 @@ use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{fs, io};
 use toml;
 

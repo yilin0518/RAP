@@ -4,7 +4,6 @@ use super::visible_path::get_visible_path_with_args;
 use super::{SynOption, Synthesizer};
 use crate::analysis::testgen::context::UseKind;
 use crate::rap_debug;
-use rustc_hir::def::Namespace;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
 pub struct FuzzDriverSynImpl<I: InputGen> {

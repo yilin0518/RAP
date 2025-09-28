@@ -101,7 +101,7 @@ fn format_fn_visible_path_with_args<'tcx>(
     let type_args: Vec<_> = args
         .iter()
         .filter_map(|arg| match arg.kind() {
-            GenericArgKind::Type(ty) => Some(ty.to_string()),
+            GenericArgKind::Type(ty) => Some(ty_to_string_with_visible_path(tcx, ty)),
             GenericArgKind::Const(ct) => Some(ct.to_string()),
             GenericArgKind::Lifetime(_) => None,
         })
@@ -160,14 +160,14 @@ fn get_relative_path<'tcx>(tcx: TyCtxt<'tcx>, ancestor: DefId, target: DefId) ->
 }
 
 /// Convert Ty to string, prioritizing re-export names for local ADTs
-fn ty_to_string_with_visible_path<'tcx>(
+pub fn ty_to_string_with_visible_path<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> String {
     match ty.kind() {
         TyKind::Adt(adt_def, substs) => {
-            let base = get_fn_visible_path(tcx, adt_def.did()); // Reuse function path finding logic
-                                                                // Collect type/const arguments, ignoring lifetimes
+            // adt
+            let base = get_fn_visible_path(tcx, adt_def.did());
             let mut parts: Vec<String> = Vec::new();
             for arg in substs.iter() {
                 match arg.kind() {
@@ -182,10 +182,17 @@ fn ty_to_string_with_visible_path<'tcx>(
                 format!("{}::<{}>", base, parts.join(", "))
             }
         }
-        _ => {
-            //rap_info!("{:?} appear , TyKind:{:?}", ty, ty.kind());
-            ty.to_string()
+        TyKind::Ref(region, inner_ty, mutability) => {
+            // ref
+            let inner_str = ty_to_string_with_visible_path(tcx, *inner_ty);
+            format!("&{}{}", mutability.prefix_str(), inner_str)
         }
+        TyKind::RawPtr(inner_ty, mutability) => {
+            // pointer
+            let inner_str = ty_to_string_with_visible_path(tcx, *inner_ty);
+            format!("*{} {}", mutability.ptr_str(), inner_str)
+        }
+        _ => ty.to_string(),
     }
 }
 
@@ -267,7 +274,7 @@ fn format_assoc_path_with_args<'tcx>(
     let type_args: Vec<String> = args
         .iter()
         .filter_map(|arg| match arg.kind() {
-            GenericArgKind::Type(ty) => Some(ty.to_string()),
+            GenericArgKind::Type(ty) => Some(ty_to_string_with_visible_path(tcx, ty)),
             GenericArgKind::Const(ct) => Some(ct.to_string()),
             GenericArgKind::Lifetime(_) => None,
         })
@@ -320,8 +327,26 @@ fn format_assoc_path_with_args<'tcx>(
 
             if let Some(trait_ref) = tcx.impl_trait_ref(impl_def_id) {
                 let trait_ref = trait_ref.instantiate(tcx, args);
-                let trait_with_generics = trait_ref.print_trait_sugared().to_string();
+                let trait_name = trait_ref.print_only_trait_name().to_string();
+                let generics = tcx.generics_of(trait_ref.def_id);
+                let own_args = generics.own_args_no_defaults(tcx, trait_ref.args);
+                let trait_with_generics = if own_args.is_empty() {
+                    trait_name
+                } else {
+                    let args_str: Vec<String> = own_args
+                        .iter()
+                        .filter_map(|arg| match arg.kind() {
+                            GenericArgKind::Type(ty) => {
+                                Some(ty_to_string_with_visible_path(tcx, ty))
+                            }
+                            GenericArgKind::Const(ct) => Some(ct.to_string()),
+                            GenericArgKind::Lifetime(_) => None,
+                        })
+                        .collect();
+                    format!("{}<{}>", trait_name, args_str.join(", "))
+                };
                 let self_ty = trait_ref.self_ty();
+                let self_ty_str = ty_to_string_with_visible_path(tcx, self_ty);
                 //let trait_path = get_fn_visible_path(tcx, trait_ref.def_id);
                 //let self_ty_str = ty_to_string_with_visible_path(tcx, self_ty);
 
@@ -334,7 +359,9 @@ fn format_assoc_path_with_args<'tcx>(
                     let method_type_args: Vec<String> = method_args
                         .iter()
                         .filter_map(|arg| match arg.kind() {
-                            GenericArgKind::Type(ty) => Some(ty.to_string()),
+                            GenericArgKind::Type(ty) => {
+                                Some(ty_to_string_with_visible_path(tcx, ty))
+                            }
                             GenericArgKind::Const(ct) => Some(ct.to_string()),
                             GenericArgKind::Lifetime(_) => None,
                         })
@@ -347,7 +374,7 @@ fn format_assoc_path_with_args<'tcx>(
                 };
                 return format!(
                     "<{} as {}>::{}{}",
-                    self_ty, trait_with_generics, assoc_name, method_gen
+                    self_ty_str, trait_with_generics, assoc_name, method_gen
                 );
             } else {
                 let impl_param_cnt = count_type_const_params(tcx, impl_def_id);

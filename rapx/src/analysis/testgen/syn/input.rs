@@ -151,11 +151,11 @@ impl<R: Rng> InputGen for RandomGen<R> {
     }
 
     fn gen_int(&mut self, int_ty: IntTy) -> i64 {
-        self.rng.random_range(range_for_int_ty(int_ty))
+        self.rng.random_range(range_for_int_ty(IntTy::I8))
     }
 
     fn gen_uint(&mut self, uint_ty: UintTy) -> u64 {
-        self.rng.random_range(range_for_uint_ty(uint_ty))
+        self.rng.random_range(range_for_uint_ty(UintTy::U8))
     }
 
     fn gen_float(&mut self) -> f32 {

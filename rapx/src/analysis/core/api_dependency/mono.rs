@@ -445,7 +445,7 @@ fn solve_unbound_type_generics<'tcx>(
                 let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();
 
                 rap_trace!("impl_trait_ref: {}", impl_trait_ref);
-                // filter irrelevant implementation. We only consider implementation if:
+                // filter irrelevant implementation. We only consider implementation that:
                 // 1. it is local
                 // 2. it is not local, but its' self_ty is a primitive
                 if !impl_did.is_local() && !impl_trait_ref.self_ty().is_primitive() {

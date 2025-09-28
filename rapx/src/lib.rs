@@ -411,6 +411,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: &RapCallback) {
                 resolve_generic: true,
                 ignore_const_generic: true,
                 include_unsafe: true,
+                include_drop: true,
             },
         );
         analyzer.run();

@@ -4,6 +4,7 @@ use super::is_def_id_public;
 use super::Config;
 use crate::analysis::core::api_dependency::mono;
 use crate::{rap_debug, rap_trace};
+use rustc_hir::LangItem;
 use rustc_hir::{
     def_id::{DefId, LocalDefId},
     intravisit::{FnKind, Visitor},
@@ -68,6 +69,16 @@ pub fn has_const_generics(generics: &ty::Generics, tcx: TyCtxt<'_>) -> bool {
     }
 }
 
+fn is_drop_impl(tcx: TyCtxt<'_>, fn_did: DefId) -> bool {
+    if let Some(impl_id) = tcx.trait_impl_of_assoc(fn_did) {
+        let trait_did = tcx.trait_id_of_impl(impl_id).unwrap();
+        if tcx.is_lang_item(trait_did, LangItem::Drop) {
+            return true;
+        }
+    }
+    false
+}
+
 impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
     fn visit_fn<'v>(
         &mut self,
@@ -82,6 +93,10 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
 
         let is_generic = generics.requires_monomorphization(self.tcx);
         if self.config.pub_only && !is_def_id_public(fn_did, self.tcx) {
+            return;
+        }
+
+        if !self.config.include_drop && is_drop_impl(self.tcx, fn_did) {
             return;
         }
 

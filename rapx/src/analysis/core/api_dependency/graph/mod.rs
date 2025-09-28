@@ -223,7 +223,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         }
     }
 
-    pub fn estimate_coverage_with(
+    pub fn traverse_covered_api_with(
         &self,
         tcx: TyCtxt<'tcx>,
         f_cover: &mut impl FnMut(DefId),
@@ -281,12 +281,42 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         }
     }
 
+    fn recache(&mut self) {
+        self.node_indices.clear();
+        self.ty_nodes.clear();
+        self.api_nodes.clear();
+        for idx in self.graph.node_indices() {
+            let node = &self.graph[idx];
+            self.node_indices.insert(node.clone(), idx);
+            match node {
+                DepNode::Api(..) => self.api_nodes.push(idx),
+                DepNode::Ty(..) => self.ty_nodes.push(idx),
+                _ => {}
+            }
+        }
+    }
+
+    pub fn uncovered_api(&self) -> Vec<DefId> {
+        let mut covered = HashSet::new();
+        let mut total = HashSet::new();
+        self.traverse_covered_api_with(
+            self.tcx,
+            &mut |did| {
+                covered.insert(did);
+            },
+            &mut |did| {
+                total.insert(did);
+            },
+        );
+        total.difference(&covered).copied().collect()
+    }
+
     /// `estimate_coverage` treat each API as the distinct API.
     /// For example, if `foo<T>`, `foo<U>` are covered, this API return (2, 2).
     pub fn estimate_coverage(&mut self) -> (usize, usize) {
         let mut num_total = 0;
         let mut num_estimate = 0;
-        self.estimate_coverage_with(
+        self.traverse_covered_api_with(
             self.tcx,
             &mut |did| {
                 num_estimate += 1;
@@ -303,7 +333,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
     pub fn estimate_coverage_distinct(&mut self) -> (usize, usize) {
         let mut total = HashSet::new();
         let mut estimate = HashSet::new();
-        self.estimate_coverage_with(
+        self.traverse_covered_api_with(
             self.tcx,
             &mut |did| {
                 estimate.insert(did);

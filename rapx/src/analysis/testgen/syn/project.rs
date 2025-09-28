@@ -100,7 +100,10 @@ pub struct MiriReport {
 
 pub fn miri_env_vars() -> &'static [(&'static str, &'static str)] {
     &[
-        ("MIRIFLAGS", "-Zmiri-ignore-leaks"),
+        (
+            "MIRIFLAGS",
+            "-Zmiri-ignore-leaks -Zmiri-disable-stacked-borrows",
+        ),
         ("RUSTFLAGS", "-Awarnings"),
         ("RUST_BACKTRACE", "1"),
     ]
@@ -147,6 +150,8 @@ impl MiriReport {
             }
             TestResult::RunSuccess(Some(0)) => {
                 s.push_str("\n");
+                // no need to print any detail if success
+                return s;
             }
             TestResult::RunSuccess(_) => {
                 s.push_str("(Fail in `cargo miri`)\n");

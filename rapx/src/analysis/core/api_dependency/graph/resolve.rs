@@ -363,21 +363,6 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         );
     }
 
-    fn recache(&mut self) {
-        self.node_indices.clear();
-        self.ty_nodes.clear();
-        self.api_nodes.clear();
-        for idx in self.graph.node_indices() {
-            let node = &self.graph[idx];
-            self.node_indices.insert(node.clone(), idx);
-            match node {
-                DepNode::Api(..) => self.api_nodes.push(idx),
-                DepNode::Ty(..) => self.ty_nodes.push(idx),
-                _ => {}
-            }
-        }
-    }
-
     pub fn propagate_reserved(
         &self,
         node: NodeIndex,

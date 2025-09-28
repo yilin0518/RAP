@@ -23,6 +23,7 @@ pub struct Config {
     pub resolve_generic: bool,
     pub ignore_const_generic: bool,
     pub include_unsafe: bool,
+    pub include_drop: bool,
 }
 
 pub trait ApiDependencyAnalysis<'tcx> {
@@ -83,6 +84,7 @@ impl<'tcx> Analysis for ApiDependencyAnalyzer<'tcx> {
         let dot_path = format!("api_graph_{}_{}.dot", local_crate_name, local_crate_type);
         let json_path = format!("api_graph_{}_{}.json", local_crate_name, local_crate_type);
         let api_file_path = format!("apis_{}_{}.log", local_crate_name, local_crate_type);
+        rap_info!("uncovered APIs: {:?}", api_graph.uncovered_api());
         rap_info!("Dump API dependency graph to {}", dot_path);
         api_graph.dump_to_dot(dot_path);
         api_graph

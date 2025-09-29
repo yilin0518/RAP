@@ -3,6 +3,7 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 pub struct RsProjectOption {
     pub tested_crate_path: PathBuf,
@@ -85,17 +86,27 @@ impl CargoProjectBuilder {
     }
 }
 
-pub enum TestResult {
-    FailInCheck(Option<i32>),
-    RunSuccess(Option<i32>),
+#[derive(Debug, Clone)]
+pub struct CmdRecord {
+    pub retcode: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
+impl CmdRecord {
+    pub fn is_success(&self) -> bool {
+        match self.retcode {
+            Some(0) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct MiriReport {
     pub project_name: String,
     pub project_path: PathBuf,
-    pub result: TestResult,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
+    pub result: Result<(CmdRecord, Duration), CmdRecord>,
 }
 
 pub fn miri_env_vars() -> &'static [(&'static str, &'static str)] {
@@ -132,9 +143,9 @@ impl MiriReport {
         )
     }
 
-    pub fn get_retcode(&self) -> Option<i32> {
-        match self.result {
-            TestResult::FailInCheck(retcode) | TestResult::RunSuccess(retcode) => retcode,
+    pub fn as_cmd_record(&self) -> &CmdRecord {
+        match &self.result {
+            Ok((record, _)) | Err(record) => record,
         }
     }
 
@@ -142,30 +153,32 @@ impl MiriReport {
         let mut s = String::new();
         s.push_str(&format!("Project Name: {}\n", self.project_name));
         s.push_str(&format!("Reproduce Line:\n{}\n", self.reproduce_str()));
-        s.push_str(&format!("retcode = {:?} ", self.get_retcode()));
-
         match self.result {
-            TestResult::FailInCheck(_) => {
-                s.push_str("(fail in `cargo check`)\n");
+            Ok((_, elapsed)) => {
+                s.push_str(&format!(
+                    "Result: Run Success (elapse = {}ms)",
+                    elapsed.as_millis()
+                ));
             }
-            TestResult::RunSuccess(Some(0)) => {
-                s.push_str("\n");
-                // no need to print any detail if success
-                return s;
-            }
-            TestResult::RunSuccess(_) => {
-                s.push_str("(Fail in `cargo miri`)\n");
+            Err(_) => {
+                s.push_str("Result: Compile Error\n");
             }
         }
 
-        s.push_str(&format!(
-            "stdout:{}\n",
-            String::from_utf8_lossy(&self.stdout)
-        ));
-        s.push_str(&format!(
-            "stderr:{}\n",
-            String::from_utf8_lossy(&self.stderr)
-        ));
+        let record = self.as_cmd_record();
+
+        s.push_str(&format!("retcode = {:?} ", record.retcode));
+
+        if !record.is_success() {
+            s.push_str(&format!(
+                "stdout:{}\n",
+                String::from_utf8_lossy(record.stdout.as_slice())
+            ));
+            s.push_str(&format!(
+                "stderr:{}\n",
+                String::from_utf8_lossy(record.stderr.as_slice())
+            ));
+        }
 
         s
     }
@@ -181,15 +194,18 @@ impl RsProject {
 
     pub fn run_miri(&self) -> io::Result<MiriReport> {
         let project_path = self.option.project_path.as_path();
-        rap_info!("Running fuzz driver project at: {}", project_path.display());
+        rap_info!("Running project at: {}", project_path.display());
+        rap_info!("Running `cargo check`");
 
         // first run `cargo check` to ensure the code can be compiled
         let mut command = Command::new("cargo");
         command
-            .arg("check")
             .current_dir(&project_path)
+            .arg("check")
+            .env_remove("RUSTC_WRAPPER") // rapx set RUSTC_WRAPPER to rapx executable to hijack the compilation, however we just want to use official rustc here
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
         let output = command.output()?;
         match output.status.code() {
             Some(0) => {}
@@ -197,33 +213,45 @@ impl RsProject {
                 return Ok(MiriReport {
                     project_name: self.option.project_name.clone(),
                     project_path: self.option.project_path.clone(),
-                    result: TestResult::FailInCheck(retcode),
-                    stdout: output.stdout,
-                    stderr: output.stderr,
+                    result: Err(CmdRecord {
+                        retcode,
+                        stdout: output.stdout,
+                        stderr: output.stderr,
+                    }),
                 });
             }
         }
 
+        rap_info!("Running `cargo miri run`");
         let vars = miri_env_vars();
+
         let mut command = Command::new("cargo");
         command
             .arg("miri")
             .arg("run")
+            .env_remove("RUSTC_WRAPPER")
             .envs(vars.to_owned())
             .current_dir(&project_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        let timer = std::time::Instant::now();
         let output = command.output()?;
+        let elpased = timer.elapsed();
 
         let retcode = output.status.code();
 
         Ok(MiriReport {
             project_name: self.option.project_name.clone(),
             project_path: self.option.project_path.clone(),
-            result: TestResult::RunSuccess(retcode),
-            stdout: output.stdout,
-            stderr: output.stderr,
+            result: Ok((
+                CmdRecord {
+                    retcode,
+                    stdout: output.stdout.clone(),
+                    stderr: output.stderr.clone(),
+                },
+                elpased,
+            )),
         })
     }
 }

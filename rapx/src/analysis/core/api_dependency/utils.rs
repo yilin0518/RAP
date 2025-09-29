@@ -28,9 +28,22 @@ fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     }
 }
 
+fn is_non_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    let name = format!("{}", ty);
+    match name.as_str() {
+        "core::alloc::LayoutError" => return true,
+        _ => {}
+    }
+    false
+}
+
 pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     if is_fuzzable_std_ty(ty, tcx) {
         return true;
+    }
+
+    if is_non_fuzzable_std_ty(ty, tcx) {
+        return false;
     }
 
     match ty.kind() {

@@ -29,6 +29,8 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                 }
                 if from != var {
                     self.cx.set_var_state(var, VarState::Dropped);
+                    let unit_place = self.mk_var(self.tcx.types.unit, false);
+                    self.cx.add_stmt(Stmt::drop_(unit_place, var));
                     rap_debug!("implicitly set var {} dropped", var);
                 }
             }

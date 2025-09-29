@@ -12,6 +12,7 @@ pub struct Context<'tcx> {
     var_ty: HashMap<Var, Ty<'tcx>>,
     var_mut: HashMap<Var, ty::Mutability>,
     var_state: HashMap<Var, VarState>,
+    num_apicall: usize,
     tcx: TyCtxt<'tcx>,
 }
 
@@ -22,8 +23,17 @@ impl<'tcx> Context<'tcx> {
             var_ty: HashMap::new(),
             var_mut: HashMap::new(),
             var_state: HashMap::new(),
+            num_apicall: 0,
             tcx,
         }
+    }
+
+    pub fn num_apicall(&self) -> usize {
+        self.num_apicall
+    }
+
+    pub fn num_stmt(&self) -> usize {
+        self.stmts.len()
     }
 
     pub fn stmts(&self) -> &[Stmt<'tcx>] {
@@ -35,6 +45,9 @@ impl<'tcx> Context<'tcx> {
     }
 
     pub fn add_stmt(&mut self, stmt: Stmt<'tcx>) -> &Stmt<'tcx> {
+        if stmt.kind().is_call() {
+            self.num_apicall += 1;
+        }
         self.stmts.push(stmt);
         self.stmts.last().unwrap()
     }
@@ -51,10 +64,6 @@ impl<'tcx> Context<'tcx> {
 
     pub fn var_mutability(&self, var: Var) -> ty::Mutability {
         *self.var_mut.get(&var).unwrap_or(&ty::Mutability::Not)
-    }
-
-    pub fn complexity(&self) -> usize {
-        self.stmts().len()
     }
 
     pub fn type_of(&self, var: Var) -> Ty<'tcx> {

@@ -156,7 +156,7 @@ impl MiriReport {
         match self.result {
             Ok((_, elapsed)) => {
                 s.push_str(&format!(
-                    "Result: Run Success (elapse = {}ms)",
+                    "Result: Run Success (elapse = {}ms)\n",
                     elapsed.as_millis()
                 ));
             }
@@ -167,7 +167,7 @@ impl MiriReport {
 
         let record = self.as_cmd_record();
 
-        s.push_str(&format!("retcode = {:?} ", record.retcode));
+        s.push_str(&format!("retcode = {:?}\n", record.retcode));
 
         if !record.is_success() {
             s.push_str(&format!(
@@ -189,6 +189,19 @@ impl RsProject {
         let src_path = self.option.project_path.join("src").join(file_name);
         let mut file = File::create(src_path)?;
         file.write_all(content.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn clear_artifact(&self) -> io::Result<()> {
+        let project_path = self.option.project_path.as_path();
+        let mut command = Command::new("cargo");
+        command
+            .current_dir(&project_path)
+            .arg("clean")
+            .env_remove("RUSTC_WRAPPER") // rapx set RUSTC_WRAPPER to rapx executable to hijack the compilation, however we just want to use official rustc here
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()?;
         Ok(())
     }
 

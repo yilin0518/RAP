@@ -1,6 +1,7 @@
 use super::super::context::{Context, Stmt, StmtKind, Var};
 use super::input::InputGen;
 use super::visible_path::get_visible_path_with_args;
+use super::visible_path::ty_to_string_with_visible_path;
 use super::{SynOption, Synthesizer};
 use crate::analysis::testgen::context::UseKind;
 use crate::rap_debug;
@@ -119,7 +120,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
                 "{}{}: {}",
                 cx.var_mutability(var).prefix_str(),
                 self.var_str(var),
-                self.ty_str(cx.type_of(var))
+                ty_to_string_with_visible_path(cx.tcx(), cx.type_of(var))
             )
         } else {
             format!(

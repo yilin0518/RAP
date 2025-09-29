@@ -1,3 +1,4 @@
+use super::visible_path::ty_to_string_with_visible_path;
 use rand::{rngs::ThreadRng, Rng};
 use rustc_abi::FIRST_VARIANT;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
@@ -51,7 +52,7 @@ pub trait InputGen {
                 format!("({})", fields.join(", "))
             }
             TyKind::Adt(adt_def, generic_arg) => {
-                let name = tcx.def_path_str_with_args(adt_def.did(), &[]);
+                let name = ty_to_string_with_visible_path(tcx, ty);
                 if adt_def.is_struct() {
                     // generate input for each field
                     let mut fields = Vec::new();

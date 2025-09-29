@@ -112,7 +112,7 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
             return;
         }
 
-        if self.config.include_unsafe && fk.header().unwrap().safety().is_unsafe() {
+        if !self.config.include_unsafe && fk.header().unwrap().safety().is_unsafe() {
             rap_trace!("skip unsafe fn: {}", self.tcx.def_path_str(fn_did));
             return;
         }

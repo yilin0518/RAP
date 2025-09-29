@@ -55,7 +55,7 @@ impl<'tcx> Analysis for ApiDependencyAnalyzer<'tcx> {
         let local_crate_name = self.tcx.crate_name(LOCAL_CRATE);
         let local_crate_type = self.tcx.crate_types()[0];
         let config = self.config;
-        rap_debug!(
+        rap_info!(
             "Build API dependency graph on {} ({}), config = {:?}",
             local_crate_name.as_str(),
             local_crate_type,

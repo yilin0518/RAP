@@ -4,7 +4,7 @@ use crate::analysis::core::{alias_analysis, api_dependency};
 use crate::analysis::testgen::generator::ltgen::LtGenBuilder;
 use crate::analysis::testgen::syn::impls::FuzzDriverSynImpl;
 use crate::analysis::testgen::syn::input::RandomGen;
-use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption, TestResult};
+use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption};
 use crate::analysis::testgen::syn::{SynOption, Synthesizer};
 use crate::analysis::Analysis;
 use crate::{rap_error, rap_info, rap_warn};
@@ -193,22 +193,29 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         writeln!(&mut report_file, "{}", report.brief())?;
         writeln!(&mut report_file, "{}", delimeter)?;
 
-        match report.result {
-            TestResult::FailInCheck(retcode) => {
-                rap_error!("running `cargo check` fail (retcode = {retcode:?}). This may due to the compile error");
+        match &report.result {
+            Err(record) => {
+                rap_error!(
+                    "running `cargo check` fail (retcode = {:?}). This may due to the compile error",
+                    record.retcode
+                );
             }
-            TestResult::RunSuccess(retcode) => match retcode {
-                Some(retcode) => {
-                    rap_info!("miri run completed with return code: {}", retcode);
-                    if retcode != 0 {
+            Ok((record, elapsed)) => match record.retcode {
+                Some(code) => {
+                    rap_info!(
+                        "miri run completed with return code: {} (elapse = {}ms)",
+                        code,
+                        elapsed.as_millis()
+                    );
+                    if code != 0 {
                         rap_warn!(
-                        "miri return a non-zero code ({retcode}), this may indicate a bug detected"
+                        "miri return a non-zero code ({code}), this may indicate a bug detected"
                     );
                     }
                 }
                 None => {
                     rap_error!(
-                        "Faile to run miri for {}: Execution is interrupted",
+                        "Fail to run miri for {}: Execution is interrupted",
                         report.project_name
                     );
                 }
@@ -223,13 +230,14 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     rap_info!("non-zero returned:");
     for report in reports {
-        if report.get_retcode().unwrap_or(-1) == 0 {
+        let record = report.as_cmd_record();
+        if record.is_success() {
             continue;
         }
         rap_warn!(
             "case = {}, retcode = {:?}",
             report.project_name,
-            report.get_retcode()
+            record.retcode
         );
     }
 

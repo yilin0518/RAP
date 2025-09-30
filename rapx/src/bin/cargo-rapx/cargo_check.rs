@@ -55,7 +55,7 @@ fn cargo_check(dir: &Utf8Path) {
 
     let mut child = cmd.spawn().expect("Could not run cargo check.");
     match child
-        .wait_timeout(Duration::from_secs(60 * 60)) // 1 hour timeout
+        .wait_timeout(Duration::from_secs(60 * 60 * 24)) // 24 hour timeout
         .expect("Failed to wait for subprocess.")
     {
         Some(status) => {

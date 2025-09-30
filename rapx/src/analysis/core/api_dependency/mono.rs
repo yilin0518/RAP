@@ -311,7 +311,8 @@ fn get_mono_set<'tcx>(
     let mut rng = rand::rng();
 
     // sample from reachable types
-    rap_debug!("[get_mono_set] fn_did: {:?}", fn_did);
+    rap_debug!("[get_mono_set] solve {}", tcx.def_path_str(fn_did));
+    let identity = ty::GenericArgs::identity_for_item(tcx, fn_did);
     let infcx = tcx
         .infer_ctxt()
         .ignoring_regions()
@@ -321,6 +322,7 @@ fn get_mono_set<'tcx>(
     let fresh_args = infcx.fresh_args_for_item(DUMMY_SP, fn_did);
     // this replace generic types in fn_sig to infer var, e.g. fn(Vec<T>, i32) => fn(Vec<?0>, i32)
     let fn_sig = fn_sig_with_generic_args(fn_did, fresh_args, tcx);
+    let identity_fnsig = fn_sig_with_generic_args(fn_did, identity, tcx);
     let generics = tcx.generics_of(fn_did);
 
     // print fresh_args for debugging
@@ -337,16 +339,17 @@ fn get_mono_set<'tcx>(
 
     rap_trace!("[get_mono_set] initialize s: {:?}", s);
 
-    let mut cnt = 0;
-
-    for input_ty in fn_sig.inputs().iter() {
-        cnt += 1;
+    for (no, input_ty) in fn_sig.inputs().iter().enumerate() {
         if !input_ty.has_infer_types() {
             continue;
         }
-        rap_trace!("[get_mono_set] input_ty#{}: {:?}", cnt - 1, input_ty);
+        rap_debug!(
+            "[get_mono_set] input_ty#{}: {}",
+            no,
+            identity_fnsig.inputs()[no]
+        );
 
-        let mut reachable_set =
+        let reachable_set =
             available_ty
                 .iter()
                 .fold(MonoSet::new(), |mut reachable_set, ty| {
@@ -362,17 +365,22 @@ fn get_mono_set<'tcx>(
                     }
                     reachable_set
                 });
-        reachable_set.random_sample(&mut rng);
+        // reachable_set.random_sample(&mut rng);
         rap_debug!(
-            "[get_mono_set] size: s = {}, input = {}",
+            "[get_mono_set] size of s: {}, size of input: {}",
             s.count(),
             reachable_set.count()
         );
+        rap_trace!("[get_mono_set] input = {:?}", reachable_set);
         s = s.merge(&reachable_set, tcx);
         s.random_sample(&mut rng);
+        rap_trace!("[get_mono_set] after merge s = {:?}", reachable_set);
     }
 
-    rap_trace!("[get_mono_set] after input types: {:?}", s);
+    rap_debug!(
+        "[get_mono_set] after input filter, size of s: {}",
+        s.count()
+    );
 
     let mut res = MonoSet::new();
 
@@ -444,14 +452,12 @@ fn solve_unbound_type_generics<'tcx>(
                 // format: <arg0 as Trait<arg1, arg2>>
                 let impl_trait_ref = tcx.impl_trait_ref(impl_did).unwrap().skip_binder();
 
-                rap_trace!("impl_trait_ref: {}", impl_trait_ref);
                 // filter irrelevant implementation. We only consider implementation that:
                 // 1. it is local
                 // 2. it is not local, but its' self_ty is a primitive
                 if !impl_did.is_local() && !impl_trait_ref.self_ty().is_primitive() {
                     continue;
                 }
-                // rap_trace!("impl_trait_ref: {}", impl_trait_ref);
 
                 if let Some(mono) = unify_trait(
                     trait_pred.trait_ref,
@@ -523,6 +529,12 @@ pub fn resolve_mono_apis<'tcx>(
 
     // 3. check trait bound
     let ret = ret.filter_by_trait_bound(fn_did, tcx);
+
+    rap_debug!(
+        "[resolve_mono_apis] fn_did: {:?}, size of mono: {:?}",
+        fn_did,
+        ret.count()
+    );
 
     ret
 }

@@ -1,5 +1,5 @@
 use crate::rustc_middle::ty::print::PrintTraitRefExt;
-use crate::{def_id, rap_error};
+use crate::rap_error;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{

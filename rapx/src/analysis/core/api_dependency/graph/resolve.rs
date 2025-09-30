@@ -4,7 +4,9 @@ use super::transform::TransformKind;
 use super::ty_wrapper::TyWrapper;
 use super::Config;
 use crate::analysis::core::api_dependency::mono::{get_mono_complexity, Mono};
-use crate::analysis::core::api_dependency::utils::{is_fuzzable_ty, ty_complexity};
+use crate::analysis::core::api_dependency::utils::{
+    fn_requires_monomorphization, is_fuzzable_ty, ty_complexity,
+};
 use crate::analysis::core::api_dependency::visitor::FnVisitor;
 use crate::analysis::core::api_dependency::ApiDependencyGraph;
 use crate::analysis::core::api_dependency::{mono, utils};
@@ -12,8 +14,8 @@ use crate::utils::fs::rap_create_file;
 use crate::{rap_debug, rap_info, rap_trace};
 use petgraph::dot;
 use petgraph::graph::NodeIndex;
-use petgraph::visit::{NodeIndexable, Visitable};
-use petgraph::Direction::{self, Incoming};
+use petgraph::visit::{EdgeRef, NodeIndexable, Visitable};
+use petgraph::Direction;
 use petgraph::Graph;
 use rand::Rng;
 use rustc_hir::def_id::DefId;
@@ -143,11 +145,13 @@ impl<'tcx> TypeCandidates<'tcx> {
             tcx.types.i16,
             tcx.types.i32,
             tcx.types.i64,
+            tcx.types.i128,
             tcx.types.isize,
             tcx.types.u8,
             tcx.types.u16,
             tcx.types.u32,
             tcx.types.u64,
+            tcx.types.u128,
             tcx.types.usize,
             Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, tcx.types.str_),
         ];
@@ -180,8 +184,23 @@ pub fn partion_generic_api<'tcx>(
 impl<'tcx> ApiDependencyGraph<'tcx> {
     pub fn resolve_generic_api(&mut self) {
         rap_info!("start resolving generic APIs");
+        // 1. Reachable generic API search
         let generic_map = self.search_reachable_apis();
-        self.prune_by_similarity(generic_map);
+
+        self.add_monomorphic_apis(&generic_map);
+        self.dump_to_dot(Path::new("api_graph_unpruned.dot"));
+
+        let reserved = self.prune_by_similarity(generic_map);
+
+        let count = self.reserve_nodes(&reserved);
+        rap_info!("remove {} nodes by pruning", count);
+        let (estimate, total) = self.estimate_coverage_distinct();
+        rap_info!(
+            "estimate API coverage after pruning: {:.2} ({}/{})",
+            estimate as f64 / total as f64,
+            estimate,
+            total
+        );
     }
 
     pub fn search_reachable_apis(&mut self) -> HashMap<DefId, HashSet<Mono<'tcx>>> {
@@ -277,24 +296,109 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         generic_map
     }
 
-    pub fn prune_by_similarity(&mut self, generic_map: HashMap<DefId, HashSet<Mono<'tcx>>>) {
+    pub fn add_monomorphic_apis(&mut self, generic_map: &HashMap<DefId, HashSet<Mono<'tcx>>>) {
+        for (fn_did, mono_set) in generic_map {
+            for mono in mono_set {
+                let args = self.tcx.mk_args(&mono.value);
+                self.add_api(*fn_did, args);
+            }
+        }
+        self.update_transform_edges();
+    }
+
+    pub fn heuristic_select(&mut self, reserved: &mut [bool]) {
+        let mut worklist = VecDeque::new();
+        let mut visited = vec![false; self.graph.node_count()];
+        let mut impl_map: HashMap<DefId, HashSet<DefId>> = HashMap::new();
+        let mut count_map: HashMap<DefId, usize> = HashMap::new();
+
+        // traverse from start node, if a node can achieve a reserved node,
+        // this node should be reserved as well
+        for node in self.graph.node_indices() {
+            if self.is_start_node_index(node) {
+                rap_trace!("initial node {:?}", self.graph[node]);
+                worklist.push_back(node);
+            }
+        }
+
+        while let Some(node) = worklist.pop_front() {
+            if visited[node.index()] {
+                continue;
+            }
+            visited[node.index()] = true;
+
+            match self.graph[node] {
+                DepNode::Api(fn_did, args) => {
+                    if fn_requires_monomorphization(fn_did, self.tcx) {
+                        let impl_entry = impl_map.entry(fn_did).or_default();
+                        let count_entry = count_map.entry(fn_did).or_default();
+                        let impls = mono::get_impls(self.tcx, fn_did, args);
+                        let size = impls
+                            .iter()
+                            .fold(0, |cnt, did| cnt + (!impl_entry.contains(did)) as usize);
+                        if *count_entry == 0 || size > 0 {
+                            *count_entry += 1;
+                            impls.iter().for_each(|did| {
+                                impl_entry.insert(*did);
+                            });
+                            reserved[node.index()] = true;
+                        }
+                    }
+                    for neighbor in self.graph.neighbors(node) {
+                        worklist.push_back(neighbor);
+                    }
+                }
+                DepNode::Ty(..) => {
+                    for edge in self.graph.edges_directed(node, Direction::Outgoing) {
+                        let weight = self.graph.edge_weight(edge.id()).unwrap();
+                        if let DepEdge::Transform(_) | DepEdge::Arg(0) = weight {
+                            worklist.push_back(edge.target());
+                        }
+                    }
+                }
+            }
+
+            if reserved[node.index()] {
+                rap_info!(
+                    "[propagate_reserved] reserve: {:?}",
+                    self.graph.node_weight(node).unwrap()
+                );
+            }
+        }
+    }
+
+    pub fn minimal_select(
+        &mut self,
+        reserved: &mut [bool],
+        generic_map: &HashMap<DefId, HashSet<Mono<'tcx>>>,
+    ) {
         let mut rng = rand::rng();
         let mut reserved_map: HashMap<DefId, Vec<(GenericArgsRef<'tcx>, bool)>> = HashMap::new();
 
         // transform into reserved map
         for (fn_did, mono_set) in generic_map {
-            let entry = reserved_map.entry(fn_did).or_default();
+            let entry = reserved_map.entry(*fn_did).or_default();
             mono_set.into_iter().for_each(|mono| {
                 let args = self.tcx.mk_args(&mono.value);
-                self.add_api(fn_did, args);
                 entry.push((args, false));
             });
         }
-        // add transform edges
-        self.update_transform_edges();
+        // add all monomorphic APIs to API Graph, but select minimal set cover to be reserved
+        for (fn_did, monos) in &mut reserved_map {
+            select_minimal_set_cover(self.tcx, *fn_did, monos, &mut rng);
+            for (args, r) in monos {
+                if *r {
+                    let idx = self.get_index(DepNode::Api(*fn_did, args)).unwrap();
+                    reserved[idx.index()] = true;
+                }
+            }
+        }
+    }
 
-        self.dump_to_dot(Path::new("api_graph_unpruned.dot"));
-
+    pub fn prune_by_similarity(
+        &mut self,
+        generic_map: HashMap<DefId, HashSet<Mono<'tcx>>>,
+    ) -> Vec<bool> {
         let (estimate, total) = self.estimate_coverage_distinct();
         rap_info!(
             "estimate API coverage before pruning: {:.2} ({}/{})",
@@ -316,16 +420,11 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
             }
         }
 
-        // add all monomorphic APIs to API Graph, but select minimal set cover to be reserved
-        for (fn_did, monos) in &mut reserved_map {
-            select_minimal_set_cover(self.tcx, *fn_did, monos, &mut rng);
-            for (args, r) in monos {
-                if *r {
-                    let idx = self.get_index(DepNode::Api(*fn_did, args)).unwrap();
-                    reserved[idx.index()] = true;
-                }
-            }
-        }
+        // minimal set cover strategy
+        // self.minimal_select(&mut reserved, &generic_map);
+
+        // heuristic strategy
+        self.heuristic_select(&mut reserved);
 
         // traverse from start node, if a node can achieve a reserved node,
         // this node should be reserved as well
@@ -343,6 +442,10 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
             }
         }
 
+        reserved
+    }
+
+    pub fn reserve_nodes(&mut self, reserved: &[bool]) -> usize {
         let mut count = 0;
         for idx in (0..self.graph.node_count()).rev() {
             if !reserved[idx] {
@@ -353,14 +456,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
             }
         }
         self.recache();
-        rap_info!("remove {} nodes by pruning", count);
-        let (estimate, total) = self.estimate_coverage_distinct();
-        rap_info!(
-            "estimate API coverage after pruning: {:.2} ({}/{})",
-            estimate as f64 / total as f64,
-            estimate,
-            total
-        );
+        count
     }
 
     pub fn propagate_reserved(
@@ -372,7 +468,9 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
         visited[node.index()] = true;
 
         match self.graph[node] {
-            DepNode::Api(..) => {
+            // Api should be reserved if must_reserve is true,
+            // or at least one its neighbor is reserved
+            DepNode::Api(fn_did, args) => {
                 for neighbor in self.graph.neighbors(node) {
                     if !visited[neighbor.index()] {
                         reserved[node.index()] |=
@@ -380,7 +478,10 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
                     }
                 }
             }
+
+            // Ty should be reserved if at least one its neighbor is reserved
             DepNode::Ty(..) => {
+                // self.graph.edges_directed(node, dir)
                 for neighbor in self.graph.neighbors(node) {
                     if !visited[neighbor.index()] {
                         self.propagate_reserved(neighbor, visited, reserved);

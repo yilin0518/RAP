@@ -176,8 +176,12 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
 
     // pub fn print_brief()
 
+    pub fn cx_complexity(&self, cx: &LtContext<'tcx, 'a>) -> usize {
+        cx.cx().num_apicall()
+    }
+
     pub fn gen(&mut self) -> LtContext<'tcx, 'a> {
-        let mut lt_ctxt = LtContext::new(self.tcx, &self.alias_map);
+        let mut cx = LtContext::new(self.tcx, &self.alias_map);
         let (estimated, total) = self.api_graph.estimate_coverage();
         let mut count = 0;
         loop {
@@ -187,23 +191,22 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                 break;
             }
             rap_info!("<<<<< Iter {} >>>>>", count);
-            if lt_ctxt.cx().complexity() > self.max_complexity {
+            if self.cx_complexity(&cx) > self.max_complexity {
                 rap_info!("complexity limit reached, generation terminate");
                 break;
             }
 
-            if let Some(action) = self.next(&mut lt_ctxt) {
+            if let Some(action) = self.next(&mut cx) {
                 match action {
                     DepNode::Api(fn_did, args) => {
                         rap_debug!(
                             "[next] select API call: {}",
                             self.tcx.def_path_str_with_args(fn_did, args)
                         );
-                        if let Some(call) = self.get_eligable_call(fn_did, args, &mut lt_ctxt) {
+                        if let Some(call) = self.get_eligable_call(fn_did, args, &mut cx) {
                             self.covered_api.insert(call.fn_did());
-                            lt_ctxt.add_call_stmt(call);
-                            if self.rng.borrow_mut().random_ratio(1, 2) && lt_ctxt.try_inject_drop()
-                            {
+                            cx.add_call_stmt(call);
+                            if self.rng.borrow_mut().random_ratio(1, 2) && cx.try_inject_drop() {
                                 rap_debug!("successfully inject drop");
                             }
                         }
@@ -221,9 +224,9 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                         );
 
                         let mut var_transforms = Vec::new();
-                        for var in lt_ctxt.cx().available_vars() {
+                        for var in cx.cx().available_vars() {
                             for (ty, kind) in transforms.iter() {
-                                if utils::is_ty_eq(lt_ctxt.cx().type_of(var), ty.ty(), self.tcx) {
+                                if utils::is_ty_eq(cx.cx().type_of(var), ty.ty(), self.tcx) {
                                     var_transforms.push((var, *kind));
                                 }
                             }
@@ -237,12 +240,12 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                         rap_debug!(
                             "[next] select transform: {}: {} {}",
                             var,
-                            lt_ctxt.cx().type_of(var),
+                            cx.cx().type_of(var),
                             kind
                         );
                         match kind {
                             TransformKind::Ref(mutability) => {
-                                lt_ctxt.add_ref_stmt(var, mutability, None);
+                                cx.add_ref_stmt(var, mutability, None);
                             }
                             _ => {
                                 panic!("not implemented yet");
@@ -256,23 +259,24 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             }
 
             rap_info!(
-                "complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{}",
-                lt_ctxt.cx().complexity(),
-                lt_ctxt.dropped_count(),
-                lt_ctxt.num_covered_api(),
+                "num_stmt={}, complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{}",
+                cx.cx().num_stmt(),
+                self.cx_complexity(&cx),
+                cx.dropped_count(),
+                cx.num_covered_api(),
                 estimated,
                 total,
             );
 
             rap_info!(
                 "coverage={:.3}/{:.3}/{:.3} (current/global/estimated_max)",
-                lt_ctxt.num_covered_api() as f32 / total as f32,
+                cx.num_covered_api() as f32 / total as f32,
                 self.covered_api.len() as f32 / total as f32,
                 estimated as f32 / total as f32
             );
         }
-        lt_ctxt.try_use_all_available_vars();
-        lt_ctxt
+        cx.try_use_all_available_vars();
+        cx
     }
 
     pub fn count_generic_api(&self) -> usize {

@@ -222,6 +222,13 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
             },
         }
 
+        match project.clear_artifact() {
+            Ok(_) => {}
+            Err(e) => {
+                rap_warn!("Fail to clear artifact for {}: {}", report.project_name, e);
+            }
+        }
+
         reports.push(report);
         run_count += 1;
     }

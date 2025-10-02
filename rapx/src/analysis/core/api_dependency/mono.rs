@@ -349,22 +349,21 @@ fn get_mono_set<'tcx>(
             identity_fnsig.inputs()[no]
         );
 
-        let reachable_set =
-            available_ty
-                .iter()
-                .fold(MonoSet::new(), |mut reachable_set, ty| {
-                    if let Some(mono) = unify_ty(
-                        *input_ty,
-                        (*ty).into(),
-                        &fresh_args,
-                        &infcx,
-                        &dummy_cause,
-                        param_env,
-                    ) {
-                        reachable_set.insert(mono);
-                    }
-                    reachable_set
-                });
+        let reachable_set = available_ty
+            .iter()
+            .fold(MonoSet::new(), |mut reachable_set, ty| {
+                if let Some(mono) = unify_ty(
+                    *input_ty,
+                    (*ty).into(),
+                    &fresh_args,
+                    &infcx,
+                    &dummy_cause,
+                    param_env,
+                ) {
+                    reachable_set.insert(mono);
+                }
+                reachable_set
+            });
         // reachable_set.random_sample(&mut rng);
         rap_debug!(
             "[get_mono_set] size of s: {}, size of input: {}",
@@ -430,6 +429,7 @@ fn solve_unbound_type_generics<'tcx>(
     let mut mset = MonoSet::all(args);
     rap_debug!("[solve_unbound] did = {did:?}, mset={mset:?}");
     for pred in preds.predicates.iter() {
+        rap_debug!("[solve_unbound] pred = {:?}", pred);
         if let Some(trait_pred) = pred.as_trait_clause() {
             let trait_pred = trait_pred.skip_binder();
 

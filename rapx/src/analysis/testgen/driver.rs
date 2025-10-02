@@ -4,7 +4,7 @@ use crate::analysis::core::{alias_analysis, api_dependency};
 use crate::analysis::testgen::generator::ltgen::LtGenBuilder;
 use crate::analysis::testgen::syn::impls::FuzzDriverSynImpl;
 use crate::analysis::testgen::syn::input::RandomGen;
-use crate::analysis::testgen::syn::project::{CargoProjectBuilder, RsProjectOption};
+use crate::analysis::testgen::syn::project::{CargoProjectBuilder, PocProject, RsProjectOption};
 use crate::analysis::testgen::syn::{SynOption, Synthesizer};
 use crate::analysis::Analysis;
 use crate::{rap_error, rap_info, rap_warn};
@@ -87,6 +87,21 @@ pub fn dump_alias_map(
     Ok(())
 }
 
+fn miri_env_vars() -> &'static [(&'static str, &'static str)] {
+    &[
+        (
+            "MIRIFLAGS",
+            "-Zmiri-ignore-leaks -Zmiri-disable-stacked-borrows",
+        ),
+        ("RUSTFLAGS", "-Awarnings"),
+        ("RUST_BACKTRACE", "1"),
+    ]
+}
+
+fn asan_env_vars() -> &'static [(&'static str, &'static str)] {
+    &[("RUSTFLAGS", "-Awarnings -Zsanitizer=address")]
+}
+
 pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = LtGenConfig::load()?;
     let local_crate_name = tcx.crate_name(LOCAL_CRATE);
@@ -150,7 +165,6 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         .write(true)
         .open(&report_path)?;
 
-    let mut reports = Vec::new();
     let package_name = std::env::var("CARGO_PKG_NAME")?;
     let package_dir = std::env::var("CARGO_MANIFEST_DIR")?;
 
@@ -175,7 +189,6 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
             tested_crate_path: (&package_dir).into(),
             project_name: project_name.clone(),
             project_path: project_path.clone(),
-            verbose: true,
         };
 
         let project_builder = CargoProjectBuilder::new(fuzz_config);
@@ -185,70 +198,77 @@ pub fn driver_main(tcx: TyCtxt<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = std::fs::File::create(debug_path)?;
         cx.region_graph().dump(&mut file).unwrap();
 
-        // 4. run miri & save feedback
+        // 4. run cargo check
+        // 5. evaluate with miri & asan
         let delimeter = "=".repeat(40);
-        let report = project.run_miri()?;
-
-        writeln!(&mut report_file, "{}", delimeter)?;
-        writeln!(&mut report_file, "{}", report.brief())?;
         writeln!(&mut report_file, "{}", delimeter)?;
 
-        match &report.result {
-            Err(record) => {
-                rap_error!(
-                    "running `cargo check` fail (retcode = {:?}). This may due to the compile error",
-                    record.retcode
-                );
-            }
-            Ok((record, elapsed)) => match record.retcode {
-                Some(code) => {
-                    rap_info!(
-                        "miri run completed with return code: {} (elapse = {}ms)",
-                        code,
-                        elapsed.as_millis()
-                    );
-                    if code != 0 {
-                        rap_warn!(
-                        "miri return a non-zero code ({code}), this may indicate a bug detected"
-                    );
-                    }
-                }
-                None => {
-                    rap_error!(
-                        "Fail to run miri for {}: Execution is interrupted",
-                        report.project_name
-                    );
-                }
-            },
+        if let Err(err) = check_and_evaluate(&project, &mut report_file) {
+            rap_error!("evaluate project {} fail: {}", project_path.display(), err);
+            writeln!(
+                &mut report_file,
+                "evaluate project {} fail: {}",
+                project_path.display(),
+                err
+            )?;
         }
 
+        writeln!(&mut report_file, "{}", delimeter)?;
+
+        // 6. clear artifact to avoid space waste
         match project.clear_artifact() {
             Ok(_) => {}
             Err(e) => {
-                rap_warn!("Fail to clear artifact for {}: {}", report.project_name, e);
+                rap_warn!(
+                    "Fail to clear artifact for {}: {}",
+                    project_path.display(),
+                    e
+                );
             }
         }
 
-        reports.push(report);
         run_count += 1;
     }
 
     writeln!(&mut report_file, "{}", ltgen.statistic_str())?;
+    rap_info!("report saved to: {}", report_path.display());
 
-    rap_info!("non-zero returned:");
-    for report in reports {
-        let record = report.as_cmd_record();
-        if record.is_success() {
-            continue;
-        }
-        rap_warn!(
-            "case = {}, retcode = {:?}",
-            report.project_name,
-            record.retcode
-        );
+    Ok(())
+}
+
+pub fn check_and_evaluate(project: &PocProject, log: &mut impl Write) -> io::Result<()> {
+    let project_path = &project.option().project_path;
+
+    // run `cargo check`
+    let result = project.run_cargo_cmd(&["check"], &[])?;
+    if !result.success() {
+        rap_error!("running `cargo check` fail: {:?}", result.retcode);
+        rap_error!("project {} compile fail", project_path.display());
+        writeln!(log, "{}", result.brief())?;
+        return Ok(());
     }
 
-    rap_info!("report saved to: {}", report_path.display());
+    // run `cargo miri run`
+    let result = project.run_cargo_cmd(&["miri", "run"], miri_env_vars())?;
+    writeln!(log, "{}", result.brief())?;
+    if result.success() {
+        rap_info!("`cargo miri run` success, nothing interested happen");
+    } else {
+        rap_warn!("miri return {:?}", result.retcode);
+        if let Some(1) = result.retcode {
+            rap_warn!("this may indicate a UB bug detected");
+        }
+    }
+
+    // run `cargo run`, with sanitizer flag (currenly only ASAN)
+    let result = project.run_cargo_cmd(&["run"], asan_env_vars())?;
+    writeln!(log, "{}", result.brief())?;
+    if result.success() {
+        rap_info!("`cargo run` with sanitizer success, nothing interested happen");
+    } else {
+        rap_warn!("`cargo run` with sanitizer return {:?}", result.retcode);
+        rap_warn!("this may indicate a UB bug detected");
+    }
 
     Ok(())
 }

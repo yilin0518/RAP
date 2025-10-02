@@ -267,7 +267,9 @@ pub fn check_and_evaluate(project: &PocProject, log: &mut impl Write) -> io::Res
         rap_info!("`cargo run` with sanitizer success, nothing interested happen");
     } else {
         rap_warn!("`cargo run` with sanitizer return {:?}", result.retcode);
-        rap_warn!("this may indicate a UB bug detected");
+        if let Some(1) = result.retcode {
+            rap_warn!("this may indicate a UB bug detected");
+        }
     }
 
     Ok(())

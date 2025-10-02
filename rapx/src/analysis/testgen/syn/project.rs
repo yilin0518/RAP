@@ -176,9 +176,10 @@ impl PocProject {
         let elapsed = timer.elapsed();
         Ok(CmdRecord {
             reproduce: format!(
-                "cd {} && {} cargo miri run",
+                "cd {} && {} cargo {}",
                 project_path.display(),
-                env_vars_str(env_vars)
+                env_vars_str(env_vars),
+                args.join(" ")
             ),
             elapsed,
             retcode: output.status.code(),

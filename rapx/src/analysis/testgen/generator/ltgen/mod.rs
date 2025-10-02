@@ -184,6 +184,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
         let mut cx = LtContext::new(self.tcx, &self.alias_map);
         let (estimated, total) = self.api_graph.estimate_coverage();
         let mut count = 0;
+        let mut num_drop_inject = 0;
         loop {
             count += 1;
             if count > self.max_iteration {
@@ -207,6 +208,7 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
                             self.covered_api.insert(call.fn_did());
                             cx.add_call_stmt(call);
                             if self.rng.borrow_mut().random_ratio(1, 2) && cx.try_inject_drop() {
+                                num_drop_inject += 1;
                                 rap_debug!("successfully inject drop");
                             }
                         }
@@ -259,10 +261,10 @@ impl<'tcx, 'a, R: Rng> LtGen<'tcx, 'a, R> {
             }
 
             rap_info!(
-                "num_stmt={}, complexity={}, num_drop={}, covered/estimated/total_api={}/{}/{}",
+                "num_stmt={}, complexity={}, num_drop_inject={}, covered/estimated/total_api={}/{}/{}",
                 cx.cx().num_stmt(),
                 self.cx_complexity(&cx),
-                cx.dropped_count(),
+                num_drop_inject,
                 cx.num_covered_api(),
                 estimated,
                 total,

@@ -66,8 +66,8 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     }
 
     fn move_var(&mut self, var: Var) {
+        self.set_implicit_drop_state_from(var);
         self.cx.set_var_moved(var);
-        // self.set_implicit_drop_state_from(var)
     }
 
     pub fn add_drop_stmt(&mut self, dropped: Var) {
@@ -279,7 +279,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
             // if the var is not copy, the ownership of the var is moved into the call
             if !utils::is_ty_impl_copy(self.cx.type_of(arg), tcx) {
-                self.cx.set_var_state(arg, VarState::Moved);
+                self.move_var(arg);
             }
         }
 

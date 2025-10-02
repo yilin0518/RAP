@@ -85,6 +85,10 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
                     is_fuzzable_ty(field.ty(tcx, substs).peel_refs(), tcx)
                 })
             } else if adt_def.is_enum() {
+                // An empty enum cannot be instantiated
+                if adt_def.variants().is_empty() {
+                    return false;
+                }
                 adt_def.variants().iter().all(|variant| {
                     variant
                         .fields

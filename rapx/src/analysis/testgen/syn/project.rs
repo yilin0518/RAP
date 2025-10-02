@@ -104,8 +104,9 @@ impl CmdRecord {
 
     pub fn brief(&self) -> String {
         let mut s = String::new();
-        s.push_str(&format!("Reproduce Line: {}\n", self.reproduce));
+        s.push_str(&format!("Reproduce Line:\n{}\n", self.reproduce));
         s.push_str(&format!("retcode = {:?}\n", self.retcode));
+        s.push_str(&format!("elapsed = {}ms\n", self.elapsed.as_millis()));
         if !self.success() {
             s.push_str(&format!(
                 "stdout:{}\n",

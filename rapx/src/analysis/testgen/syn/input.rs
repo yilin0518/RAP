@@ -1,8 +1,10 @@
 use super::visible_path::ty_to_string_with_visible_path;
 use rand::{rngs::ThreadRng, seq::IndexedRandom, Rng};
 use rustc_abi::FIRST_VARIANT;
-use rustc_middle::ty::{AdtDef, GenericArgsRef, Ty, TyCtxt, TyKind};
-use rustc_type_ir::{IntTy, UintTy};
+use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_middle::ty::{AdtDef, GenericArgsRef, ParamEnv, Ty, TyCtxt, TyKind, TypingEnv};
+use rustc_span::DUMMY_SP;
+use rustc_type_ir::{inherent::PlaceholderConst, IntTy, UintTy};
 use std::ops::Range;
 
 pub trait InputGen {
@@ -40,10 +42,15 @@ pub trait InputGen {
                 unreachable!("str should be referenced as &str");
             }
             TyKind::Array(inner_ty, const_) => {
-                let len = const_
-                    .to_value()
-                    .try_to_target_usize(tcx)
-                    .expect("Failed to get array length");
+                let len = match const_.kind() {
+                    rustc_type_ir::ConstKind::Value(value) => value
+                        .try_to_target_usize(tcx)
+                        .expect("cannot conver to target usize"),
+                    _ => {
+                        unreachable!("unexpected const kind: {}", const_);
+                    }
+                };
+
                 let mut arr: Vec<String> = Vec::new();
                 for _ in 0..len {
                     arr.push(self.gen(*inner_ty, tcx).to_string());

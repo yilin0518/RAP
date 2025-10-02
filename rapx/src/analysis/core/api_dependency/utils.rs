@@ -64,7 +64,14 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
         ) => true,
 
         // Reference, Array, Slice
-        TyKind::Ref(_, inner_ty, _) | TyKind::Array(inner_ty, _) | TyKind::Slice(inner_ty) => {
+        TyKind::Ref(_, inner_ty, _) | TyKind::Slice(inner_ty) => {
+            is_fuzzable_ty(inner_ty.peel_refs(), tcx)
+        }
+
+        TyKind::Array(inner_ty, const_) => {
+            if const_.try_to_value().is_none() {
+                return false;
+            }
             is_fuzzable_ty(inner_ty.peel_refs(), tcx)
         }
 

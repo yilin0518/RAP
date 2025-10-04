@@ -28,7 +28,7 @@ fn is_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     }
 }
 
-fn is_non_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+fn is_non_fuzzable_std_ty<'tcx>(ty: Ty<'tcx>, _tcx: TyCtxt<'tcx>) -> bool {
     let name = format!("{}", ty);
     match name.as_str() {
         "core::alloc::LayoutError" => return true,
@@ -64,7 +64,14 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
         ) => true,
 
         // Reference, Array, Slice
-        TyKind::Ref(_, inner_ty, _) | TyKind::Array(inner_ty, _) | TyKind::Slice(inner_ty) => {
+        TyKind::Ref(_, inner_ty, _) | TyKind::Slice(inner_ty) => {
+            is_fuzzable_ty(inner_ty.peel_refs(), tcx)
+        }
+
+        TyKind::Array(inner_ty, const_) => {
+            if const_.try_to_value().is_none() {
+                return false;
+            }
             is_fuzzable_ty(inner_ty.peel_refs(), tcx)
         }
 
@@ -85,6 +92,10 @@ pub fn is_fuzzable_ty<'tcx>(ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
                     is_fuzzable_ty(field.ty(tcx, substs).peel_refs(), tcx)
                 })
             } else if adt_def.is_enum() {
+                // An empty enum cannot be instantiated
+                if adt_def.variants().is_empty() {
+                    return false;
+                }
                 adt_def.variants().iter().all(|variant| {
                     variant
                         .fields

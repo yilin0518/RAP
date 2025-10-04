@@ -53,7 +53,7 @@ impl<I: InputGen> FuzzDriverSynImpl<I> {
             StmtKind::Input => {
                 let ty = cx.type_of(stmt.place());
                 rap_debug!("{} -> {}", stmt.place(), ty);
-                self.input_gen.gen(ty, cx.tcx()).to_string()
+                self.input_gen.gen(ty, cx.tcx())
             }
             StmtKind::Ref(var, mutability) => {
                 format!("{}{}", mutability.ref_prefix_str(), self.var_str(**var))

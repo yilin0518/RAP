@@ -1,8 +1,10 @@
 use super::visible_path::ty_to_string_with_visible_path;
-use rand::{rngs::ThreadRng, Rng};
+use rand::{rngs::ThreadRng, seq::IndexedRandom, Rng};
 use rustc_abi::FIRST_VARIANT;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
-use rustc_type_ir::{IntTy, UintTy};
+use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_middle::ty::{AdtDef, GenericArgsRef, ParamEnv, Ty, TyCtxt, TyKind, TypingEnv};
+use rustc_span::DUMMY_SP;
+use rustc_type_ir::{inherent::PlaceholderConst, IntTy, UintTy};
 use std::ops::Range;
 
 pub trait InputGen {
@@ -12,6 +14,12 @@ pub trait InputGen {
     fn gen_float(&mut self) -> f32;
     fn gen_char(&mut self) -> char;
     fn gen_str(&mut self) -> String;
+    fn gen_adt<'tcx>(
+        &mut self,
+        adt_def: AdtDef<'tcx>,
+        args: GenericArgsRef<'tcx>,
+        tcx: TyCtxt<'tcx>,
+    ) -> String;
 
     fn gen<'tcx>(&mut self, ty: Ty<'tcx>, tcx: TyCtxt<'tcx>) -> String {
         match ty.kind() {
@@ -34,10 +42,15 @@ pub trait InputGen {
                 unreachable!("str should be referenced as &str");
             }
             TyKind::Array(inner_ty, const_) => {
-                let len = const_
-                    .to_value()
-                    .try_to_target_usize(tcx)
-                    .expect("Failed to get array length");
+                let len = match const_.kind() {
+                    rustc_type_ir::ConstKind::Value(value) => value
+                        .try_to_target_usize(tcx)
+                        .expect("cannot conver to target usize"),
+                    _ => {
+                        unreachable!("unexpected const kind: {}", const_);
+                    }
+                };
+
                 let mut arr: Vec<String> = Vec::new();
                 for _ in 0..len {
                     arr.push(self.gen(*inner_ty, tcx).to_string());
@@ -51,38 +64,7 @@ pub trait InputGen {
                 }
                 format!("({})", fields.join(", "))
             }
-            TyKind::Adt(adt_def, generic_arg) => {
-                let name = ty_to_string_with_visible_path(tcx, ty);
-                if adt_def.is_struct() {
-                    // generate input for each field
-                    let mut fields = Vec::new();
-                    for field in adt_def.all_fields() {
-                        let field_name = field.name.to_string();
-                        let field_type = field.ty(tcx, generic_arg);
-                        let field_input = self.gen(field_type, tcx).to_string();
-                        fields.push(format!("{field_name}: {field_input}"));
-                    }
-                    return format!("{name} {{ {} }}", fields.join(", "));
-                }
-                if adt_def.is_enum() {
-                    let mut fields = Vec::new();
-                    // Always generate the first variant
-
-                    let variant_def = adt_def.variant(FIRST_VARIANT);
-                    let variant_name = variant_def.name.to_string();
-                    for field in variant_def.fields.iter() {
-                        let field_name = field.name.to_string();
-                        let field_type = field.ty(tcx, generic_arg);
-                        let field_input = self.gen(field_type, tcx).to_string();
-                        fields.push(format!("{field_name}: {field_input}"));
-                    }
-                    if fields.is_empty() {
-                        return format!("{name}::{variant_name}");
-                    }
-                    return format!("{name}::{variant_name} {{ {} }}", fields.join(", "));
-                }
-                panic!("Unsupported ADT: {:?}", ty)
-            }
+            TyKind::Adt(adt_def, generic_args) => self.gen_adt(*adt_def, generic_args, tcx),
             TyKind::Slice(inner_ty) => {
                 let len = 3; // Fixed length for simplicity
                 let element = self.gen(*inner_ty, tcx).to_string();
@@ -93,7 +75,7 @@ pub trait InputGen {
     }
 }
 
-pub struct SillyInputGen;
+pub struct SillyInputGen {}
 
 impl InputGen for SillyInputGen {
     fn gen_bool(&mut self) -> bool {
@@ -118,6 +100,45 @@ impl InputGen for SillyInputGen {
 
     fn gen_str(&mut self) -> String {
         "don't panic".to_owned()
+    }
+
+    fn gen_adt<'tcx>(
+        &mut self,
+        adt_def: AdtDef<'tcx>,
+        args: GenericArgsRef<'tcx>,
+        tcx: TyCtxt<'tcx>,
+    ) -> String {
+        let ty = Ty::new_adt(tcx, adt_def, args);
+        let name = ty_to_string_with_visible_path(tcx, ty);
+        if adt_def.is_struct() {
+            // generate input for each field
+            let mut fields = Vec::new();
+            for field in adt_def.all_fields() {
+                let field_name = field.name.to_string();
+                let field_type = field.ty(tcx, args);
+                let field_input = self.gen(field_type, tcx).to_string();
+                fields.push(format!("{field_name}: {field_input}"));
+            }
+            return format!("{name} {{ {} }}", fields.join(", "));
+        }
+        if adt_def.is_enum() {
+            let mut fields = Vec::new();
+            // Always generate the first variant
+
+            let variant_def = adt_def.variant(FIRST_VARIANT);
+            let variant_name = variant_def.name.to_string();
+            for field in variant_def.fields.iter() {
+                let field_name = field.name.to_string();
+                let field_type = field.ty(tcx, args);
+                let field_input = self.gen(field_type, tcx).to_string();
+                fields.push(format!("{field_name}: {field_input}"));
+            }
+            if fields.is_empty() {
+                return format!("{name}::{variant_name}");
+            }
+            return format!("{name}::{variant_name} {{ {} }}", fields.join(", "));
+        }
+        panic!("Unsupported ADT: {:?}", ty)
     }
 }
 
@@ -172,5 +193,45 @@ impl<R: Rng> InputGen for RandomGen<R> {
 
     fn gen_str(&mut self) -> String {
         gen_random_utf8_seq(&mut self.rng, 0, 16)
+    }
+
+    fn gen_adt<'tcx>(
+        &mut self,
+        adt_def: AdtDef<'tcx>,
+        args: GenericArgsRef<'tcx>,
+        tcx: TyCtxt<'tcx>,
+    ) -> String {
+        let ty = Ty::new_adt(tcx, adt_def, args);
+        let name = ty_to_string_with_visible_path(tcx, ty);
+        if adt_def.is_struct() {
+            // generate input for each field
+            let mut fields = Vec::new();
+            for field in adt_def.all_fields() {
+                let field_name = field.name.to_string();
+                let field_type = field.ty(tcx, args);
+                let field_input = self.gen(field_type, tcx).to_string();
+                fields.push(format!("{field_name}: {field_input}"));
+            }
+            return format!("{name} {{ {} }}", fields.join(", "));
+        }
+        if adt_def.is_enum() {
+            let mut fields = Vec::new();
+
+            let variants = adt_def.variants().into_iter().collect::<Vec<_>>();
+            let variant_def = variants.choose(&mut self.rng).unwrap();
+            let variant_name = variant_def.name.to_string();
+
+            for field in variant_def.fields.iter() {
+                let field_name = field.name.to_string();
+                let field_type = field.ty(tcx, args);
+                let field_input = self.gen(field_type, tcx).to_string();
+                fields.push(format!("{field_name}: {field_input}"));
+            }
+            if fields.is_empty() {
+                return format!("{name}::{variant_name}");
+            }
+            return format!("{name}::{variant_name} {{ {} }}", fields.join(", "));
+        }
+        panic!("Unsupported ADT: {:?}", ty)
     }
 }

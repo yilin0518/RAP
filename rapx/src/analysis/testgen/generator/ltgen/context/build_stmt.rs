@@ -21,6 +21,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     fn set_implicit_drop_state_from(&mut self, from: Var) {
         let mut q = VecDeque::from([self.rid_of(from).into()]);
         let mut visited = vec![false; self.region_graph.total_node_count()];
+        let mut drop_var = Vec::new();
         visited[self.rid_of(from).index()] = true;
         while let Some(rid) = q.pop_front() {
             if let RegionNode::Named(var) = self.region_graph.get_node(rid) {
@@ -28,10 +29,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                     continue;
                 }
                 if from != var {
-                    self.cx.set_var_state(var, VarState::Dropped);
-                    let unit_place = self.mk_var(self.tcx.types.unit, false);
-                    self.cx.add_stmt(Stmt::drop_(unit_place, var));
-                    rap_debug!("implicitly set var {} dropped", var);
+                    drop_var.push(var);
                 }
             }
             for next_idx in self
@@ -44,6 +42,12 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
                     q.push_back(next_idx.into());
                 }
             }
+        }
+        for var in drop_var.into_iter().rev() {
+            self.cx.set_var_state(var, VarState::Dropped);
+            let unit_place = self.mk_var(self.tcx.types.unit, false);
+            self.cx.add_stmt(Stmt::drop_(unit_place, var));
+            rap_debug!("implicitly set var {} dropped", var);
         }
     }
 
@@ -62,8 +66,8 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
     }
 
     fn move_var(&mut self, var: Var) {
+        self.set_implicit_drop_state_from(var);
         self.cx.set_var_moved(var);
-        // self.set_implicit_drop_state_from(var)
     }
 
     pub fn add_drop_stmt(&mut self, dropped: Var) {
@@ -275,7 +279,7 @@ impl<'tcx, 'a> LtContext<'tcx, 'a> {
 
             // if the var is not copy, the ownership of the var is moved into the call
             if !utils::is_ty_impl_copy(self.cx.type_of(arg), tcx) {
-                self.cx.set_var_state(arg, VarState::Moved);
+                self.move_var(arg);
             }
         }
 
